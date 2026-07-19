@@ -21,7 +21,7 @@ Treat later ratio claims carefully; prefer the explicit **2.7–2.8×** figure b
 **Answer:**
 
 - Third-party Opus/Fable/Sonnet only → **Claude Pro ($20)** is likely enough.
-- Need full Auto/Composer/Grok volume → **Max 5x + OpenCode Go ($110 ≈ 1.83× ≈ ~2× price)** gives ~**2.7–2.8×** Sonnet+Flash-framed quota.
+- Need full Auto/Composer/Grok volume → **Max 5x + OpenCode Go ($110; 1.83× vs $60 Pro+, ~2×)** gives ~**2.7–2.8×** Sonnet+Flash-framed quota.
 
 Prices and model IDs as of **2026-07-19**; re-check Cursor first-party rates and Go weekly caps before acting.
 
@@ -162,7 +162,7 @@ Claude Pro + Go ($30) only covers ~¼ of the practical ~$1,600 load — not a fu
 
 | | Cursor Pro+ | Max 5x + OpenCode Go |
 | --- | --- | --- |
-| Subscription | **$60** | **$110** (~1.83× ≈ ~2×) |
+| Subscription | **$60** | **$110** (1.83× vs $60; ~2×) |
 | First-party → Sonnet+Flash work | see below | ~$2,200 + $60 ≈ **$2,260** if filled |
 
 ### Correct quota ratio (after bias correction)
@@ -177,9 +177,9 @@ Do **not** price Cursor’s Grok tokens up to full Sonnet API $ when sizing Curs
 
 $2,260 / $825 ≈ **2.7–2.8×**
 
-So: **~$110 ≈ 1.83× ≈ ~2× price**, **~2.7–2.8× quota** in this framing — similar or better value on Max 5x + Go for that substitute, not “roughly 1.4×.”
+So: **$110 (1.83× vs $60; ~2×)**, **~2.7–2.8× quota** in this framing — similar or better value on Max 5x + Go for that substitute, not “roughly 1.4×.”
 
-**Sensitivity:** The ratio is sensitive to Composer mapping. The **0.5×** case below is **hypothetical** (not a measured substitute model). If Composer were ~0.5× Cursor $ (not ~0.15× via V4 Flash), fair first-party rises toward ~$950 and the quota multiple drops toward ~**2.4×**.
+**Sensitivity:** The ratio is sensitive to Composer mapping. The **0.5×** example is **hypothetical** (not a measured substitute model). If Composer were ~0.5× Cursor $ (not ~0.15× via V4 Flash), fair first-party rises toward ~$950 and the quota multiple drops toward ~**2.4×**.
 
 ### Cursor’s extra third-party API credit
 
@@ -202,5 +202,5 @@ Decision fork is in **Summary**. Supporting numbers:
 
 1. **Third-party API pool:** ~$70–150 at Cursor rates.
 2. **First-party pool:** ~**$1,150** Cursor-rate when exhausted; ~**$1,600** API to replace via Sonnet + V4 Flash; Max 5x + Go ($110) can cover that under even pacing.
-3. **Fair quota multiple:** **2.7–2.8×** (not 1.3–1.4×); price **$110 ≈ 1.83×**.
+3. **Fair quota multiple:** **2.7–2.8×** (not 1.3–1.4×); price **$110** (1.83× vs $60).
 4. Watch for assistant rounding that understates alternatives and overstates Cursor closeness.
