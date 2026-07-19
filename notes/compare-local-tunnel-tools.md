@@ -8,7 +8,7 @@ These tools overlap but solve different problems:
 
 | Goal | Lean toward |
 | --- | --- |
-| One-shot webhook / demo on localhost | **LocalTunnel** (free, flaky) or **Pinggy** (SSH, no signup) |
+| One-shot webhook / demo on localhost | **LocalTunnel** (free, flaky) or **Pinggy** (SSH quickstart; account for paid/persistent) |
 | Daily dev with inspection and stable URLs | **Ngrok** or **LocalXpose** |
 | Production HTTP(S) on your domain, free edge | **cloudflared** (domain on Cloudflare) |
 | Self-hosted “Cloudflare Tunnel + Access” on your VPS | **Pangolin** |
@@ -20,15 +20,17 @@ These tools overlap but solve different problems:
 
 ## At a glance
 
-| | Model | Public HTTP(S) | TCP / UDP | Persistent URL | Custom domain | Auth / ZTNA | Typical cost |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **cloudflared** | Cloudflare-managed tunnel | Yes (primary) | TCP/SSH/RDP need client `cloudflared`; **no public UDP** | Yes (needs CF DNS zone) | Yes (on Cloudflare) | Cloudflare Access (OIDC, etc.) | **Free** (CF account) |
-| **Pinggy** | Managed SaaS (SSH-based) | Yes | **UDP, TLS** | Paid | Subdomain + **apex** | Basic auth, bearer, IP allowlist | Free tier; **~$3/mo** Pro |
-| **Ngrok** | Managed ingress platform | Yes | TCP, TLS; **no UDP** | Paid | Subdomain only (no apex on lower tiers) | OAuth, SAML, webhooks | Free limited; **~$10/mo** hobbyist |
-| **LocalXpose** | Managed SaaS | Yes | **HTTP/S, TCP, TLS, UDP** | Paid | Yes | Basic auth, keys, IP allowlist | Free (2 HTTP); **~$8/mo** Pro |
-| **LocalTunnel** | Volunteer-hosted SaaS | Yes | **HTTP/HTTPS only** | Random each run | No | Tunnel password page | **Free** |
-| **Pangolin** | Self-hosted (+ optional cloud) | Yes | Via proxy / tunnel to L4 services | Yes | Yes (Let’s Encrypt) | Built-in IdP, OIDC, TOTP, roles | **Free** CE (AGPL); VPS cost |
-| **Tailscale** | Mesh VPN (WireGuard) | Via **Funnel** only | Tailnet L3/L4; Funnel is HTTPS | Funnel URL | Custom domain on Funnel (paid plans) | Tailnet ACLs, SSO on business | Free personal; **~$6+/user/mo** teams |
+| | Model | Traffic path | Public HTTP(S) | TCP / UDP | Persistent URL | Custom domain | Auth / ZTNA | Typical cost |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **cloudflared** | Cloudflare-managed tunnel | CF edge (vendor) | Yes (primary) | TCP/SSH/RDP need client `cloudflared`; **no public UDP** | Yes (needs CF DNS zone) | Yes (on Cloudflare) | Cloudflare Access (OIDC, etc.) | **Free** (CF account) |
+| **Pinggy** | Managed SaaS (SSH-based) | Vendor relay | Yes | **UDP, TLS** | Paid | Subdomain + **apex** | Basic auth, bearer, IP allowlist | Free tier; **~$3/mo** Pro |
+| **Ngrok** | Managed ingress platform | Vendor relay | Yes | TCP, TLS; **no UDP** | Paid | Subdomain only (no apex on lower tiers) | OAuth, SAML, webhooks | Free limited; **~$10/mo** Personal-class (as of 2026-07-19) |
+| **LocalXpose** | Managed SaaS | Vendor relay | Yes | **HTTP/S, TCP, TLS, UDP** | Paid | Yes | Basic auth, keys, IP allowlist | Free (2 HTTP); **~$8/mo** Pro |
+| **LocalTunnel** | Volunteer-hosted SaaS | Volunteer relay | Yes | **HTTP/HTTPS only** | Random each run | No | Tunnel password page | **Free** |
+| **Pangolin** | Self-hosted (+ optional cloud) | **Your VPS hub** | Yes | Via proxy / tunnel to L4 services | Yes | Yes (Let’s Encrypt) | Built-in IdP, OIDC, TOTP, roles | **Free** CE (AGPL); VPS cost |
+| **Tailscale** | Mesh VPN (WireGuard) | Mesh; Funnel = TS relay | Via **Funnel** only | Tailnet L3/L4; Funnel is HTTPS | Funnel URL | Custom domain on Funnel (paid plans) | Tailnet ACLs, SSO on business | Free personal; **~$6+/user/mo** teams |
+
+Traffic path: most managed tunnels **relay through the vendor**; Pangolin terminates on **your hub**; Tailscale is primarily **peer mesh** (Funnel is the public-HTTPS exception).
 
 ---
 
@@ -38,7 +40,7 @@ Outbound-only daemon (`cloudflared`) connects your origin to Cloudflare’s edge
 
 **Strengths**
 
-- **Free** on all Cloudflare plans; unlimited tunnels for HTTP routing.
+- **Free** on all Cloudflare plans; **no per-tunnel count fee** for HTTP routing (other CF limits still apply).
 - Production-grade edge (DDoS, caching, Access policies).
 - Quick Tunnels (`trycloudflare.com`) for zero-account local tests.
 
@@ -55,11 +57,11 @@ Outbound-only daemon (`cloudflared`) connects your origin to Cloudflare’s edge
 
 ## Pinggy
 
-Tunnel over **SSH** — no client install for a quick test (`ssh -R …`). Paid plans add CLI, GUI, custom domains, inspection UI.
+Tunnel over **SSH** — no client install for a quick test (`ssh -R …`). **Free SSH quickstart needs no account**; paid/persistent features (stable subdomain, custom domain, reserved ports) need signup. Paid plans add CLI, GUI, custom domains, inspection UI.
 
 **Strengths**
 
-- Fastest “try it now” path (no signup on free tier).
+- Fastest “try it now” path (free SSH without signup).
 - **UDP and TLS** tunnels; **unlimited bandwidth** on paid plans.
 - **Apex/root domains** supported; cheaper entry paid tier (~**$3/mo**).
 
@@ -86,7 +88,7 @@ De facto standard for **localhost → public URL**. Grew into a full **ingress p
 **Limits**
 
 - **No UDP.**
-- Free/hobby tiers: **bandwidth caps** (~5 GB/mo on entry paid), sign-up required.
+- Free/Personal-class tiers (as of **2026-07-19**): **bandwidth caps** (~5 GB/mo on entry paid — re-check [ngrok.com/pricing](https://ngrok.com/pricing)), sign-up required.
 - Custom domains are **subdomain-only** on common plans (no apex).
 - Price rises quickly for team/production features.
 
