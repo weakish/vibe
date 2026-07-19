@@ -8,7 +8,7 @@ These tools overlap but solve different problems:
 
 | Goal | Lean toward |
 | --- | --- |
-| One-shot webhook / demo on localhost | **LocalTunnel** (free, flaky) or **Pinggy** (SSH quickstart; account for paid/persistent) |
+| One-shot webhook / demo on localhost | **LocalTunnel** (free, flaky) or **Pinggy** (SSH quickstart; signup for paid/persistent) |
 | Daily dev with inspection and stable URLs | **Ngrok** or **LocalXpose** |
 | Production HTTP(S) on your domain, free edge | **cloudflared** (domain on Cloudflare) |
 | Self-hosted “Cloudflare Tunnel + Access” on your VPS | **Pangolin** |
