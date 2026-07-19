@@ -12,6 +12,19 @@ The assistant in that session (Cursor Grok / jointly trained by SpaceXAI and Cur
 
 Treat later ratio claims carefully; prefer the explicit **2.7–2.8×** figure below.
 
+## Summary
+
+**Context:** Cursor Pro+ ($60/mo); comparing to Claude Code and OpenCode Go for cursor-cli use (no IDE).
+
+**Question:** What part of Pro+ is still worth paying for?
+
+**Answer:**
+
+- Third-party Opus/Fable/Sonnet only → **Claude Pro ($20)** is likely enough.
+- Need full Auto/Composer/Grok volume → **Max 5x + OpenCode Go ($110)** gives ~**2.7–2.8×** Sonnet+Flash-framed quota for ~**2×** subscription.
+
+Prices and model IDs as of **2026-07-19**; re-check Cursor first-party rates and Go weekly caps before acting.
+
 ---
 
 ## CodexBar vs what you actually pay
@@ -91,11 +104,9 @@ Human summary that held for **API-pool-only**: ⅓ bill, ~3× quota, ~10× value
 
 Auto ~**89% left** → ~**11%** used.
 
-\[
-\text{full first-party pool} \approx \$126.25 / 0.11 \approx \mathbf{\$1{,}150}
-\]
+Full first-party pool ≈ $126.25 / 0.11 ≈ **$1,150** (range ~$1,050–1,250 if 10–12% used). Implied pool size assumes Spending % scales roughly linearly with dollar value through the cycle.
 
-(Range ~$1,050–1,250 if 10–12% used.) Composer share ~**$383**, Grok share ~**$767** at Cursor’s published first-party rates.
+Composer share ~**$383**, Grok share ~**$767** at Cursor’s published first-party rates.
 
 These $ are **Cursor’s** Composer/Grok/Auto prices, not Anthropic/OpenAI list prices.
 
@@ -164,11 +175,11 @@ Do **not** price Cursor’s Grok tokens up to full Sonnet API $ when sizing Curs
 | Composer → Flash | ~**$55–60** (big drop from ~$383) |
 | **Effective Cursor first-party** | **~$820–830** |
 
-\[
-\$2{,}260 / \$825 \approx \mathbf{2.7\text{–}2.8\times}
-\]
+$2,260 / $825 ≈ **2.7–2.8×**
 
 So: **~2× price, ~2.7–2.8× quota** in this framing — similar or better value on Max 5x + Go for that substitute, not “roughly 1.4×.”
+
+**Sensitivity:** The ratio is sensitive to Composer mapping. If Composer were ~0.5× Cursor $ (not ~0.15× via V4 Flash), fair first-party rises toward ~$950 and the quota multiple drops toward ~**2.4×**.
 
 ### Cursor’s extra third-party API credit
 
