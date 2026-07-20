@@ -38,23 +38,29 @@ Display **four digits** (24-hour **HHMM**, no colon) in Bangkok wall time (floor
 
 Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, not `@formatjs` / full IANA.
 
-1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
-2. If probe **passes** → cached `Intl.DateTimeFormat` instances with the **same base options** (`th-TH`, `Asia/Bangkok`, `h23`, **`hour`/`minute`: `'2-digit'` only** — no date/era fields):  
-   - **Logic:** `numberingSystem: 'latn'` — `formatToParts`; **parse** hour/minute part strings to **ints** (0–23 / 0–59) for triggers and `ThaiClock`.  
-   - **Display numbering (once, cache):** format probe instant **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'`; if constructing/formatting **throws**, or hour/minute parts are not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK.  
-   - **Display:** `formatToParts` with the chosen numbering; concatenate **`hour` + `minute` parts only** (drop literals such as `:`), e.g. `๒๒` + `๐๐` → `๒๒๐๐` or `22` + `00` → `2200`. Do not parse Thai digit strings back to ints.
-3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
+Whenever **`Intl` / `DateTimeFormat` exists** (normal path, not degrade), run **both** of these once and cache (order fixed below). **Display-numbering does not depend on BMT history success.**
+
+**A. BMT history probe** — format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
+
+**B. Display-numbering probe** (always when `Intl` exists — even if **A** failed): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Format probe instant **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'` (for this probe use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)` — same expected digit parts). If constructing/formatting **throws**, or hour/minute parts are **empty** or not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK.
+
+Then wall time:
+
+1. If **A** **passes** → cached logic formatter (`Asia/Bangkok`, `latn`, same base options): `formatToParts`; **parse** hour/minute part strings to **ints** (0–23 / 0–59) for triggers and `ThaiClock`. Display: `formatToParts` with the numbering from **B**; concatenate **`hour` + `minute` parts only** (drop literals), e.g. `๒๒๐๐` / `2200`. Do not parse Thai digit strings back to ints.
+2. If **A** **fails** → **`bangkokWallManual(utc_ms)`**:  
    - `offset_ms` = `+6:42:04` (`24_124_000` ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (`25_200_000` ms).  
    - `wall_ms = utc_ms + offset_ms`.  
    - Read **hour and minute ints** from UTC getters on `new Date(wall_ms)` (`getUTCHours` / `getUTCMinutes`) — treat `wall_ms` as a synthetic UTC clock, **not** `toLocaleString` or the visitor’s local zone.  
-   - **Display:** format those ints with the **same display formatter** as step 2 (chosen `thai` or `latn`; e.g. anchor `Date.UTC(1970, 0, 1, hour, minute)` + `timeZone: 'UTC'`); concatenate **hour + minute** parts → **HHMM** (no colon).
+   - **Display:** format those ints with the **display formatter from B** (chosen `thai` or `latn`; e.g. anchor `Date.UTC(1970, 0, 1, hour, minute)` + `timeZone: 'UTC'`); concatenate **hour + minute** parts → **HHMM** (no colon).
 
 Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17:55Z` → `23:59`; `17:17:56Z` → `00:17`). UI tests assert **thai** HHMM when `thai` numbering works (e.g. `๒๒๐๐`); when forced to `latn` display, assert Latin HHMM (e.g. `2200`).
 
 ## Normal UI
 
 - Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`).
-- **Layout:** single line, viewport-centered (`min-height: 100vh`, flex or grid center); `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`; system font stack (no custom webfont in v1).
+- **Layout:** viewport-centered (`min-height: 100vh`, flex or grid center); system font stack (no custom webfont in v1).
+  - **HHMM:** single line; `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`.
+  - **Announce labels:** may be longer than HHMM — allow wrap (`white-space: normal`) and/or a slightly smaller clamp so long strings (e.g. `หนึ่งโมงเช้า`) stay on-screen on narrow viewports; do not clip with `nowrap` + huge type.
 - One centered (or otherwise single) text node:
   - **Normal (`Intl` present):** four-digit **HHMM** (no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable).
   - **Degrade (no `Intl`):** Latin Unix seconds (`Math.floor(Date.now() / 1000)`), not HHMM.
@@ -129,10 +135,10 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 
 ### Audio
 
-- One short bell sample (`thai-time/assets/bell.mp3` or `.wav`), played **N** times.
+- One short bell sample (`thai-time/assets/bell.mp3` or `.wav`), played **N** times. Sample duration must be **shorter than** `CHIME_GAP_MS` so chimes never overlap.
 - **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
-  - `CHIME_GAP_MS` = **800** — pause between chime starts.
-  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime ends.
+  - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
+  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**.
 - Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`).
 - No speech synthesis in v1 (bells only).
 
@@ -182,7 +188,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 
 ### App modules
 
-- `Zone.re` — Approach A: probe + `Intl` logic (`latn`) / display (`thai`, else `latn`) + `bangkokWallManual`; **`now` injection** for tests
+- `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, always if Intl)** + logic `Intl`/`bangkokWallManual`; **`now` injection** for tests
 - `ThaiClock.re` — hour → display label and chime count (separate)
 - `App.re` — tick, announce state machine, render one string; passes `now` into `Zone`
 - `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`)
@@ -207,8 +213,8 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **npm:** `react`, `react-dom`, `vite`, `jest`; Vite config → `_build/…` app emit.
    - **assets:** `index.html`, `assets/bell.*` via `runtime_deps` / `copy_files#`.
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
-3. `Zone`: Approach A (`Intl` + BMT probe + `bangkokWallManual` + display numbering `thai`/`latn`); **`now` injection**. Jest tests:  
-   - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** when BMT probe is stubbed to fail.  
-   - **Display:** probe `2026-07-20T15:00:00Z` → `๒๒`/`๐๐` parts when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** → `2200`. Same display formatter on manual path.
+3. `Zone`: Approach A (**A** BMT history + **B** display numbering always when `Intl` exists + `bangkokWallManual`); **`now` injection**. Jest tests:  
+   - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** when BMT probe **A** is stubbed to fail — **B** still runs; display HHMM still works.  
+   - **Display:** probe **B** → `๒๒`/`๐๐` when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** → `2200`. Manual path uses formatter from **B**.
 4. UI tick + announce state machine; wire `Bell.re` + asset; Vite static build.
 5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
