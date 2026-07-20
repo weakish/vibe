@@ -1,6 +1,6 @@
 # Plan: Thai time (static page)
 
-Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour script + bell on the hour. **Reason + Melange + ReasonReact.**
+Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour script + bell on the hour; **degrade** to Latin Unix seconds if `Intl` is missing. **Reason + Melange + ReasonReact.**
 
 ## Goal
 
@@ -8,7 +8,7 @@ Ship one static web page that:
 
 1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (no `Intl`), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
 2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), as **Bangkok wall time** when **`Intl` / `DateTimeFormat` exists** (probe **A** → `Asia/Bangkok` via `Intl`; if **A** fails → **`bangkokWallManual`**; display numbering via probe **B** — see Timezone rules). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
-3. On each new hour (**normal path only** — **not** in degrade mode), **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
+3. On each new hour (**normal path only** — **not** in degrade mode), **announces** with the Thai-script six-hour label (special cases below) and bell chimes **when audio is armed** (silent label-only announce if unarmed — see During announcement).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
 
@@ -126,7 +126,7 @@ Reference (user): **22:00 → 4 chimes** (สี่ทุ่ม).
 - 18:00 → **หกโมงเย็น** (not ย่ำค่ำ)
 - 00:00 → **เที่ยงคืน** on screen (not หกทุ่ม / สองยาม); still **6** chimes (หกทุ่ม position)
 
-Digits in labels: use Thai script numerals if we spell with numerals (หนึ่ง/สอง/… as above is fine; stay consistent — prefer the spelled forms in the table).
+Labels in the table use **spelled Thai words** (หนึ่ง/สอง/…), not Thai or Latin digits.
 
 ### During announcement (UI)
 
