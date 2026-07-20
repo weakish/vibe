@@ -20,7 +20,7 @@ Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `
 
 ## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Take the **system clock instant** (`Date.now()`), not network/API time. Use **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`** when it encodes IANA history. No `@formatjs` tz pack, no pre-1880 error path.
+Take the **system clock instant** (`Date.now()`), not network/API time. When **`Intl` / `DateTimeFormat` exists**, prefer **`Asia/Bangkok`** via `Intl` if BMT history probe **A** passes; if **A** fails, use **`bangkokWallManual`** for wall hour/minute. Display numbering always via probe **B** whenever `Intl` exists (see Zone resolution). No `@formatjs` tz pack, no pre-1880 error path.
 
 **No `Intl` (degrade mode):** if `Intl` / `DateTimeFormat` is unavailable, skip `Zone` / Bangkok wall time / announcements. Show **`Math.floor(Date.now() / 1000)`** as a Latin decimal string (Unix seconds), updated each tick. No bells, no Thai word labels.
 
@@ -57,7 +57,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ## Normal UI
 
-- Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`).
+- Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`; **`html lang="th"`**).
 - **Layout:** viewport-centered (`min-height: 100vh`, flex or grid center); system font stack (no custom webfont in v1).
   - **HHMM:** single line; `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`.
   - **Announce labels:** may be longer than HHMM — allow wrap (`white-space: normal`) and/or a slightly smaller clamp so long strings (e.g. `หนึ่งโมงเช้า`) stay on-screen on narrow viewports; do not clip with `nowrap` + huge type.
@@ -77,7 +77,7 @@ When the Bangkok wall **hour int** from `Zone` logic advances to a new value wit
 ### Overlap and missed hours
 
 - **Init:** on first paint (normal path), set `lastAnnouncedHour` to the **current** Bangkok hour **without** announcing — so refresh / first load never chimes, including at `:00`.
-- **After any announce:** set `lastAnnouncedHour = currentHour` when the sequence **completes** (foreground `:00` transition, background return on the hour, superseded sequence, or **silent** label-only announce — audio optional). Counts as “announced” even if `Bell` no-oped.
+- **After any announce:** set `lastAnnouncedHour = currentHour` when the sequence **completes** (foreground `:00` transition, background return on the hour, or **silent** label-only announce — audio optional). On **supersede**, only the **replacement** sequence’s completion updates `lastAnnouncedHour` — the aborted hour does not. Counts as “announced” even if `Bell` no-oped.
 - **At most one announce sequence** at a time (label + chime queue).  
 - **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio **and** any pending **`POST_CHIME_TAIL_MS`** (including during a **silent** announce — tail timer alone must not revert to HHMM mid–new-announce), then run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
 - **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`** and `lastAnnouncedHour ≠ currentHour` (current hour’s label + chimes). Set **`lastAnnouncedHour = currentHour` when that sequence completes** (same as “After any announce”; audible or silent). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively.  
@@ -201,7 +201,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 
 ## Acceptance checks
 
-- [ ] At a normal modern system time: shows ICT time as four digits only, **no colon** (prefer `๒๒๐๐` at Bangkok 22:00; `2200` OK if `thai` numbering unavailable).
+- [ ] At a normal modern system time: shows ICT time as four digits only, **no colon** anywhere in HHMM (prefer `๒๒๐๐` at Bangkok 22:00; `2200` OK if `thai` numbering unavailable).
 - [ ] System date forced into 1880–1920-03-31: wall time matches BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant) via `Intl` or `bangkokWallManual`.
 - [ ] Fixture `1920-03-31T17:17:55Z` → `23:59` BMT; `1920-03-31T17:17:56Z` → `00:17` ICT (IANA transition; minute precision).
 - [ ] When `Intl` fails the BMT probe, `bangkokWallManual` still passes the fixtures above; display HHMM still works via probe **B**.
@@ -209,12 +209,11 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each (if armed).
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
 - [ ] When `Intl` is unavailable: Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
-- [ ] Display HHMM never contains a colon (Latin or Thai digits).
 - [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
-- [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence.
+- [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence; only the **new** sequence’s completion updates `lastAnnouncedHour`.
 - [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
 - [ ] Bell asset: free/libre or public-domain preferred (search first); AI-generated only as fallback; provenance noted.
-- [ ] Static deploy: open `index.html` (or static host) with no server logic.
+- [ ] Static deploy: open `index.html` (or static host) with no server logic; root element has **`lang="th"`**.
 
 ## Implementation order
 
