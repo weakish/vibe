@@ -8,7 +8,7 @@ Ship one static web page that:
 
 1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (no `Intl`), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
 2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when available (IANA history + manual fallback — see below). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
-3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
+3. On each new hour (**normal path only** — **not** in degrade mode), **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
 
@@ -61,9 +61,10 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 - **Layout:** viewport-centered (`min-height: 100vh`, flex or grid center); system font stack (no custom webfont in v1).
   - **HHMM:** single line; `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`.
   - **Announce labels:** may be longer than HHMM — allow wrap (`white-space: normal`) and/or a slightly smaller clamp so long strings (e.g. `หนึ่งโมงเช้า`) stay on-screen on narrow viewports; do not clip with `nowrap` + huge type.
-- One centered text node; toggle layout class **`clock`** (HHMM) vs **`announce`** (word label) — same element, different CSS:
-  - **Normal (`Intl` present):** four-digit **HHMM** (no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable).
-  - **Degrade (no `Intl`):** Latin Unix seconds (`Math.floor(Date.now() / 1000)`), not HHMM.
+- One centered text node; layout class is one of **`clock`** | **`announce`** | **`degrade`** (same element, different CSS):
+  - **`clock`** — normal HHMM (four digits, no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable). Uses HHMM typography (`nowrap` + large clamp).
+  - **`announce`** — Thai word label during announce (wrap / smaller clamp as above).
+  - **`degrade`** — Latin Unix seconds (`Math.floor(Date.now() / 1000)`); **not** announce typography (same or near-`clock` sizing is fine; do not use `announce` styles).
 - Update at least every second (or on `visibilitychange`) so hour rollover is caught; normal path still minute precision on screen.
 - No other visible widgets.
 
@@ -129,18 +130,20 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 
 ### During announcement (UI)
 
-- Replace **HHMM** with the Thai **word** label for that hour (full string; no Latin digits).
-- Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM**.
+- Replace **HHMM** with the Thai **word** label for that hour (full string; no Latin digits); class → **`announce`**.
+- Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM** / **`clock`**.
+- **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full chime+tail duration (silent announce). Arming later does not require re-triggering the label.
 - Still “nothing else”: only the label text swaps; no extra caption.
 
 ### Audio
 
 - One short bell sample (`thai-time/assets/bell.mp3` or `.wav`), played **N** times. Sample duration must be **shorter than** `CHIME_GAP_MS` so chimes never overlap.
+- **License:** use only a **free/libre**, **public-domain**, or **AI-generated** bell (no proprietary stock). Record provenance in `thai-time/assets/` (e.g. short `NOTICE` or comment in the plan/commit) at scaffold time.
 - **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
   - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
-  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**.
+  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends** (or after the scheduled silent duration if audio never plays).
 - **Supersede:** `Bell.re` / `App.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`**, and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
-- Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`).
+- Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`). Unarmed → silent label-only announce (see During announcement).
 - No speech synthesis in v1 (bells only).
 
 ## Stack
@@ -185,25 +188,32 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - Pure modules (`ThaiClock`, `Zone`) tested this way; optional UI later via `melange-testing-library` + Jest.
 - `Intl` / zone tests must run in JS (Node), not native Alcotest.
 - Do **not** use Vitest (no first-class Melange path).
-- **`Zone` / `App` test seam:** injectable `now` (`() => float` ms since epoch), default `Date.now`, overridable in Jest — no system-clock dependence for era or hour-boundary tests.
+- **`Zone` / `App` test seams** (injectable, defaults = production behavior):
+  - `now: unit => float` — ms since epoch; default `Js.Date.now` / `Date.now`.
+  - **Probe overrides** for A/B — e.g. force BMT history **fail** / **pass**, force display numbering **`thai`** / **`latn`** (or inject fake `formatToParts` results). Do **not** rely only on mutating global `Intl` if a seam is cleaner; tests that stub **A** fail must still run **B**.
 
 ### App modules
 
-- `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, always if Intl)** + logic `Intl`/`bangkokWallManual`; **`now` injection** for tests
+- `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, always if Intl)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — tick, announce state machine, render one string; passes `now` into `Zone`
-- `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`)
+- `App.re` — tick, announce state machine, render one string (`clock` / `announce` / `degrade`); passes `now` into `Zone`; label timing independent of audio arming
+- `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`); no-op sound when unarmed
 
 ## Acceptance checks
 
-- [ ] At a normal modern system time: shows ICT time as four digits only (prefer `๒๒๐๐` at Bangkok 22:00; `2200` OK if `thai` numbering unavailable).
+- [ ] At a normal modern system time: shows ICT time as four digits only, **no colon** (prefer `๒๒๐๐` at Bangkok 22:00; `2200` OK if `thai` numbering unavailable).
 - [ ] System date forced into 1880–1920-03-31: wall time matches BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant) via `Intl` or `bangkokWallManual`.
 - [ ] Fixture `1920-03-31T17:17:55Z` → `23:59` BMT; `1920-03-31T17:17:56Z` → `00:17` ICT (IANA transition; minute precision).
-- [ ] When `Intl` fails the BMT probe, `bangkokWallManual` still passes the fixtures above.
-- [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to **`๒๒๐๐`** (or **`2200`** if Latin display).
-- [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each.
+- [ ] When `Intl` fails the BMT probe, `bangkokWallManual` still passes the fixtures above; display HHMM still works via probe **B**.
+- [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays (if armed); then back to **`๒๒๐๐`** (or **`2200`** if Latin display).
+- [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each (if armed).
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
-- [ ] When `Intl` is unavailable: Latin Unix seconds only; no bells or Thai labels.
+- [ ] When `Intl` is unavailable: Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
+- [ ] Display HHMM never contains a colon (Latin or Thai digits).
+- [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
+- [ ] Supersede mid-announce: aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence.
+- [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
+- [ ] Bell asset is free/libre, public domain, or AI-generated (provenance noted).
 - [ ] Static deploy: open `index.html` (or static host) with no server logic.
 
 ## Implementation order
@@ -212,10 +222,10 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **opam:** `thai-time.opam` (local switch); `dune-project` with `(using melange …)`; deps `melange`, `reason`, `reason-react`, `reason-react-ppx`, `melange-jest`.
    - **dune:** `melange.emit` + `(preprocess (pps reason-react-ppx))`; **two emits** — ESM app + CJS Jest (see Build).
    - **npm:** `react`, `react-dom`, `vite`, `jest`; Vite config → `_build/…` app emit.
-   - **assets:** `index.html`, `assets/bell.*` via `runtime_deps` / `copy_files#`.
+   - **assets:** `index.html`, `assets/bell.*` (free/libre, public domain, or AI-generated + provenance) via `runtime_deps` / `copy_files#`.
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
-3. `Zone`: Approach A (**A** BMT history + **B** display numbering always when `Intl` exists + `bangkokWallManual`); **`now` injection**. Jest tests:  
-   - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** when BMT probe **A** is stubbed to fail — **B** still runs; display HHMM still works.  
-   - **Display:** probe **B** → `๒๒`/`๐๐` when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** → `2200`. Manual path uses formatter from **B**.
-4. UI tick + announce state machine; wire `Bell.re` + asset; Vite static build.
+3. `Zone`: Approach A (**A** BMT history + **B** display numbering always when `Intl` exists + `bangkokWallManual`); **`now` + probe seams**. Jest tests:  
+   - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** via probe-**A** seam — **B** still runs; display HHMM still works.  
+   - **Display:** probe **B** → `๒๒`/`๐๐` when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** via probe-**B** seam → `2200`. Manual path uses formatter from **B**.
+4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build.
 5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
