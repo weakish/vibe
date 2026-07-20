@@ -6,7 +6,7 @@ Single static page: current clock in Thailand’s historical/legal zone rules, *
 
 Ship one static web page that:
 
-1. Shows **only** the current time as **four digits** (24-hour **HHMM**, prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable), nothing else on screen in the normal state.
+1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (no `Intl`), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
 2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when available (IANA history + manual fallback — see below). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
 3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
 
@@ -54,8 +54,10 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 ## Normal UI
 
 - Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`).
-- One centered (or otherwise single) text node: four-digit **HHMM** (no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable).
-- Update at least every second (or on `visibilitychange`) so hour rollover is caught; display still minute precision only.
+- One centered (or otherwise single) text node:
+  - **Normal (`Intl` present):** four-digit **HHMM** (no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable).
+  - **Degrade (no `Intl`):** Latin Unix seconds (`Math.floor(Date.now() / 1000)`), not HHMM.
+- Update at least every second (or on `visibilitychange`) so hour rollover is caught; normal path still minute precision on screen.
 - No other visible widgets.
 
 ## On-the-hour announcement
@@ -66,10 +68,11 @@ When the Bangkok wall **hour int** from `Zone` logic advances to a new value wit
 
 ### Overlap and missed hours
 
+- **Init:** on first paint (normal path), set `lastAnnouncedHour` to the **current** Bangkok hour **without** announcing — so refresh / first load never chimes, including at `:00`.
 - **At most one announce sequence** at a time (label + chime queue).  
 - **Hour changes during announce:** **supersede** — stop in-flight chimes, run the **new** hour’s label + chime count.  
-- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, if `lastAnnouncedHour ≠ currentHour`, announce **current** hour only (not every skipped hour).  
-- **Refresh at `:00`:** do not announce (no transition from a prior open-session hour).
+- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, if `lastAnnouncedHour ≠ currentHour`, announce **current** hour only (not every skipped hour), then set `lastAnnouncedHour` to that hour.  
+- **Refresh at `:00`:** do not announce (covered by init; no transition from a prior open-session hour).
 
 ### Chime count (Thai six-hour)
 
