@@ -7,7 +7,7 @@ Single static page: current clock in Thailand’s historical/legal zone rules, H
 Ship one static web page that:
 
 1. Shows **only** the current time as `HH:MM` (24-hour), nothing else on screen in the normal state.
-2. Interprets “now” with zone rules driven by the **visitor’s system clock date** (see below).
+2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** via `Intl` (IANA rules — see below).
 3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces `HH:MM` with the Thai-script six-hour label (special cases below).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
@@ -18,21 +18,21 @@ New monorepo project: `thai-time/` (Reason + Melange + ReasonReact static app). 
 
 Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `thai-time/` if needed.
 
-## Timezone rules (from visitor system clock)
+## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Drive zone choice from the **local civil date/time the browser reports** (system clock), not from network time.
+Take the **system clock instant** (`Date.now()`), not network/API time. Format wall time with **`Intl.DateTimeFormat`** using **`timeZone: 'Asia/Bangkok'`** — follow whatever IANA encodes for that zone. No manual era table, offset constants, or pre-1880 error path in app logic.
 
-| System clock instant | Zone | Notes |
-|----------------------|------|--------|
-| Before 1880-01-01 00:00:00 (local interpretation TBD — treat as civil date before Jan 1880) | **Error** | Do not display a clock; fail visibly (minimal error text is an exception to “nothing else”, or blank + `console`/thrown error — decide in impl: prefer a single short error string so the page is not a silent failure). |
-| 1880-01-01 through 1920-03-31 inclusive | **Bangkok Mean Time (BMT)** | Historical offset ≈ **UTC+6:42:04**. Use a fixed offset (no DST). Confirm exact seconds against a cited source during impl. |
-| 1920-04-01 onward | **Indochina Time (ICT)** | **UTC+7**, fixed. |
+IANA summary (for tests and sanity checks; runtime source of truth is `Intl`):
 
-Display `HH:MM` in that zone (floor to minute; no seconds on screen).
+| Period (Bangkok wall) | Offset | Name |
+|-----------------------|--------|------|
+| Before 1880 | `UTC+06:42:04` | LMT |
+| 1880-01-01 – 1920-03-31 23:59:59 | `UTC+06:42:04` | BMT |
+| From 1920-04-01 00:17:56 (after +17:56 jump) | `UTC+07:00` | ICT |
 
-**Impl note:** JS `Date` + `Intl` will not give BMT. Compute as `UTC + offset` from `Date.now()` (or `Date` UTC fields), after classifying the **uncorrected** system instant into the three eras. Classification must use a defined calendar boundary (recommend: compare against absolute UTC instants that correspond to “local Bangkok civil” boundaries only if we document them; simpler approach: classify using UTC year/month/day of the system `Date`, with documented caveat that pre-1920 “visitor local calendar” ≠ Bangkok civil — acceptable for this toy unless we tighten later).
+Display `HH:MM` in Bangkok wall time (floor to minute; no seconds on screen).
 
-Open decision (resolve in impl, document in project README if any): era boundaries as **UTC calendar dates** vs **ICT/BMT civil dates**. Prefer **UTC date thresholds** for determinism: error if `date < 1880-01-01T00:00:00Z`; BMT if `date <= 1920-03-31T23:59:59.999Z`; else ICT — **unless** product intent is “wall date in Thailand,” in which case convert first. Flag in first PR.
+**Impl note:** `Zone.re` is a thin Melange wrapper around `Date` + `Intl` (e.g. `formatToParts` for hour/minute). Unit tests use fixture UTC instants and expected `Asia/Bangkok` output from the same `Intl` API (or a pinned IANA reference table).
 
 ## Normal UI
 
@@ -49,25 +49,27 @@ When the displayed zone’s hour advances (minute rolls to `00`, or first paint 
 
 ### Chime count (Thai six-hour)
 
-Chime **N** times where **N** is the Thai six-hour hour index for that clock hour — **not** the 24-hour number and not 12-hour.
+Chime **N** times where **N** is the Thai six-hour hour index (1–6 within each six-hour block) — **not** the 24-hour number and not 12-hour.
+
+**Display label and chime count are independent.** `ThaiClock.displayLabel(hour)` and `ThaiClock.chimeCount(hour)` are separate. Pivots at 00 / 06 / 12 use preferred display wording but still chime **6** (six-hour position หกทุ่ม / end of ตี block / end of morning block).
 
 Reference (user): **22:00 → 4 chimes** (สี่ทุ่ม).
 
-| ICT/BMT hour | Label (display during announce) | Chimes |
+| Bangkok hour | Label (display during announce) | Chimes |
 |-------------:|---------------------------------|-------:|
-| 00 | เที่ยงคืน | TBD (see open questions) |
+| 00 | เที่ยงคืน | 6 |
 | 01 | ตีหนึ่ง | 1 |
 | 02 | ตีสอง | 2 |
 | 03 | ตีสาม | 3 |
 | 04 | ตีสี่ | 4 |
 | 05 | ตีห้า | 5 |
-| 06 | ย่ำรุ่ง | TBD |
+| 06 | ย่ำรุ่ง | 6 |
 | 07 | หนึ่งโมงเช้า | 1 |
 | 08 | สองโมงเช้า | 2 |
 | 09 | สามโมงเช้า | 3 |
 | 10 | สี่โมงเช้า | 4 |
 | 11 | ห้าโมงเช้า | 5 |
-| 12 | เที่ยงวัน | TBD |
+| 12 | เที่ยงวัน | 6 |
 | 13 | บ่ายโมง | 1 |
 | 14 | บ่ายสองโมง | 2 |
 | 15 | บ่ายสามโมง | 3 |
@@ -86,7 +88,7 @@ Reference (user): **22:00 → 4 chimes** (สี่ทุ่ม).
 - 16:00 → **สี่โมงเย็น** (not บ่ายสี่โมง)
 - 17:00 → **ห้าโมงเย็น** (not บ่ายห้าโมง)
 - 18:00 → **หกโมงเย็น** (not ย่ำค่ำ)
-- 00:00 → **เที่ยงคืน** (not หกทุ่ม / สองยาม)
+- 00:00 → **เที่ยงคืน** on screen (not หกทุ่ม / สองยาม); still **6** chimes (หกทุ่ม position)
 
 Digits in labels: use Thai script numerals if we spell with numerals (หนึ่ง/สอง/… as above is fine; stay consistent — prefer the spelled forms in the table).
 
@@ -116,30 +118,25 @@ Build: Dune + Melange → JS; bundle with Vite or esbuild (or Melange’s usual 
 
 Keep the app a single page component + small pure modules:
 
-- `Zone.re` — era classify + offset → wall `HH:MM` + hour/minute
-- `ThaiClock.re` — hour → label + chime count
+- `Zone.re` — `Intl` `Asia/Bangkok` → wall `HH:MM` + hour/minute
+- `ThaiClock.re` — hour → display label and chime count (separate)
 - `App.re` — tick, announce state machine, render one string
 - `Bell.re` / audio helper — play N chimes
 
 ## Acceptance checks
 
-- [ ] At a normal modern system time: shows ICT `HH:MM` only.
-- [ ] System date forced into 1880–1920-03-31: wall time uses BMT offset (differs from ICT by ~18 minutes — visible in `HH:MM` vs a reference converter).
-- [ ] System date before 1880: error path, no normal clock.
+- [ ] At a normal modern system time: shows ICT `HH:MM` only (`Intl` `Asia/Bangkok`).
+- [ ] System date forced into 1880–1920-03-31: wall time matches `Intl` BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant).
+- [ ] Fixture `1920-03-31T17:17:55Z` → `23:59:59` BMT; `1920-03-31T17:17:56Z` → `00:17:56` ICT (IANA transition).
 - [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to `22:00`.
-- [ ] 06/16/17/18/00 use the mandated Thai strings (not the rejected forms).
+- [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each.
+- [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
 - [ ] Static deploy: open `index.html` (or static host) with no server logic.
-
-## Open questions (resolve during impl)
-
-1. **Era boundary basis** — UTC calendar vs Thailand civil (see above).
-2. **Chime count for ย่ำรุ่ง / เที่ยงวัน / เที่ยงคืน** — historical temple practice varies (often special patterns, not a simple 1–6). Options: (a) 1 chime, (b) 6 chimes, (c) distinct sample. Default if unspecified: **1 chime** for the three named pivots so announcement still “happens.”
-3. **Exact BMT offset** — lock `+6:42:04` vs `+6:42:00` from a cited source.
 
 ## Implementation order
 
 1. Scaffold `thai-time/` with Reason + Melange + ReasonReact (static output).
-2. Pure `ThaiClock` mapping + unit tests for all 24 hours (labels + chime counts + forbidden strings).
-3. Pure `Zone` era + offset + format `HH:MM` tests (fixture instants).
+2. Pure `ThaiClock` mapping + unit tests for all 24 hours (display labels + chime counts + forbidden display strings).
+3. `Zone` + `Intl` `Asia/Bangkok` tests (fixture UTC instants → `HH:MM` + hour).
 4. UI tick + announce state machine; add bell asset; wire audio.
 5. Manual check with devtools clock spoofing / injected `now` for era and hour-boundary tests.
