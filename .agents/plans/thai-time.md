@@ -7,7 +7,7 @@ Single static page: current clock in Thailand’s historical/legal zone rules, *
 Ship one static web page that:
 
 1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (no `Intl`), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
-2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when available (IANA history + manual fallback — see below). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
+2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), as **Bangkok wall time** when **`Intl` / `DateTimeFormat` exists** (probe **A** → `Asia/Bangkok` via `Intl`; if **A** fails → **`bangkokWallManual`**; display numbering via probe **B** — see Timezone rules). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
 3. On each new hour (**normal path only** — **not** in degrade mode), **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
@@ -72,7 +72,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ### Trigger
 
-When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). When any announce sequence **completes** (foreground or background), set **`lastAnnouncedHour = currentHour`** (see Overlap). If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
+When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). Update **`lastAnnouncedHour`** per **Overlap** (on sequence complete; on **supersede**, only the replacement sequence). If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
 
 ### Overlap and missed hours
 
