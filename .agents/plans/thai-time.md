@@ -20,9 +20,9 @@ Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `
 
 ## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Take the **system clock instant** (`Date.now()`), not network/API time. Format wall time with **`Intl.DateTimeFormat`** using **`timeZone: 'Asia/Bangkok'`** — follow whatever IANA encodes for that zone. No manual era table, offset constants, or pre-1880 error path in app logic.
+Take the **system clock instant** (`Date.now()`), not network/API time. Prefer **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`**. No full multi-zone IANA polyfill; no pre-1880 error path.
 
-IANA summary (for tests and sanity checks; runtime source of truth is `Intl`):
+IANA summary (tests + Bangkok-only fallback):
 
 | Period (Bangkok wall) | Offset | Name |
 |-----------------------|--------|------|
@@ -32,7 +32,7 @@ IANA summary (for tests and sanity checks; runtime source of truth is `Intl`):
 
 Display `HH:MM` in Bangkok wall time (floor to minute; no seconds on screen).
 
-**Impl note:** `Zone.re` is a thin Melange wrapper around `Date` + `Intl` (e.g. `formatToParts` for hour/minute). Unit tests use fixture UTC instants and expected `Asia/Bangkok` output from the same `Intl` API (or a pinned IANA reference table).
+**Impl note:** `Zone.re` wraps `Date` + `Intl` (`formatToParts`). On startup (or first use), **probe** a BMT fixture (`1920-03-31T17:17:55Z` → `23:59`). If `Intl` lacks history, fall back to a **Bangkok-only** manual offset: `+6:42:04` before `1920-03-31T17:17:56Z`, else `+7`. Do not ship `@formatjs` full tzdata.
 
 ## Normal UI
 
@@ -106,28 +106,49 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 
 ## Stack
 
-Locked:
+Locked language / UI:
 
 - **Reason** syntax (`.re`)
-- **Melange** (OCaml/Reason → JS)
-- **ReasonReact** (`reason-react` via opam / Melange)
+- **Melange** (OCaml/Reason → JS via Dune `melange.emit`)
+- **ReasonReact** (`reason-react` + `reason-react-ppx` via opam)
 
-Not ReScript / `@rescript/react`.
+Not ReScript / `@rescript/react`. Not Vitest.
 
-Build: Dune + Melange → JS; bundle with Vite or esbuild (or Melange’s usual static setup) into static `dist/`. No backend.
+### Two package managers (both required)
 
-Keep the app a single page component + small pure modules:
+| Side | Tool | Provides |
+|------|------|----------|
+| OCaml | **opam** + **Dune** | `melange`, `reason`, `reason-react`, compile `.re` → JS under `_build/` |
+| JS | **npm** | `react`, `react-dom`, bundler, test runner |
 
-- `Zone.re` — `Intl` `Asia/Bangkok` → wall `HH:MM` + hour/minute
+Dune alone is not enough for a ReasonReact browser app (React runtime comes from npm). Melange does not replace a bundler.
+
+### Build / serve
+
+- **Vite** — default bundler + dev server (matches Melange/ReasonReact templates). Entry is Melange emit output under `_build/…` plus `index.html`.
+- Production: Vite → static `dist/`. No backend.
+- **esbuild**-only is an acceptable thinner alternative; do not use webpack unless copying an old template.
+
+### Tests
+
+- **Jest** + **`melange-jest`** (opam bindings; `jest` on npm) for Melange-compiled unit tests.
+- Pure modules (`ThaiClock`, `Zone`) tested this way; optional UI later via `melange-testing-library` + Jest.
+- `Intl` / zone tests must run in JS (Node), not native Alcotest.
+- Do **not** use Vitest (no first-class Melange path).
+
+### App modules
+
+- `Zone.re` — `Intl` `Asia/Bangkok` → wall `HH:MM` + hour/minute; Bangkok-only manual fallback when `Intl` lacks historical BMT (probe fixture, then `+6:42:04` / `+7` transition — not a full IANA polyfill)
 - `ThaiClock.re` — hour → display label and chime count (separate)
 - `App.re` — tick, announce state machine, render one string
 - `Bell.re` / audio helper — play N chimes
 
 ## Acceptance checks
 
-- [ ] At a normal modern system time: shows ICT `HH:MM` only (`Intl` `Asia/Bangkok`).
-- [ ] System date forced into 1880–1920-03-31: wall time matches `Intl` BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant).
+- [ ] At a normal modern system time: shows ICT `HH:MM` only (`Intl` `Asia/Bangkok` or equivalent fallback).
+- [ ] System date forced into 1880–1920-03-31: wall time matches BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant) — via `Intl` or Bangkok-only fallback.
 - [ ] Fixture `1920-03-31T17:17:55Z` → `23:59:59` BMT; `1920-03-31T17:17:56Z` → `00:17:56` ICT (IANA transition).
+- [ ] On a runtime whose `Intl` fails the BMT probe: fallback still passes the fixtures above.
 - [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to `22:00`.
 - [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each.
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
@@ -135,8 +156,8 @@ Keep the app a single page component + small pure modules:
 
 ## Implementation order
 
-1. Scaffold `thai-time/` with Reason + Melange + ReasonReact (static output).
-2. Pure `ThaiClock` mapping + unit tests for all 24 hours (display labels + chime counts + forbidden display strings).
-3. `Zone` + `Intl` `Asia/Bangkok` tests (fixture UTC instants → `HH:MM` + hour).
-4. UI tick + announce state machine; add bell asset; wire audio.
+1. Scaffold `thai-time/`: opam (Melange + ReasonReact) + npm (`react`, `react-dom`, Vite, Jest).
+2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests for all 24 hours (display labels + chime counts + forbidden display strings).
+3. `Zone`: `Intl` + BMT probe + Bangkok-only fallback; Jest tests for fixtures (including forced-fallback).
+4. UI tick + announce state machine; add bell asset; wire audio; Vite static build.
 5. Manual check with devtools clock spoofing / injected `now` for era and hour-boundary tests.
