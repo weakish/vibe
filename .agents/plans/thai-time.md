@@ -244,7 +244,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** via probe-**A** seam — **B** still runs; display HHMM still works.  
    - **Display:** probe **B** → `๒๒`/`๐๐` when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** via probe-**B** seam → `2200`. Manual path uses formatter from **B**.
    - **Degrade:** `DateTimeFormat` missing or throwing → `App` does not call `Zone`; Unix seconds + **`degrade`** class.
-4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build. **Jest/`melange-jest` tests for `App` announce FSM** (injectable `now`; fake timers as needed): init — no announce on first paint (incl. Bangkok `:00`); foreground `:00` hour transition triggers announce; background return at `:00` vs `:30`; supersede mid-announce; unarmed silent label duration; **degrade gate** (missing / throwing `DateTimeFormat`).
+4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build. **Jest/`melange-jest` tests for `App` announce FSM** (injectable `now`; fake timers as needed): init — no announce on first paint (incl. Bangkok `:00`); foreground `:00` hour transition triggers announce; background return at `:00` vs `:30`; supersede mid-announce; unarmed silent label duration; **arm mid–silent-announce** (no bells for that hour); **degrade gate** (missing / throwing `DateTimeFormat`).
 5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
 
 ## TODO (post-v1)
