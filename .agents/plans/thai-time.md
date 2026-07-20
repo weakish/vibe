@@ -28,11 +28,13 @@ Take the **system clock instant** (`Date.now()`), not network/API time. When **`
 
 - `Intl` is missing, or
 - `Intl.DateTimeFormat` is missing, or
-- `DateTimeFormat` **throws** on construct or on `format` / `formatToParts` (including at runtime on tick after a prior successful init — switch to degrade for the rest of the session).
+- a **required** `DateTimeFormat` **throws** on construct or on `format` / `formatToParts` — init smoke, logic/`latn` display, or tick (not a `numberingSystem: 'thai'`-only failure; see probe **B**).
 
-**Check once** at init (minimal formatter smoke test, e.g. `th-TH`, `timeZone: 'UTC'`, `hour`/`minute` `'2-digit'` only). **`App` does not call `Zone` or announce** in degrade mode. Show **`Math.floor(Date.now() / 1000)`** as a Latin decimal string (Unix seconds), updated each tick. No bells, no Thai word labels.
+**Init smoke + catch throws for the session:** at init, run a minimal formatter smoke test (e.g. `th-TH`, `timeZone: 'UTC'`, `hour`/`minute` `'2-digit'` only, **`numberingSystem: 'latn'`**). If that fails (missing or throws) → degrade. On the normal path, if a later required `DateTimeFormat` call throws (probes **A**/`latn` **B**, or tick) → switch to degrade for the rest of the session. **`App` does not call `Zone` or announce** in degrade mode. Show **`Math.floor(Date.now() / 1000)`** as a Latin decimal string (Unix seconds), updated each tick. No bells, no Thai word labels.
 
-Probe **A** / **B** **failures** without throwing (wrong hour, bad Thai digits, empty parts) are **not** degrade — they select `bangkokWallManual` or `latn` display. Any **`DateTimeFormat` throw** after init (probes or tick) → degrade for the session.
+**Mid-announce throw:** if a required `DateTimeFormat` throws while an announce is in progress, **cancel** pending gap timers, **`POST_CHIME_TAIL_MS`**, and audio (same cleanup as supersede abort), then enter degrade for the session.
+
+Probe **A** / **B** **failures** without throwing (wrong hour, bad Thai digits, empty parts) are **not** degrade — they select `bangkokWallManual` or `latn` display. A throw constructing/formatting **`numberingSystem: 'thai'`** alone is **not** degrade — fall back to **`latn`** (see **B**).
 
 IANA summary (tests + `bangkokWallManual` constants):
 
@@ -52,7 +54,7 @@ Whenever **`DateTimeFormat` is usable** (normal path, not degrade), run **A then
 
 **A. BMT history probe** — format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Wrong hour/minute → **A** fails → `bangkokWallManual`. **`DateTimeFormat` throws** → **Degrade gate** (not **A** fail).
 
-**B. Display-numbering probe** (always on the normal path — even if **A** failed; run **after A**): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Uses **fixed probe instants** (not `now` / not the visitor’s spoofed system date). Format **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'` (for this probe use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)` — same expected digit parts). If hour/minute parts are **empty** or not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK. (Throws here are handled by the **Degrade gate**, not as `latn`.)
+**B. Display-numbering probe** (always on the normal path — even if **A** failed; run **after A**): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Uses **fixed probe instants** (not `now` / not the visitor’s spoofed system date). Try `numberingSystem: 'thai'` on **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT; use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)`). Prefer **`thai`** when hour/minute parts are non-empty and every character is in **U+0E50–U+0E59** (expect **`๒๒`** / **`๐๐`**). If **`thai` construct/format throws**, or parts are empty/non-Thai digits, set display numbering to **`latn`** (Latin HHMM is OK). If constructing/formatting the **`latn`** display formatter **throws** → **Degrade gate** (not a soft `latn` choice).
 
 Then wall time:
 
@@ -207,7 +209,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 
 - `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, normal path only)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests; not used when degrade gate fails
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — run **Degrade gate** at init; if unusable (`Intl` / `DateTimeFormat` missing or throws), render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; on runtime `DateTimeFormat` throw, switch to degrade for the session; otherwise tick, announce state machine, render one string (`clock` / `announce` only); passes `now` into `Zone`; label timing independent of audio arming
+- `App.re` — run **Degrade gate** at init (smoke + session throw catch); if unusable, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; on runtime **required** `DateTimeFormat` throw (including mid-announce), **cancel** announce timers/audio then switch to degrade for the session; otherwise tick, announce state machine, render one string (`clock` / `announce` only); passes `now` into `Zone`; label timing independent of audio arming
 - `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`); no-op sound when unarmed
 
 ## Acceptance checks
@@ -221,7 +223,8 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
 - [ ] Every `displayLabel` string uses spelled Thai words only — **no** Thai (U+0E50–U+0E59) or Latin (`0`–`9`) digits.
 - [ ] First load or refresh at Bangkok `:00`: shows HHMM only — **no** announce (`lastAnnouncedHour` init, no chime).
-- [ ] When `Intl` / `DateTimeFormat` is unusable (missing or throws): Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
+- [ ] When `Intl` / `DateTimeFormat` is unusable (missing or **required** formatter throws): Latin Unix seconds only; class **`degrade`**; no bells or Thai labels. A **`thai`-only** throw still shows Latin HHMM (not degrade).
+- [ ] Mid-announce **required** `DateTimeFormat` throw: announce timers/audio cancelled; then **`degrade`** for the session.
 - [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
 - [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence; only the **new** sequence’s completion updates `lastAnnouncedHour`.
 - [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
