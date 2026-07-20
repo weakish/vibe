@@ -78,7 +78,7 @@ When the Bangkok wall **hour int** from `Zone` logic advances to a new value wit
 - **Init:** on first paint (normal path), set `lastAnnouncedHour` to the **current** Bangkok hour **without** announcing — so refresh / first load never chimes, including at `:00`.
 - **After any announce:** set `lastAnnouncedHour = currentHour` (foreground `:00` transition, background return on the hour, or superseded sequence when the new one completes).
 - **At most one announce sequence** at a time (label + chime queue).  
-- **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio, run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
+- **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio **and** any pending **`POST_CHIME_TAIL_MS`** (so an aborted hour cannot flip the label back to HHMM mid–new-announce), then run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
 - **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`** and `lastAnnouncedHour ≠ currentHour` (current hour’s label + chimes, then update `lastAnnouncedHour`). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively.  
 - **Refresh at `:00`:** do not announce (covered by init; no transition from a prior open-session hour).
 
@@ -139,7 +139,7 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 - **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
   - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
   - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**.
-- **Supersede:** `Bell.re` must clear pending gap timers and stop the current sample before starting the replacement sequence (no carry-over delay from the aborted hour).
+- **Supersede:** `Bell.re` / `App.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`**, and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
 - Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`).
 - No speech synthesis in v1 (bells only).
 
