@@ -77,9 +77,9 @@ When the Bangkok wall **hour int** from `Zone` logic advances to a new value wit
 ### Overlap and missed hours
 
 - **Init:** on first paint (normal path), set `lastAnnouncedHour` to the **current** Bangkok hour **without** announcing — so refresh / first load never chimes, including at `:00`.
-- **After any announce:** set `lastAnnouncedHour = currentHour` (foreground `:00` transition, background return on the hour, or superseded sequence when the new one completes).
+- **After any announce:** set `lastAnnouncedHour = currentHour` when the sequence **completes** (foreground `:00` transition, background return on the hour, superseded sequence, or **silent** label-only announce — audio optional). Counts as “announced” even if `Bell` no-oped.
 - **At most one announce sequence** at a time (label + chime queue).  
-- **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio **and** any pending **`POST_CHIME_TAIL_MS`** (so an aborted hour cannot flip the label back to HHMM mid–new-announce), then run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
+- **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio **and** any pending **`POST_CHIME_TAIL_MS`** (including during a **silent** announce — tail timer alone must not revert to HHMM mid–new-announce), then run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
 - **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`** and `lastAnnouncedHour ≠ currentHour` (current hour’s label + chimes, then update `lastAnnouncedHour`). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively.  
 - **Refresh at `:00`:** do not announce (covered by init; no transition from a prior open-session hour).
 
@@ -132,17 +132,17 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 
 - Replace **HHMM** with the Thai **word** label for that hour (full string; no Latin digits); class → **`announce`**.
 - Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM** / **`clock`**.
-- **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full chime+tail duration (silent announce). Arming later does not require re-triggering the label.
+- **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full announce window (silent announce). **Unarmed duration:** **`N * CHIME_GAP_MS + POST_CHIME_TAIL_MS`** from announce start (`N` = chime count for that hour). Arming later does not require re-triggering the label.
 - Still “nothing else”: only the label text swaps; no extra caption.
 
 ### Audio
 
 - One short bell sample (`thai-time/assets/bell.mp3` or `.wav`), played **N** times. Sample duration must be **shorter than** `CHIME_GAP_MS` so chimes never overlap.
-- **License:** use only a **free/libre**, **public-domain**, or **AI-generated** bell (no proprietary stock). Record provenance in `thai-time/assets/` (e.g. short `NOTICE` or comment in the plan/commit) at scaffold time.
+- **License:** source a bell in order: (1) **search online** for **free/libre** or **public-domain** sample; (2) only if none suitable, **AI-generate** one. No proprietary stock. Record provenance in `thai-time/assets/` (e.g. short `NOTICE` or URL + license) at scaffold time.
 - **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
   - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
-  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends** (or after the scheduled silent duration if audio never plays).
-- **Supersede:** `Bell.re` / `App.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`**, and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
+  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**, then revert to HHMM. If unarmed, tail starts after **`N * CHIME_GAP_MS`** (scheduled silent chime window).
+- **Supersede:** `Bell.re` / `App.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`** (whether or not any chime audio played), and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
 - Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`). Unarmed → silent label-only announce (see During announcement).
 - No speech synthesis in v1 (bells only).
 
@@ -211,9 +211,9 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] When `Intl` is unavailable: Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
 - [ ] Display HHMM never contains a colon (Latin or Thai digits).
 - [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
-- [ ] Supersede mid-announce: aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence.
+- [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence.
 - [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
-- [ ] Bell asset is free/libre, public domain, or AI-generated (provenance noted).
+- [ ] Bell asset: free/libre or public-domain preferred (search first); AI-generated only as fallback; provenance noted.
 - [ ] Static deploy: open `index.html` (or static host) with no server logic.
 
 ## Implementation order
@@ -222,7 +222,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **opam:** `thai-time.opam` (local switch); `dune-project` with `(using melange …)`; deps `melange`, `reason`, `reason-react`, `reason-react-ppx`, `melange-jest`.
    - **dune:** `melange.emit` + `(preprocess (pps reason-react-ppx))`; **two emits** — ESM app + CJS Jest (see Build).
    - **npm:** `react`, `react-dom`, `vite`, `jest`; Vite config → `_build/…` app emit.
-   - **assets:** `index.html`, `assets/bell.*` (free/libre, public domain, or AI-generated + provenance) via `runtime_deps` / `copy_files#`.
+   - **assets:** `index.html`, `assets/bell.*` (free/libre or public-domain bell from web search first; AI-generated only if needed + provenance) via `runtime_deps` / `copy_files#`.
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
 3. `Zone`: Approach A (**A** BMT history + **B** display numbering always when `Intl` exists + `bangkokWallManual`); **`now` + probe seams**. Jest tests:  
    - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** via probe-**A** seam — **B** still runs; display HHMM still works.  
