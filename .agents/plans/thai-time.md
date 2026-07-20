@@ -1,6 +1,6 @@
 # Plan: Thai time (static page)
 
-Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour script + bell on the hour; **degrade** to Latin Unix seconds if `Intl` is missing. **Reason + Melange + ReasonReact.**
+Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour label on the hour (bell when armed); **degrade** to Latin Unix seconds if `Intl` is missing. **Reason + Melange + ReasonReact.**
 
 ## Goal
 
@@ -130,7 +130,7 @@ Labels in the table use **spelled Thai words** (หนึ่ง/สอง/…), 
 
 ### During announcement (UI)
 
-- Replace **HHMM** with the Thai **word** label for that hour (full string; no Latin digits); class → **`announce`**.
+- Replace **HHMM** with the Thai **word** label for that hour (full string; spelled Thai words only — no Thai or Latin digits); class → **`announce`**.
 - Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM** / **`clock`**.
 - **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full announce window (silent announce). **Unarmed duration:** **`N * CHIME_GAP_MS + POST_CHIME_TAIL_MS`** from announce start (`N` = chime count for that hour). Arming later does not require re-triggering the label.
 - Still “nothing else”: only the label text swaps; no extra caption.
@@ -185,7 +185,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 ### Tests
 
 - **Jest** + **`melange-jest`** (opam bindings; `jest` on npm) for Melange-compiled unit tests — **CommonJS** test emit (see Build).
-- Pure modules (`ThaiClock`, `Zone`) tested this way; optional UI later via `melange-testing-library` + Jest.
+- Pure modules (`ThaiClock`, `Zone`) and **`App` announce FSM** tested this way; optional UI later via `melange-testing-library` + Jest.
 - `Intl` / zone tests must run in JS (Node), not native Alcotest.
 - Do **not** use Vitest (no first-class Melange path).
 - **`Zone` / `App` test seams** (injectable, defaults = production behavior):
@@ -196,7 +196,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 
 - `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, always if Intl)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — tick, announce state machine, render one string (`clock` / `announce` / `degrade`); passes `now` into `Zone`; label timing independent of audio arming
+- `App.re` — if **`Intl` / `DateTimeFormat` is missing**, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; otherwise tick, announce state machine, render one string (`clock` / `announce` / `degrade`); passes `now` into `Zone`; label timing independent of audio arming
 - `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`); no-op sound when unarmed
 
 ## Acceptance checks
@@ -208,6 +208,8 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays (if armed); then back to **`๒๒๐๐`** (or **`2200`** if Latin display).
 - [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each (if armed).
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
+- [ ] Every `displayLabel` string uses spelled Thai words only — **no** Thai (U+0E50–U+0E59) or Latin (`0`–`9`) digits.
+- [ ] First load or refresh at Bangkok `:00`: shows HHMM only — **no** announce (`lastAnnouncedHour` init, no chime).
 - [ ] When `Intl` is unavailable: Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
 - [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
 - [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence; only the **new** sequence’s completion updates `lastAnnouncedHour`.
@@ -221,10 +223,10 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **opam:** `thai-time.opam` (local switch); `dune-project` with `(using melange …)`; deps `melange`, `reason`, `reason-react`, `reason-react-ppx`, `melange-jest`.
    - **dune:** `melange.emit` + `(preprocess (pps reason-react-ppx))`; **two emits** — ESM app + CJS Jest (see Build).
    - **npm:** `react`, `react-dom`, `vite`, `jest`; Vite config → `_build/…` app emit.
-   - **assets:** `index.html`, `assets/bell.*` (free/libre or public-domain bell from web search first; AI-generated only if needed + provenance) via `runtime_deps` / `copy_files#`.
+   - **assets:** `index.html` with **`<html lang="th">`**, `assets/bell.*` (free/libre or public-domain bell from web search first; AI-generated only if needed + provenance) via `runtime_deps` / `copy_files#`.
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
 3. `Zone`: Approach A (**A** BMT history + **B** display numbering always when `Intl` exists + `bangkokWallManual`); **`now` + probe seams**. Jest tests:  
    - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** via probe-**A** seam — **B** still runs; display HHMM still works.  
    - **Display:** probe **B** → `๒๒`/`๐๐` when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** via probe-**B** seam → `2200`. Manual path uses formatter from **B**.
-4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build.
+4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build. **Jest/`melange-jest` tests for `App` announce FSM** (injectable `now`; fake timers as needed): init — no announce on first paint (incl. Bangkok `:00`); foreground `:00` hour transition triggers announce; background return at `:00` vs `:30`; supersede mid-announce; unarmed silent label duration.
 5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
