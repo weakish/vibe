@@ -39,7 +39,7 @@ Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, 
 1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with `Intl` `Asia/Bangkok`; expect wall hour **23**, minute **59** (ignore seconds).
 2. If probe **passes** → use `Intl` (`formatToParts`; **hour and minute parts only**, ignore `second`).
 3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
-   - `offset_ms` = `+6:42:04` (24 124 000 ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (25 200 000 ms).  
+   - `offset_ms` = `+6:42:04` (`24_124_000` ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (`25_200_000` ms).  
    - `wall_ms = utc_ms + offset_ms`.  
    - Read **hour and minute from UTC getters** on `new Date(wall_ms)` (`getUTCHours` / `getUTCMinutes`) — treat `wall_ms` as a synthetic UTC clock, **not** `toLocaleString` or the visitor’s local zone.
 
