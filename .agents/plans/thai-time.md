@@ -72,7 +72,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ### Trigger
 
-When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). After **every** announce (foreground or background), set **`lastAnnouncedHour = currentHour`**. If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
+When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). When any announce sequence **completes** (foreground or background), set **`lastAnnouncedHour = currentHour`** (see Overlap). If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
 
 ### Overlap and missed hours
 
