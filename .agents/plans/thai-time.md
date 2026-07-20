@@ -1,6 +1,6 @@
 # Plan: Thai time (static page)
 
-Single static page: current clock in Thailand’s historical/legal zone rules, HH:MM most of the time, Thai six-hour script + bell on the hour. ReasonReact.
+Single static page: current clock in Thailand’s historical/legal zone rules, HH:MM most of the time, Thai six-hour script + bell on the hour. **Reason + Melange + ReasonReact.**
 
 ## Goal
 
@@ -14,7 +14,7 @@ Out of scope for v1: date display, settings UI, timezone picker, second hand, lo
 
 ## Project placement
 
-New monorepo project: `thai-time/` (ReasonReact static app). Build output is static files only.
+New monorepo project: `thai-time/` (Reason + Melange + ReasonReact static app). Build output is static files only.
 
 Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `thai-time/` if needed.
 
@@ -104,16 +104,22 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 
 ## Stack
 
-- **ReasonReact** (ReScript + `@rescript/react` is the practical 2026 path; use Reason-flavored syntax only if the toolchain still supports it cleanly — default recommendation: **ReScript React** labeled as the ReasonReact lineage in project docs, unless pinning classic `reason-react` is required by name).
-- Bundler: Vite (or similar) → static `dist/`.
-- No backend.
+Locked:
 
-Confirm package names at scaffold time; keep the app a single page component + small pure modules:
+- **Reason** syntax (`.re`)
+- **Melange** (OCaml/Reason → JS)
+- **ReasonReact** (`reason-react` via opam / Melange)
 
-- `Zone.res` — era classify + offset → wall `HH:MM` + hour/minute
-- `ThaiClock.res` — hour → label + chime count
-- `App.res` — tick, announce state machine, render one string
-- `Bell.res` / audio helper — play N chimes
+Not ReScript / `@rescript/react`.
+
+Build: Dune + Melange → JS; bundle with Vite or esbuild (or Melange’s usual static setup) into static `dist/`. No backend.
+
+Keep the app a single page component + small pure modules:
+
+- `Zone.re` — era classify + offset → wall `HH:MM` + hour/minute
+- `ThaiClock.re` — hour → label + chime count
+- `App.re` — tick, announce state machine, render one string
+- `Bell.re` / audio helper — play N chimes
 
 ## Acceptance checks
 
@@ -129,11 +135,10 @@ Confirm package names at scaffold time; keep the app a single page component + s
 1. **Era boundary basis** — UTC calendar vs Thailand civil (see above).
 2. **Chime count for ย่ำรุ่ง / เที่ยงวัน / เที่ยงคืน** — historical temple practice varies (often special patterns, not a simple 1–6). Options: (a) 1 chime, (b) 6 chimes, (c) distinct sample. Default if unspecified: **1 chime** for the three named pivots so announcement still “happens.”
 3. **Exact BMT offset** — lock `+6:42:04` vs `+6:42:00` from a cited source.
-4. **Reason vs ReScript branding** — user said ReasonReact; scaffold should satisfy that request with the maintained toolchain.
 
 ## Implementation order
 
-1. Scaffold `thai-time/` static ReasonReact/ReScript app.
+1. Scaffold `thai-time/` with Reason + Melange + ReasonReact (static output).
 2. Pure `ThaiClock` mapping + unit tests for all 24 hours (labels + chime counts + forbidden strings).
 3. Pure `Zone` era + offset + format `HH:MM` tests (fixture instants).
 4. UI tick + announce state machine; add bell asset; wire audio.
