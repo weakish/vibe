@@ -65,14 +65,15 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ### Trigger
 
-When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). If the tab was backgrounded across an hour boundary, announce once on next visible tick for the **current** hour (see overlap rules below).
+When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). After **every** announce (foreground or background), set **`lastAnnouncedHour = currentHour`**. If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
 
 ### Overlap and missed hours
 
 - **Init:** on first paint (normal path), set `lastAnnouncedHour` to the **current** Bangkok hour **without** announcing — so refresh / first load never chimes, including at `:00`.
+- **After any announce:** set `lastAnnouncedHour = currentHour` (foreground `:00` transition, background return on the hour, or superseded sequence when the new one completes).
 - **At most one announce sequence** at a time (label + chime queue).  
 - **Hour changes during announce:** **supersede** — stop in-flight chimes, run the **new** hour’s label + chime count.  
-- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, if `lastAnnouncedHour ≠ currentHour`, announce **current** hour only (not every skipped hour), then set `lastAnnouncedHour` to that hour.  
+- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`** and `lastAnnouncedHour ≠ currentHour` (current hour’s label + chimes, then update `lastAnnouncedHour`). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively.  
 - **Refresh at `:00`:** do not announce (covered by init; no transition from a prior open-session hour).
 
 ### Chime count (Thai six-hour)
