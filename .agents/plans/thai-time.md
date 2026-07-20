@@ -20,9 +20,9 @@ Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `
 
 ## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Take the **system clock instant** (`Date.now()`), not network/API time. Prefer **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`**. No full multi-zone IANA polyfill; no pre-1880 error path.
+Take the **system clock instant** (`Date.now()`), not network/API time. Prefer **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`**. No pre-1880 error path.
 
-IANA summary (tests + Bangkok-only fallback):
+IANA summary (tests + fallback constants):
 
 | Period (Bangkok wall) | Offset | Name |
 |-----------------------|--------|------|
@@ -32,7 +32,18 @@ IANA summary (tests + Bangkok-only fallback):
 
 Display `HH:MM` in Bangkok wall time (floor to minute; no seconds on screen).
 
-**Impl note:** `Zone.re` wraps `Date` + `Intl` (`formatToParts`). On startup (or first use), **probe** a BMT fixture (`1920-03-31T17:17:55Z` → `23:59`). If `Intl` lacks history, fall back to a **Bangkok-only** manual offset: `+6:42:04` before `1920-03-31T17:17:56Z`, else `+7`. Do not ship `@formatjs` full tzdata.
+### Historical coverage polyfill (Approach A)
+
+Hand-roll in **Reason inside `Zone.re`** — not a separate JS helper, not `@formatjs` / full IANA.
+
+1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with `Intl` `Asia/Bangkok`; expect wall `23:59`.
+2. If probe **passes** → use `Intl` (`formatToParts`) for all wall times.
+3. If probe **fails** → **`bangkokWallManual`**: `utc_ms + offset_ms`, with  
+   - `+6:42:04` when `utc < 1920-03-31T17:17:56Z`  
+   - `+7:00:00` otherwise  
+   Derive `HH:MM` / hour from that fixed-offset instant.
+
+Rejected alternatives: (B) tiny JS helper called from Melange; (C) `@formatjs/intl-datetimeformat` + tz pack.
 
 ## Normal UI
 
@@ -138,7 +149,7 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 ### App modules
 
-- `Zone.re` — `Intl` `Asia/Bangkok` → wall `HH:MM` + hour/minute; Bangkok-only manual fallback when `Intl` lacks historical BMT (probe fixture, then `+6:42:04` / `+7` transition — not a full IANA polyfill)
+- `Zone.re` — `Intl` `Asia/Bangkok` + **Approach A** probe/`bangkokWallManual` fallback (Reason only; see Timezone rules)
 - `ThaiClock.re` — hour → display label and chime count (separate)
 - `App.re` — tick, announce state machine, render one string
 - `Bell.re` / audio helper — play N chimes
@@ -158,6 +169,6 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 1. Scaffold `thai-time/`: opam (Melange + ReasonReact) + npm (`react`, `react-dom`, Vite, Jest).
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests for all 24 hours (display labels + chime counts + forbidden display strings).
-3. `Zone`: `Intl` + BMT probe + Bangkok-only fallback; Jest tests for fixtures (including forced-fallback).
+3. `Zone`: Approach A (`Intl` + probe + `bangkokWallManual` in Reason); Jest tests for fixtures (including forced-fallback).
 4. UI tick + announce state machine; add bell asset; wire audio; Vite static build.
 5. Manual check with devtools clock spoofing / injected `now` for era and hour-boundary tests.
