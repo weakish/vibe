@@ -1,14 +1,14 @@
 # Plan: Thai time (static page)
 
-Single static page: current clock in Thailand’s historical/legal zone rules, HH:MM most of the time, Thai six-hour script + bell on the hour. **Reason + Melange + ReasonReact.**
+Single static page: current clock in Thailand’s historical/legal zone rules, Thai-numeral **HHMM** most of the time, Thai six-hour script + bell on the hour. **Reason + Melange + ReasonReact.**
 
 ## Goal
 
 Ship one static web page that:
 
-1. Shows **only** the current time as **Thai-numeral `HH:MM`** (24-hour, e.g. `๒๒:๐๐`), nothing else on screen in the normal state.
+1. Shows **only** the current time as **four Thai numerals** (24-hour **HHMM**, e.g. `๒๒๐๐`), nothing else on screen in the normal state.
 2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when it has IANA history, with a **Bangkok-only manual fallback** in `Zone.re` otherwise (see below). The **`Intl` API is required** — no support for runtimes without `Intl` at all.
-3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces `HH:MM` with the Thai-script six-hour label (special cases below).
+3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
 
@@ -30,7 +30,7 @@ IANA summary (tests + `bangkokWallManual` constants):
 | 1880-01-01 – 1920-03-31 23:59:59 | `UTC+06:42:04` | BMT |
 | From 1920-04-01 00:17:56 (after +17:56 jump) | `UTC+07:00` | ICT |
 
-Display **Thai-numeral `HH:MM`** in Bangkok wall time (floor to minute; no seconds on screen). Drive the digit string via **`Intl`** (`numberingSystem: 'thai'`); keep hour/minute **integers** for logic on a separate **`latn`** formatter (see below).
+Display **four Thai numerals** (24-hour **HHMM**, no colon) in Bangkok wall time (floor to minute; no seconds on screen). Drive digits via **`Intl`** (`numberingSystem: 'thai'`); keep hour/minute **integers** for logic on a separate **`latn`** formatter (see below).
 
 ### Zone resolution (Approach A)
 
@@ -39,19 +39,19 @@ Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, 
 1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**; expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
 2. If probe **passes** → two cached `Intl.DateTimeFormat` instances (same `th-TH`, `Asia/Bangkok`, `h23`):  
    - **Logic:** `numberingSystem: 'latn'` — `formatToParts`; read **hour/minute ints** (0–23 / 0–59) for triggers and `ThaiClock`.  
-   - **Display:** `numberingSystem: 'thai'` — `.format(instant)` for on-screen `HH:MM` (e.g. `๒๒:๐๐`). Do not parse Thai digit strings back to ints.
+   - **Display:** `numberingSystem: 'thai'` — `formatToParts`; concatenate **`hour` + `minute` parts only** (drop the `:` literal), e.g. `๒๒` + `๐๐` → `๒๒๐๐`. Do not parse Thai digit strings back to ints.
 3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
    - `offset_ms` = `+6:42:04` (`24_124_000` ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (`25_200_000` ms).  
    - `wall_ms = utc_ms + offset_ms`.  
    - Read **hour and minute ints** from UTC getters on `new Date(wall_ms)` (`getUTCHours` / `getUTCMinutes`) — treat `wall_ms` as a synthetic UTC clock, **not** `toLocaleString` or the visitor’s local zone.  
-   - **Display:** format those ints with the same **`thai`** display formatter (e.g. anchor `Date.UTC(1970, 0, 1, hour, minute)` + `timeZone: 'UTC'`, or equivalent) so fallback matches the Intl path visually.
+   - **Display:** format those ints with the same **`thai`** display formatter (e.g. anchor `Date.UTC(1970, 0, 1, hour, minute)` + `timeZone: 'UTC'`); concatenate **hour + minute** parts → **HHMM** (no colon).
 
-Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17:55Z` → `23:59`; `17:17:56Z` → `00:17`). UI tests assert **thai** strings (e.g. modern `22:00` ICT → `๒๒:๐๐`).
+Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17:55Z` → `23:59`; `17:17:56Z` → `00:17`). UI tests assert **thai** strings (e.g. modern `22:00` ICT → `๒๒๐๐`).
 
 ## Normal UI
 
 - Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`).
-- One centered (or otherwise single) text node: Thai-numeral `HH:MM` (zero-padded via `Intl` `numberingSystem: 'thai'`, e.g. `๐๙:๐๕`).
+- One centered (or otherwise single) text node: four Thai numerals **HHMM** (zero-padded via `Intl` `numberingSystem: 'thai'`, no colon; e.g. `๐๙๐๕`).
 - Update at least every second (or on `visibilitychange`) so hour rollover is caught; display still minute precision only.
 - No other visible widgets.
 
@@ -108,8 +108,8 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 
 ### During announcement (UI)
 
-- Replace Thai-numeral `HH:MM` with the Thai **word** label for that hour (full string; no Latin digits).
-- Keep that label visible for the duration of the chime sequence (and a short tail, e.g. until chimes finish + ~1s), then revert to Thai-numeral `HH:MM`.
+- Replace **HHMM** with the Thai **word** label for that hour (full string; no Latin digits).
+- Keep that label visible for the duration of the chime sequence (and a short tail, e.g. until chimes finish + ~1s), then revert to **HHMM**.
 - Still “nothing else”: only the label text swaps; no extra caption.
 
 ### Audio
@@ -159,11 +159,11 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 ## Acceptance checks
 
-- [ ] At a normal modern system time: shows ICT time as Thai numerals only (e.g. `๒๒:๐๐` at Bangkok 22:00).
+- [ ] At a normal modern system time: shows ICT time as four Thai numerals only (e.g. `๒๒๐๐` at Bangkok 22:00).
 - [ ] System date forced into 1880–1920-03-31: wall time matches BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant) via `Intl` or `bangkokWallManual`.
 - [ ] Fixture `1920-03-31T17:17:55Z` → `23:59` BMT; `1920-03-31T17:17:56Z` → `00:17` ICT (IANA transition; minute precision).
 - [ ] When `Intl` fails the BMT probe, `bangkokWallManual` still passes the fixtures above.
-- [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to **`๒๒:๐๐`**.
+- [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to **`๒๒๐๐`**.
 - [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each.
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
 - [ ] Static deploy: open `index.html` (or static host) with no server logic.
