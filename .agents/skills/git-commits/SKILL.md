@@ -2,10 +2,9 @@
 name: git-commits
 description: >-
   Repo commit message and trailer contract: 13 Short Gitmojis subjects;
-  Assisted-by; optional Acked-by / Reviewed-by to record human review;
-  Reported-by for user-reported bugs; Suggested-by for human
-  ideas and approach.
-  Use when committing, writing a commit message, or adding review trailers.
+  Assisted-by; Reported-by for user-reported bugs; Suggested-by for human
+  ideas and approach. No human-review trailers (0% human review).
+  Use when committing or writing a commit message.
 ---
 
 # Git commits and trailers
@@ -68,18 +67,17 @@ Examples:
 
 ## Commit trailers
 
-Trailers record agent help (`Assisted-by` per commit when an agent helped; squash before merge if you prefer). Git `Author` is always the human, for `git blame`. Review depth may be recorded with Linux-style trailers; meanings below are this repo’s contract, not a copy of every kernel trailer rule.
+Trailers record attribution (`Assisted-by` per commit when an agent helped; squash before merge if you prefer). Git `Author` is always the human, for `git blame`.
 
-`Acked-by` / `Reviewed-by` are **optional** markers that record which commits a human reviewed. This repo does not require human review to ship.
+This repo has **0% human review**. Never add `Acked-by`, `Reviewed-by`, or any other review-depth trailer.
 
 Trailer order after the subject/body:
 
 1. `Reported-by` (when the user reported a valid bug this commit fixes)
 2. `Suggested-by` (when a human suggested the idea or approach this commit implements)
 3. `Assisted-by` (when an agent helped)
-4. `Acked-by` / `Reviewed-by` (optional human review markers)
 
-`Reported-by`, `Suggested-by`, `Acked-by`, and `Reviewed-by` name **humans** only — never an agent. Agent help (including when the user asks an agent to review code) belongs in `Assisted-by`.
+`Reported-by` and `Suggested-by` name **humans** only — never an agent. Agent help (including when the user asks an agent to review code) belongs in `Assisted-by`.
 
 ### Author
 
@@ -107,7 +105,6 @@ Assisted-by: Cursor:cursor-grok-4.5
 ```
 
 - Always write `Assisted-by` for **this** commit from the agent/model that helped. Do **not** copy an `Assisted-by` line from `git log`, prior commits, or examples — those often name a different model.
-- Intermediate commits usually carry only `Assisted-by`. When a human **has** reviewed a commit, it may also carry `Acked-by` or `Reviewed-by` for that commit.
 
 ### Reported-by
 
@@ -135,32 +132,3 @@ Assisted-by: Cursor:composer-2.5
 Suggested-by: weakish <weakish@gmail.com>
 Assisted-by: Cursor:cursor-grok-4.5
 ```
-
-### Acked-by (light review)
-
-- Means: a human lightly reviewed **that commit**.
-- Optional — use when you want to record light review.
-- Identity: any human who did the light review (`Acked-by: Name <email>`) — the commit author, the agent's user, or another developer. A self-ack (reviewer = `Author`) is this repo's intentional review-depth attribution, not invalid trailer usage; do not flag it when reviewing commits or polishing messages.
-- Agents must not add `Acked-by` on their own judgment; add it only when the user confirms a human did that light check (and names the reviewer), or asks for the trailer.
-- Exception: when the user says LGTM (or an equivalent explicit approval) while asking for a commit, treat it as light-review confirmation — add `Acked-by` naming the user without asking, then tell the user the trailer was added. Do not infer acks from weaker signals ("sure, go ahead").
-
-### Reviewed-by (full review)
-
-- Means: a human fully reviewed **that commit**; same *role* as Linux kernel `Reviewed-by`.
-- Optional — use when you want to record full review.
-- Identity: any human who did the full review; may be the commit author (see the `Acked-by` note on self-review).
-- Agents must not add `Reviewed-by` on their own judgment; add it only when the user confirms a human fully reviewed (and names the reviewer), or asks for the trailer.
-
-### Example (lightly reviewed commit)
-
-```
-:memo: document monorepo layout
-
-Assisted-by: Cursor:composer-2.5
-Acked-by: weakish <weakish@gmail.com>
-```
-
-### Notes
-
-- Do not invent other review trailers for light-vs-full depth.
-- A review trailer certifies **that commit only**.
