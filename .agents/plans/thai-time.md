@@ -36,8 +36,8 @@ Display `HH:MM` in Bangkok wall time (floor to minute; no seconds on screen).
 
 Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, not `@formatjs` / full IANA.
 
-1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with `Intl` `Asia/Bangkok`; expect wall hour **23**, minute **59** (ignore seconds).
-2. If probe **passes** → use `Intl` (`formatToParts`; **hour and minute parts only**, ignore `second`).
+1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with `Intl` `Asia/Bangkok` and **`hourCycle: 'h23'`**; expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
+2. If probe **passes** → use `Intl` with the same options (`timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**; `formatToParts`; **hour and minute parts only**, ignore `second`) so hours stay in **0–23**.
 3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
    - `offset_ms` = `+6:42:04` (`24_124_000` ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (`25_200_000` ms).  
    - `wall_ms = utc_ms + offset_ms`.  
