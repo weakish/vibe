@@ -69,7 +69,7 @@ Examples:
 
 Trailers record attribution (`Assisted-by` per commit when an agent helped; squash before merge if you prefer). Git `Author` is always the human, for `git blame`.
 
-This repo has **0% human review**. Never add `Acked-by`, `Reviewed-by`, or any other review-depth trailer.
+This repo has **0% human review**. Never add `Acked-by` or `Reviewed-by`.
 
 Trailer order after the subject/body:
 
