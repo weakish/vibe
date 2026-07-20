@@ -7,7 +7,7 @@ Single static page: current clock in Thailand’s historical/legal zone rules, H
 Ship one static web page that:
 
 1. Shows **only** the current time as `HH:MM` (24-hour), nothing else on screen in the normal state.
-2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** (IANA rules — see below). **`Intl` is required**; no polyfill for missing or historical-stripped `Intl`.
+2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when it has IANA history, with a **Bangkok-only manual fallback** in `Zone.re` otherwise (see below). The **`Intl` API is required** — no support for runtimes without `Intl` at all.
 3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces `HH:MM` with the Thai-script six-hour label (special cases below).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
@@ -20,9 +20,9 @@ Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `
 
 ## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Take the **system clock instant** (`Date.now()`), not network/API time. Use **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`** only — follow whatever IANA encodes. No manual offset fallback, no `@formatjs` tz pack, no pre-1880 error path. Runtimes without working `Intl` `Asia/Bangkok` (including historical BMT) are unsupported.
+Take the **system clock instant** (`Date.now()`), not network/API time. Use **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`** when it encodes IANA history. No `@formatjs` tz pack, no pre-1880 error path. Runtimes **without the `Intl` API** are unsupported.
 
-IANA summary (tests and sanity checks; runtime source of truth is `Intl`):
+IANA summary (tests + `bangkokWallManual` constants):
 
 | Period (Bangkok wall) | Offset | Name |
 |-----------------------|--------|------|
@@ -32,7 +32,18 @@ IANA summary (tests and sanity checks; runtime source of truth is `Intl`):
 
 Display `HH:MM` in Bangkok wall time (floor to minute; no seconds on screen).
 
-**Impl note:** `Zone.re` wraps `Date` + `Intl`. Read **hour and minute only** from `formatToParts` (`hour`, `minute` parts; ignore `second`). Tests compare `HH:MM` at minute precision (e.g. fixture `1920-03-31T17:17:55Z` → `23:59`, not `23:59:59`).
+### Zone resolution (Approach A)
+
+Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, not `@formatjs` / full IANA.
+
+1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with `Intl` `Asia/Bangkok`; expect wall hour **23**, minute **59** (ignore seconds).
+2. If probe **passes** → use `Intl` (`formatToParts`; **hour and minute parts only**, ignore `second`).
+3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
+   - `offset_ms` = `+6:42:04` (24 124 000 ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (25 200 000 ms).  
+   - `wall_ms = utc_ms + offset_ms`.  
+   - Read **hour and minute from UTC getters** on `new Date(wall_ms)` (`getUTCHours` / `getUTCMinutes`) — treat `wall_ms` as a synthetic UTC clock, **not** `toLocaleString` or the visitor’s local zone.
+
+Tests compare `HH:MM` at minute precision (e.g. `1920-03-31T17:17:55Z` → `23:59`; `17:17:56Z` → `00:17`).
 
 ## Normal UI
 
@@ -138,7 +149,7 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 ### App modules
 
-- `Zone.re` — `Intl` `Asia/Bangkok` → wall `HH:MM` + hour/minute (`formatToParts`; hour/minute only)
+- `Zone.re` — Approach A: `Intl` `Asia/Bangkok` + probe + `bangkokWallManual` (UTC getters on shifted ms)
 - `ThaiClock.re` — hour → display label and chime count (separate)
 - `App.re` — tick, announce state machine, render one string
 - `Bell.re` / audio helper — play N chimes
@@ -146,8 +157,9 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 ## Acceptance checks
 
 - [ ] At a normal modern system time: shows ICT `HH:MM` only (`Intl` `Asia/Bangkok`).
-- [ ] System date forced into 1880–1920-03-31: wall time matches BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant) via `Intl`.
+- [ ] System date forced into 1880–1920-03-31: wall time matches BMT (`UTC+06:42:04`; ~18 minutes behind ICT at the same instant) via `Intl` or `bangkokWallManual`.
 - [ ] Fixture `1920-03-31T17:17:55Z` → `23:59` BMT; `1920-03-31T17:17:56Z` → `00:17` ICT (IANA transition; minute precision).
+- [ ] When `Intl` fails the BMT probe, `bangkokWallManual` still passes the fixtures above.
 - [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to `22:00`.
 - [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each.
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
@@ -157,6 +169,6 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 1. Scaffold `thai-time/`: opam (Melange + ReasonReact) + npm (`react`, `react-dom`, Vite, Jest).
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests for all 24 hours (display labels + chime counts + forbidden display strings).
-3. `Zone`: `Intl` `Asia/Bangkok` + `formatToParts`; Jest tests for fixture instants (minute precision).
+3. `Zone`: Approach A (`Intl` + probe + `bangkokWallManual`); Jest tests for fixtures (including forced-fallback).
 4. UI tick + announce state machine; add bell asset; wire audio; Vite static build.
 5. Manual check with devtools clock spoofing / injected `now` for era and hour-boundary tests.
