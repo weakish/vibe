@@ -144,7 +144,7 @@ Labels in the table use **spelled Thai words** (หนึ่ง/สอง/…), 
 
 - Replace **HHMM** with the Thai **word** label for that hour (full string; spelled Thai words only — no Thai or Latin digits); class → **`announce`**.
 - Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM** / **`clock`**.
-- **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full announce window (silent announce). **Unarmed duration:** **`N * CHIME_GAP_MS + POST_CHIME_TAIL_MS`** from announce start (`N` = chime count for that hour). Arming later does not require re-triggering the label.
+- **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full announce window (silent announce). **Unarmed duration:** **`N * CHIME_GAP_MS + POST_CHIME_TAIL_MS`** from announce start (`N` = chime count for that hour). **Arming mid–silent-announce:** does not re-trigger the label and does **not** play bells for **this** hour — the whole announce stays silent; bells only on a **future** `:00` if armed by then.
 - Still “nothing else”: only the label text swaps; no extra caption.
 
 ### Audio
@@ -155,7 +155,7 @@ Labels in the table use **spelled Thai words** (หนึ่ง/สอง/…), 
   - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
   - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**, then revert to HHMM. If unarmed, tail starts after **`N * CHIME_GAP_MS`** (scheduled silent chime window).
 - **Supersede:** `Bell.re` / `App.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`** (whether or not any chime audio played), and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
-- Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`). Unarmed → silent label-only announce (see During announcement).
+- Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`). Unarmed at announce start → silent label-only announce for that hour (see During announcement); arming mid-announce does not resume chimes.
 - No speech synthesis in v1 (bells only).
 
 ## Stack
@@ -228,6 +228,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
 - [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence; only the **new** sequence’s completion updates `lastAnnouncedHour`.
 - [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
+- [ ] Arming mid–silent-announce: label unchanged; **no** bells for that hour; next `:00` chimes if armed.
 - [ ] Bell asset: free/libre or public-domain preferred (search first); AI-generated only as fallback; provenance noted.
 - [ ] Static deploy: open `index.html` (or static host) with no server logic; root element has **`lang="th"`**.
 
@@ -245,3 +246,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **Degrade:** `DateTimeFormat` missing or throwing → `App` does not call `Zone`; Unix seconds + **`degrade`** class.
 4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build. **Jest/`melange-jest` tests for `App` announce FSM** (injectable `now`; fake timers as needed): init — no announce on first paint (incl. Bangkok `:00`); foreground `:00` hour transition triggers announce; background return at `:00` vs `:30`; supersede mid-announce; unarmed silent label duration; **degrade gate** (missing / throwing `DateTimeFormat`).
 5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
+
+## TODO (post-v1)
+
+- **Chime remaining bells on mid-announce arm** — if the user arms during a silent announce, play chimes from the current slot through **N** (instead of v1’s “no bells for this whole announcement”). Needs slot indexing on the `CHIME_GAP_MS` grid, supersede interaction, and partial-count UX.
