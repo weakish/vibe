@@ -1,13 +1,13 @@
 # Plan: Thai time (static page)
 
-Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour label on the hour (bell when armed); **degrade** to Latin Unix seconds if `Intl` is missing. **Reason + Melange + ReasonReact.**
+Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour label on the hour (bell when armed); **degrade** to Latin Unix seconds if `Intl` / `DateTimeFormat` is unusable (see Degrade gate). **Reason + Melange + ReasonReact.**
 
 ## Goal
 
 Ship one static web page that:
 
-1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (no `Intl`), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
-2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), as **Bangkok wall time** when **`Intl` / `DateTimeFormat` exists** (probe **A** → `Asia/Bangkok` via `Intl`; if **A** fails → **`bangkokWallManual`**; display numbering via probe **B** — see Timezone rules). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
+1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (`Intl` / `DateTimeFormat` unusable — see Degrade gate), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
+2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), as **Bangkok wall time** when **`DateTimeFormat` is usable** (probe **A** → `Asia/Bangkok` via `Intl`; if **A** fails → **`bangkokWallManual`**; display numbering via probe **B** — see Zone resolution). If **`Intl` / `DateTimeFormat` is unusable**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
 3. On each new hour (**normal path only** — **not** in degrade mode), **announces** with the Thai-script six-hour label (special cases below) and bell chimes **when audio is armed** (silent label-only announce if unarmed — see During announcement).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
@@ -20,9 +20,19 @@ Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `
 
 ## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Take the **system clock instant** (`Date.now()`), not network/API time. When **`Intl` / `DateTimeFormat` exists**, prefer **`Asia/Bangkok`** via `Intl` if BMT history probe **A** passes; if **A** fails, use **`bangkokWallManual`** for wall hour/minute. Display numbering always via probe **B** whenever `Intl` exists (see Zone resolution). No `@formatjs` tz pack, no pre-1880 error path.
+Take the **system clock instant** (`Date.now()`), not network/API time. When **`DateTimeFormat` is usable** (see Degrade gate), prefer **`Asia/Bangkok`** via `Intl` if BMT history probe **A** passes; if **A** fails, use **`bangkokWallManual`** for wall hour/minute. Display numbering always via probe **B** on the normal path (see Zone resolution). No `@formatjs` tz pack, no pre-1880 error path.
 
-**No `Intl` (degrade mode):** if `Intl` / `DateTimeFormat` is unavailable, skip `Zone` / Bangkok wall time / announcements. Show **`Math.floor(Date.now() / 1000)`** as a Latin decimal string (Unix seconds), updated each tick. No bells, no Thai word labels.
+### Degrade gate
+
+**Degrade mode** when any of:
+
+- `Intl` is missing, or
+- `Intl.DateTimeFormat` is missing, or
+- `DateTimeFormat` **throws** on construct or on `format` / `formatToParts` (including at runtime on tick after a prior successful init — switch to degrade for the rest of the session).
+
+**Check once** at init (minimal formatter smoke test, e.g. `th-TH`, `timeZone: 'UTC'`, `hour`/`minute` `'2-digit'` only). **`App` does not call `Zone` or announce** in degrade mode. Show **`Math.floor(Date.now() / 1000)`** as a Latin decimal string (Unix seconds), updated each tick. No bells, no Thai word labels.
+
+Probe **A** / **B** **failures** without throwing (wrong hour, bad Thai digits, empty parts) are **not** degrade — they select `bangkokWallManual` or `latn` display. Any **`DateTimeFormat` throw** after init (probes or tick) → degrade for the session.
 
 IANA summary (tests + `bangkokWallManual` constants):
 
@@ -38,11 +48,11 @@ Display **four digits** (24-hour **HHMM**, no colon) in Bangkok wall time (floor
 
 Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, not `@formatjs` / full IANA.
 
-Whenever **`Intl` / `DateTimeFormat` exists** (normal path, not degrade), run **A then B** once each and cache. **Display-numbering (B) does not depend on BMT history (A) success.**
+Whenever **`DateTimeFormat` is usable** (normal path, not degrade), run **A then B** once each and cache. **Display-numbering (B) does not depend on BMT history (A) success.**
 
-**A. BMT history probe** — format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
+**A. BMT history probe** — format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Wrong hour/minute → **A** fails → `bangkokWallManual`. **`DateTimeFormat` throws** → **Degrade gate** (not **A** fail).
 
-**B. Display-numbering probe** (always when `Intl` exists — even if **A** failed; run **after A**): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Uses **fixed probe instants** (not `now` / not the visitor’s spoofed system date). Format **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'` (for this probe use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)` — same expected digit parts). If constructing/formatting **throws**, or hour/minute parts are **empty** or not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK.
+**B. Display-numbering probe** (always on the normal path — even if **A** failed; run **after A**): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Uses **fixed probe instants** (not `now` / not the visitor’s spoofed system date). Format **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'` (for this probe use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)` — same expected digit parts). If hour/minute parts are **empty** or not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK. (Throws here are handled by the **Degrade gate**, not as `latn`.)
 
 Then wall time:
 
@@ -72,7 +82,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ### Trigger
 
-When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). Update **`lastAnnouncedHour`** per **Overlap** (on sequence complete; on **supersede**, only the replacement sequence). If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
+When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode**. Update **`lastAnnouncedHour`** per **Overlap** (on sequence complete; on **supersede**, only the replacement sequence). If the tab was backgrounded across an hour boundary, see overlap rules (announce **only on the hour** when becoming visible).
 
 ### Overlap and missed hours
 
@@ -190,13 +200,14 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - Do **not** use Vitest (no first-class Melange path).
 - **`Zone` / `App` test seams** (injectable, defaults = production behavior):
   - `now: unit => float` — ms since epoch; default `Js.Date.now` / `Date.now`.
+  - **Degrade override** — force degrade on/off, or inject a throwing `DateTimeFormat` (missing / throw on construct or format).
   - **Probe overrides** for A/B — e.g. force BMT history **fail** / **pass**, force display numbering **`thai`** / **`latn`** (or inject fake `formatToParts` results). Do **not** rely only on mutating global `Intl` if a seam is cleaner; tests that stub **A** fail must still run **B**.
 
 ### App modules
 
-- `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, always if Intl)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests
+- `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, normal path only)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests; not used when degrade gate fails
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — if **`Intl` / `DateTimeFormat` is missing**, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; otherwise tick, announce state machine, render one string (`clock` / `announce` only); passes `now` into `Zone`; label timing independent of audio arming
+- `App.re` — run **Degrade gate** at init; if unusable (`Intl` / `DateTimeFormat` missing or throws), render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; on runtime `DateTimeFormat` throw, switch to degrade for the session; otherwise tick, announce state machine, render one string (`clock` / `announce` only); passes `now` into `Zone`; label timing independent of audio arming
 - `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`); no-op sound when unarmed
 
 ## Acceptance checks
@@ -210,7 +221,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
 - [ ] Every `displayLabel` string uses spelled Thai words only — **no** Thai (U+0E50–U+0E59) or Latin (`0`–`9`) digits.
 - [ ] First load or refresh at Bangkok `:00`: shows HHMM only — **no** announce (`lastAnnouncedHour` init, no chime).
-- [ ] When `Intl` is unavailable: Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
+- [ ] When `Intl` / `DateTimeFormat` is unusable (missing or throws): Latin Unix seconds only; class **`degrade`**; no bells or Thai labels.
 - [ ] Background return at `:30` with a missed hour: **no** announce; at `:00` with `lastAnnouncedHour ≠ currentHour`: announce current hour only.
 - [ ] Supersede mid-announce (audible or **silent** tail pending): aborted hour’s **`POST_CHIME_TAIL_MS`** does not revert to HHMM during the new sequence; only the **new** sequence’s completion updates `lastAnnouncedHour`.
 - [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
@@ -225,8 +236,9 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
    - **npm:** `react`, `react-dom`, `vite`, `jest`; Vite config → `_build/…` app emit.
    - **assets:** `index.html` with **`<html lang="th">`**, `assets/bell.*` (free/libre or public-domain bell from web search first; AI-generated only if needed + provenance) via `runtime_deps` / `copy_files#`.
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
-3. `Zone`: Approach A (**A** BMT history + **B** display numbering always when `Intl` exists + `bangkokWallManual`); **`now` + probe seams**. Jest tests:  
+3. `Zone`: Approach A (**A** BMT history + **B** display numbering on normal path + `bangkokWallManual`); **`now` + probe seams**. Jest tests:  
    - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** via probe-**A** seam — **B** still runs; display HHMM still works.  
    - **Display:** probe **B** → `๒๒`/`๐๐` when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** via probe-**B** seam → `2200`. Manual path uses formatter from **B**.
-4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build. **Jest/`melange-jest` tests for `App` announce FSM** (injectable `now`; fake timers as needed): init — no announce on first paint (incl. Bangkok `:00`); foreground `:00` hour transition triggers announce; background return at `:00` vs `:30`; supersede mid-announce; unarmed silent label duration.
+   - **Degrade:** `DateTimeFormat` missing or throwing → `App` does not call `Zone`; Unix seconds + **`degrade`** class.
+4. UI tick + announce state machine (`clock` / `announce` / `degrade`); wire `Bell.re` + licensed/AI bell asset; Vite static build. **Jest/`melange-jest` tests for `App` announce FSM** (injectable `now`; fake timers as needed): init — no announce on first paint (incl. Bangkok `:00`); foreground `:00` hour transition triggers announce; background return at `:00` vs `:30`; supersede mid-announce; unarmed silent label duration; **degrade gate** (missing / throwing `DateTimeFormat`).
 5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
