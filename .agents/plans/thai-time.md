@@ -176,6 +176,7 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 - [ ] On hour change to 22:00: label **สี่ทุ่ม**, **4** bell plays; then back to **`๒๒๐๐`** (or **`2200`** if Latin display).
 - [ ] At 00 / 06 / 12: mandated display strings, **6** chimes each.
 - [ ] 06/16/17/18/00 use the mandated Thai display strings (not the rejected forms).
+- [ ] When `Intl` is unavailable: Latin Unix seconds only; no bells or Thai labels.
 - [ ] Static deploy: open `index.html` (or static host) with no server logic.
 
 ## Implementation order
