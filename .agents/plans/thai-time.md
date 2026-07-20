@@ -41,7 +41,7 @@ Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, 
 1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
 2. If probe **passes** → cached `Intl.DateTimeFormat` instances with the **same base options** (`th-TH`, `Asia/Bangkok`, `h23`, **`hour`/`minute`: `'2-digit'` only** — no date/era fields):  
    - **Logic:** `numberingSystem: 'latn'` — `formatToParts`; **parse** hour/minute part strings to **ints** (0–23 / 0–59) for triggers and `ThaiClock`.  
-   - **Display numbering (once, cache):** try `numberingSystem: 'thai'`; if constructing/formatting **throws**, or hour/minute parts are not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Rare slim ICU without `thai` → Latin HHMM is OK.  
+   - **Display numbering (once, cache):** format probe instant **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'`; if constructing/formatting **throws**, or hour/minute parts are not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK.  
    - **Display:** `formatToParts` with the chosen numbering; concatenate **`hour` + `minute` parts only** (drop literals such as `:`), e.g. `๒๒` + `๐๐` → `๒๒๐๐` or `22` + `00` → `2200`. Do not parse Thai digit strings back to ints.
 3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
    - `offset_ms` = `+6:42:04` (`24_124_000` ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (`25_200_000` ms).  
@@ -54,6 +54,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 ## Normal UI
 
 - Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`).
+- **Layout:** single line, viewport-centered (`min-height: 100vh`, flex or grid center); `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`; system font stack (no custom webfont in v1).
 - One centered (or otherwise single) text node:
   - **Normal (`Intl` present):** four-digit **HHMM** (no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable).
   - **Degrade (no `Intl`):** Latin Unix seconds (`Math.floor(Date.now() / 1000)`), not HHMM.
@@ -122,12 +123,15 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 ### During announcement (UI)
 
 - Replace **HHMM** with the Thai **word** label for that hour (full string; no Latin digits).
-- Keep that label visible for the duration of the chime sequence (and a short tail, e.g. until chimes finish + ~1s), then revert to **HHMM**.
+- Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM**.
 - Still “nothing else”: only the label text swaps; no extra caption.
 
 ### Audio
 
-- One short bell sample (static asset under `thai-time/`), played **N** times with a fixed gap.
+- One short bell sample (`thai-time/assets/bell.mp3` or `.wav`), played **N** times.
+- **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
+  - `CHIME_GAP_MS` = **800** — pause between chime starts.
+  - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime ends.
 - Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`).
 - No speech synthesis in v1 (bells only).
 
@@ -145,30 +149,42 @@ Not ReScript / `@rescript/react`. Not Vitest.
 
 | Side | Tool | Provides |
 |------|------|----------|
-| OCaml | **opam** + **Dune** | `melange`, `reason`, `reason-react`, compile `.re` → JS under `_build/` |
-| JS | **npm** | `react`, `react-dom`, bundler, test runner |
+| OCaml | **opam** + **Dune** | `melange`, `reason`, `reason-react`, `reason-react-ppx`, `melange-jest`; compile `.re` → JS under `_build/` |
+| JS | **npm** | `react`, `react-dom`, **Vite**, **Jest** |
 
 Dune alone is not enough for a ReasonReact browser app (React runtime comes from npm). Melange does not replace a bundler.
 
 ### Build / serve
 
-- **Vite** — default bundler + dev server (matches Melange/ReasonReact templates). Entry is Melange emit output under `_build/…` plus `index.html`.
+- **Vite** — default bundler + dev server. Point at Melange **ESM** emit under `_build/default/thai-time/` (or project emit target) plus `index.html`. Start from [melange-vite-template](https://github.com/pdelacroix/melange-vite-template) or [melange-opam-template](https://github.com/melange-re/melange-opam-template) and trim.
 - Production: Vite → static `dist/`. No backend.
 - **esbuild**-only is an acceptable thinner alternative; do not use webpack unless copying an old template.
 
+**Dual `melange.emit` (required):**
+
+| Target | `module_system` | Purpose |
+|--------|-----------------|--------|
+| App (`thai-time` or `app`) | **es6** (default) | Vite browser bundle |
+| Tests (`test` / `jest`) | **commonjs** | Jest via `melange-jest` (avoids `Cannot use import statement outside a module`) |
+
+Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emit output under `_build/`.
+
+**Static assets (Dune):** `index.html` at project root; bell under `assets/`. Use Melange **`runtime_deps`** / Dune **`copy_files#`** (or `data_only_dirs`) so `index.html` and `assets/bell.*` land beside emitted JS in `_build/…` for Vite.
+
 ### Tests
 
-- **Jest** + **`melange-jest`** (opam bindings; `jest` on npm) for Melange-compiled unit tests.
+- **Jest** + **`melange-jest`** (opam bindings; `jest` on npm) for Melange-compiled unit tests — **CommonJS** test emit (see Build).
 - Pure modules (`ThaiClock`, `Zone`) tested this way; optional UI later via `melange-testing-library` + Jest.
 - `Intl` / zone tests must run in JS (Node), not native Alcotest.
 - Do **not** use Vitest (no first-class Melange path).
+- **`Zone` / `App` test seam:** injectable `now` (`() => float` ms since epoch), default `Date.now`, overridable in Jest — no system-clock dependence for era or hour-boundary tests.
 
 ### App modules
 
-- `Zone.re` — Approach A: probe + `Intl` logic (`latn`) / display (`thai`, else `latn`) + `bangkokWallManual`
+- `Zone.re` — Approach A: probe + `Intl` logic (`latn`) / display (`thai`, else `latn`) + `bangkokWallManual`; **`now` injection** for tests
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — tick, announce state machine, render one string
-- `Bell.re` / audio helper — play N chimes
+- `App.re` — tick, announce state machine, render one string; passes `now` into `Zone`
+- `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`)
 
 ## Acceptance checks
 
@@ -184,10 +200,14 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 ## Implementation order
 
-1. Scaffold `thai-time/`: opam (Melange + ReasonReact) + npm (`react`, `react-dom`, Vite, Jest).
+1. Scaffold `thai-time/` from a Melange + ReasonReact template:
+   - **opam:** `thai-time.opam` (local switch); `dune-project` with `(using melange …)`; deps `melange`, `reason`, `reason-react`, `reason-react-ppx`, `melange-jest`.
+   - **dune:** `melange.emit` + `(preprocess (pps reason-react-ppx))`; **two emits** — ESM app + CJS Jest (see Build).
+   - **npm:** `react`, `react-dom`, `vite`, `jest`; Vite config → `_build/…` app emit.
+   - **assets:** `index.html`, `assets/bell.*` via `runtime_deps` / `copy_files#`.
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
-3. `Zone`: Approach A (`Intl` + BMT probe + `bangkokWallManual` + display numbering `thai`/`latn`). Jest tests:  
+3. `Zone`: Approach A (`Intl` + BMT probe + `bangkokWallManual` + display numbering `thai`/`latn`); **`now` injection**. Jest tests:  
    - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** when BMT probe is stubbed to fail.  
-   - **Display:** when `thai` numbering works → Thai HHMM (e.g. `๒๒๐๐`); **forced `latn` display** (stub `thai` construct/format failure or non-Thai digit parts) → Latin HHMM (e.g. `2200`). Same chosen display formatter on manual path.
-4. UI tick + announce state machine; add bell asset; wire audio; Vite static build.
-5. Manual check with devtools clock spoofing / injected `now` for era and hour-boundary tests.
+   - **Display:** probe `2026-07-20T15:00:00Z` → `๒๒`/`๐๐` parts when `thai` works; Thai HHMM `๒๒๐๐`; **forced `latn` display** → `2200`. Same display formatter on manual path.
+4. UI tick + announce state machine; wire `Bell.re` + asset; Vite static build.
+5. Manual era / hour-boundary checks via **injected `now`** (devtools spoof optional).
