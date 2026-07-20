@@ -173,6 +173,8 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 
 1. Scaffold `thai-time/`: opam (Melange + ReasonReact) + npm (`react`, `react-dom`, Vite, Jest).
 2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests for all 24 hours (display labels + chime counts + forbidden display strings).
-3. `Zone`: Approach A (`Intl` + probe + `bangkokWallManual`); Jest tests for fixtures (including forced-fallback).
+3. `Zone`: Approach A (`Intl` + BMT probe + `bangkokWallManual` + display numbering `thai`/`latn`). Jest tests:  
+   - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** when BMT probe is stubbed to fail.  
+   - **Display:** when `thai` numbering works → Thai HHMM (e.g. `๒๒๐๐`); **forced `latn` display** (stub `thai` construct/format failure or non-Thai digit parts) → Latin HHMM (e.g. `2200`). Same chosen display formatter on manual path.
 4. UI tick + announce state machine; add bell asset; wire audio; Vite static build.
 5. Manual check with devtools clock spoofing / injected `now` for era and hour-boundary tests.
