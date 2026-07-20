@@ -196,7 +196,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 
 - `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, always if Intl)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — if **`Intl` / `DateTimeFormat` is missing**, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; otherwise tick, announce state machine, render one string (`clock` / `announce` / `degrade`); passes `now` into `Zone`; label timing independent of audio arming
+- `App.re` — if **`Intl` / `DateTimeFormat` is missing**, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; otherwise tick, announce state machine, render one string (`clock` / `announce` only); passes `now` into `Zone`; label timing independent of audio arming
 - `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`); no-op sound when unarmed
 
 ## Acceptance checks
