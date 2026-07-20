@@ -38,11 +38,11 @@ Display **four digits** (24-hour **HHMM**, no colon) in Bangkok wall time (floor
 
 Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, not `@formatjs` / full IANA.
 
-Whenever **`Intl` / `DateTimeFormat` exists** (normal path, not degrade), run **both** of these once and cache (order fixed below). **Display-numbering does not depend on BMT history success.**
+Whenever **`Intl` / `DateTimeFormat` exists** (normal path, not degrade), run **A then B** once each and cache. **Display-numbering (B) does not depend on BMT history (A) success.**
 
 **A. BMT history probe** — format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
 
-**B. Display-numbering probe** (always when `Intl` exists — even if **A** failed): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Format probe instant **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'` (for this probe use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)` — same expected digit parts). If constructing/formatting **throws**, or hour/minute parts are **empty** or not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK.
+**B. Display-numbering probe** (always when `Intl` exists — even if **A** failed; run **after A**): base options `th-TH`, `h23`, **`hour`/`minute`: `'2-digit'` only**. Uses **fixed probe instants** (not `now` / not the visitor’s spoofed system date). Format **`2026-07-20T15:00:00Z`** (Bangkok **22:00** ICT) with `numberingSystem: 'thai'` (for this probe use `timeZone: 'Asia/Bangkok'` if **A** passed, else `timeZone: 'UTC'` on `Date.UTC(1970, 0, 1, 22, 0)` — same expected digit parts). If constructing/formatting **throws**, or hour/minute parts are **empty** or not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Expect hour part **`๒๒`**, minute **`๐๐`** when `thai` works. Rare slim ICU without `thai` → Latin HHMM is OK.
 
 Then wall time:
 
@@ -61,7 +61,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 - **Layout:** viewport-centered (`min-height: 100vh`, flex or grid center); system font stack (no custom webfont in v1).
   - **HHMM:** single line; `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`.
   - **Announce labels:** may be longer than HHMM — allow wrap (`white-space: normal`) and/or a slightly smaller clamp so long strings (e.g. `หนึ่งโมงเช้า`) stay on-screen on narrow viewports; do not clip with `nowrap` + huge type.
-- One centered (or otherwise single) text node:
+- One centered text node; toggle layout class **`clock`** (HHMM) vs **`announce`** (word label) — same element, different CSS:
   - **Normal (`Intl` present):** four-digit **HHMM** (no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable).
   - **Degrade (no `Intl`):** Latin Unix seconds (`Math.floor(Date.now() / 1000)`), not HHMM.
 - Update at least every second (or on `visibilitychange`) so hour rollover is caught; normal path still minute precision on screen.
@@ -78,7 +78,7 @@ When the Bangkok wall **hour int** from `Zone` logic advances to a new value wit
 - **Init:** on first paint (normal path), set `lastAnnouncedHour` to the **current** Bangkok hour **without** announcing — so refresh / first load never chimes, including at `:00`.
 - **After any announce:** set `lastAnnouncedHour = currentHour` (foreground `:00` transition, background return on the hour, or superseded sequence when the new one completes).
 - **At most one announce sequence** at a time (label + chime queue).  
-- **Hour changes during announce:** **supersede** — stop in-flight chimes, run the **new** hour’s label + chime count.  
+- **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio, run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
 - **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`** and `lastAnnouncedHour ≠ currentHour` (current hour’s label + chimes, then update `lastAnnouncedHour`). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively.  
 - **Refresh at `:00`:** do not announce (covered by init; no transition from a prior open-session hour).
 
@@ -139,6 +139,7 @@ Digits in labels: use Thai script numerals if we spell with numerals (หนึ�
 - **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
   - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
   - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**.
+- **Supersede:** `Bell.re` must clear pending gap timers and stop the current sample before starting the replacement sequence (no carry-over delay from the aborted hour).
 - Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`).
 - No speech synthesis in v1 (bells only).
 
