@@ -1,6 +1,6 @@
 # Plan: Thai time (static page)
 
-Single static page: current clock in Thailand’s historical/legal zone rules, Thai-numeral **HHMM** most of the time, Thai six-hour script + bell on the hour. **Reason + Melange + ReasonReact.**
+Single static page: current clock in Thailand’s historical/legal zone rules, **HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `thai` numbering unavailable), Thai six-hour script + bell on the hour. **Reason + Melange + ReasonReact.**
 
 ## Goal
 
@@ -39,7 +39,7 @@ Hand-roll fallback in **Reason inside `Zone.re`** — not a separate JS helper, 
 1. **Probe** (once, cache): format `1920-03-31T17:17:55Z` with fixed locale **`th-TH`**, `timeZone: 'Asia/Bangkok'`, **`hourCycle: 'h23'`**, **`numberingSystem: 'latn'`**, **`hour: '2-digit'`**, **`minute: '2-digit'`** only (no day/month/year/era). Expect wall hour **23**, minute **59** (ignore seconds). Treat as **failure** both when the call **throws** (e.g. missing zone) and when it returns the wrong hour/minute.
 2. If probe **passes** → cached `Intl.DateTimeFormat` instances with the **same base options** (`th-TH`, `Asia/Bangkok`, `h23`, **`hour`/`minute`: `'2-digit'` only** — no date/era fields):  
    - **Logic:** `numberingSystem: 'latn'` — `formatToParts`; **parse** hour/minute part strings to **ints** (0–23 / 0–59) for triggers and `ThaiClock`.  
-   - **Display numbering (once, cache):** try `numberingSystem: 'thai'`; if constructing/formatting **throws**, or hour/minute parts are not Thai digits, set display numbering to **`latn`**. Rare slim ICU without `thai` → Latin HHMM is OK.  
+   - **Display numbering (once, cache):** try `numberingSystem: 'thai'`; if constructing/formatting **throws**, or hour/minute parts are not Thai digits (every character in **U+0E50–U+0E59**, ๐–๙), set display numbering to **`latn`**. Rare slim ICU without `thai` → Latin HHMM is OK.  
    - **Display:** `formatToParts` with the chosen numbering; concatenate **`hour` + `minute` parts only** (drop literals such as `:`), e.g. `๒๒` + `๐๐` → `๒๒๐๐` or `22` + `00` → `2200`. Do not parse Thai digit strings back to ints.
 3. If probe **fails** → **`bangkokWallManual(utc_ms)`**:  
    - `offset_ms` = `+6:42:04` (`24_124_000` ms) when `utc_ms <` instant of `1920-03-31T17:17:56Z`, else `+7:00:00` (`25_200_000` ms).  
