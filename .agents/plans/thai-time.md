@@ -7,7 +7,7 @@ Single static page: current clock in Thailand’s historical/legal zone rules, *
 Ship one static web page that:
 
 1. Shows **only** the current time as **four digits** (24-hour **HHMM**, prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable), nothing else on screen in the normal state.
-2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when it has IANA history, with a **Bangkok-only manual fallback** in `Zone.re` otherwise (see below). The **`Intl` API is required** — no support for runtimes without `Intl` at all.
+2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), formatted in **`Asia/Bangkok`** wall time via **`Intl.DateTimeFormat`** when available (IANA history + manual fallback — see below). If **`Intl` is missing entirely**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
 3. On each new hour, **announces** with bell chimes using the **Thai six-hour** count, and while announcing replaces **HHMM** with the Thai-script six-hour label (special cases below).
 
 Out of scope for v1: date display, settings UI, timezone picker, second hand, localization toggles, server-side time.
@@ -20,7 +20,9 @@ Plan lives here: `.agents/plans/thai-time.md`. Project-local notes later under `
 
 ## Timezone rules (`Intl` / IANA `Asia/Bangkok`)
 
-Take the **system clock instant** (`Date.now()`), not network/API time. Use **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`** when it encodes IANA history. No `@formatjs` tz pack, no pre-1880 error path. Runtimes **without the `Intl` API** are unsupported.
+Take the **system clock instant** (`Date.now()`), not network/API time. Use **`Intl.DateTimeFormat`** with **`timeZone: 'Asia/Bangkok'`** when it encodes IANA history. No `@formatjs` tz pack, no pre-1880 error path.
+
+**No `Intl` (degrade mode):** if `Intl` / `DateTimeFormat` is unavailable, skip `Zone` / Bangkok wall time / announcements. Show **`Math.floor(Date.now() / 1000)`** as a Latin decimal string (Unix seconds), updated each tick. No bells, no Thai word labels.
 
 IANA summary (tests + `bangkokWallManual` constants):
 
@@ -60,7 +62,14 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ### Trigger
 
-When the displayed zone’s hour advances (minute rolls to `00`, or first paint already at `:00` — **do not** re-announce on refresh at `:00` if we can avoid annoyance: announce only on **transition into** `:00` while the page is open). If the tab was backgrounded across the hour, announce on next visible tick if the hour boundary was crossed while hidden (optional; prefer yes so a backgrounded tab still chimes once when noticed).
+When the Bangkok wall **hour int** from `Zone` logic advances to a new value with minute `00` (transition into `:00` while the page is open — **not** on first paint at `:00` after refresh). Use logic hour for triggers, not the display string (`๒๒๐๐` / `2200`). **Disabled in degrade mode** (no `Intl`). If the tab was backgrounded across an hour boundary, announce once on next visible tick for the **current** hour (see overlap rules below).
+
+### Overlap and missed hours
+
+- **At most one announce sequence** at a time (label + chime queue).  
+- **Hour changes during announce:** **supersede** — stop in-flight chimes, run the **new** hour’s label + chime count.  
+- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, if `lastAnnouncedHour ≠ currentHour`, announce **current** hour only (not every skipped hour).  
+- **Refresh at `:00`:** do not announce (no transition from a prior open-session hour).
 
 ### Chime count (Thai six-hour)
 
@@ -172,7 +181,7 @@ Dune alone is not enough for a ReasonReact browser app (React runtime comes from
 ## Implementation order
 
 1. Scaffold `thai-time/`: opam (Melange + ReasonReact) + npm (`react`, `react-dom`, Vite, Jest).
-2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests for all 24 hours (display labels + chime counts + forbidden display strings).
+2. Pure `ThaiClock` mapping + Jest/`melange-jest` tests: for each hour **0–23**, assert `displayLabel` / `chimeCount` match the table; for hours **0, 6, 16, 17, 18** assert labels are **not** the forbidden alternatives listed under “Required wording” (e.g. hour 6 ≠ `ตีหก`, hour 16 ≠ `บ่ายสี่โมง`).
 3. `Zone`: Approach A (`Intl` + BMT probe + `bangkokWallManual` + display numbering `thai`/`latn`). Jest tests:  
    - **Zone:** fixture UTC instants → latn logic `HH:MM` + hour int (incl. `1920-03-31T17:17:55Z` / `17:17:56Z`); **forced `bangkokWallManual`** when BMT probe is stubbed to fail.  
    - **Display:** when `thai` numbering works → Thai HHMM (e.g. `๒๒๐๐`); **forced `latn` display** (stub `thai` construct/format failure or non-Thai digit parts) → Latin HHMM (e.g. `2200`). Same chosen display formatter on manual path.
