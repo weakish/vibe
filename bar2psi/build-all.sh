@@ -18,8 +18,9 @@ build_zig() {
 }
 
 build_lua() {
+  command -v tl >/dev/null || { echo "skip lua: tl not in PATH (luarocks install teal)" >&2; return 1; }
   command -v clx >/dev/null || { echo "skip lua: clx not in PATH" >&2; return 1; }
-  (cd "$ROOT/lua" && clx bar2psi.lua --output bar2psi)
+  (cd "$ROOT/lua" && tl gen --check bar2psi.tl && clx bar2psi.lua --output bar2psi)
 }
 
 ensure_goblin_src() {
@@ -84,7 +85,7 @@ if [ -n "$ZIG_SIZE" ]; then
   printf "| Zig | %s | %s | 1.00x |\n" "$ZIG_SIZE" "$(fmt_kb "$ZIG_SIZE")"
 fi
 if [ -n "${LUA_SIZE:-}" ]; then
-  printf "| Lua (clx) | %s | %s | %s |\n" "$LUA_SIZE" "$(fmt_kb "$LUA_SIZE")" "$(ratio_vs_zig "$ZIG_SIZE" "$LUA_SIZE")"
+  printf "| Teal→Lua (clx) | %s | %s | %s |\n" "$LUA_SIZE" "$(fmt_kb "$LUA_SIZE")" "$(ratio_vs_zig "$ZIG_SIZE" "$LUA_SIZE")"
 fi
 if [ -n "${GO_SIZE:-}" ]; then
   printf "| Go (goblin, stripped) | %s | %s | %s |\n" "$GO_SIZE" "$(fmt_kb "$GO_SIZE")" "$(ratio_vs_zig "$ZIG_SIZE" "$GO_SIZE")"

@@ -2,7 +2,7 @@
 
 The same `bar` -> `psi` converter implemented in three languages, each compiled
 to a single native executable, to compare binary sizes. The interesting pair is
-**clx (Lua) vs Zig**; **Go (via goblin)** is the baseline (expected largest).
+**clx (Teal→Lua) vs Zig**; **Go (via goblin)** is the baseline (expected largest).
 
 Conversion constant: `psi = bar * 14.503773773022` (from `100000 Pa / 6894.757293168 Pa`).
 
@@ -19,8 +19,11 @@ shortest-decimal algorithm, so output could theoretically diverge for some
 | Path | Language | Toolchain |
 |------|----------|-----------|
 | `zig/bar2psi.zig` | Zig | `zig` (native AOT) |
-| `lua/bar2psi.lua` | Lua 5.5 | `clx` (AOT Lua -> C++20 -> native) |
+| `lua/bar2psi.tl` | Teal → Lua 5.5 | `tl gen` then `clx` (AOT Lua → C++20 → native) |
 | `goblin/bar2psi.goblin` | Goblin | `goblin` (transpiles to Go, then `go build`) |
+
+Edit `lua/bar2psi.tl` only. `tl gen --check bar2psi.tl` writes `lua/bar2psi.lua`
+(gitignored; not committed). Run `tl gen` before `clx` (or use `./build-all.sh`).
 
 The Zig and Lua versions read the bar value from a CLI argument. Goblin has no
 argv API, so it reads stdin (`echo <bar> | bar2psi`) instead.
@@ -47,12 +50,18 @@ zig build-exe -O ReleaseSmall -fstrip -fsingle-threaded bar2psi.zig
 ```
 Written for Zig 0.16.0 (new `std.process.Init` main signature and `std.Io` writer).
 
-### Lua via clx
+### Teal → Lua via clx
+Needs `tl` (`luarocks install teal`) and `clx` (see below).
+
 ```sh
 cd lua
+tl gen --check bar2psi.tl   # typecheck + write bar2psi.lua (gitignored)
 clx bar2psi.lua --output bar2psi
 ./bar2psi 2.5        # 2.5 bar = 36.259434432555004 32.6334909892995 27.194575824416255 psi
 ```
+`tlconfig.lua` sets `gen_target = "5.4"` and `gen_compat = "off"` (closest Teal
+target to clx’s Lua 5.5; no compat53 shims).
+
 Build clx from source (`git clone https://github.com/samyeyo/clx && cd clx &&
 ./build.sh install`). After `cmake --install`, if compiling fails with
 `clx_simd.h` not found: upstream's `CMakeLists.txt` only installs `clx.h` and
@@ -104,7 +113,7 @@ with g++:
 cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ && cmake --build build
 ```
 
-(See **Lua via clx** above for install, `clx_simd.h`, and `--minimal` notes.)
+(See **Teal → Lua via clx** above for install, `clx_simd.h`, and `--minimal` notes.)
 
 **goblin** — known upstream issue: `goblin build-exe` pins an older runtime
 (`defaultGoblinRuntimeVersion`) than the transpiler emits, so a plain run fails
@@ -133,7 +142,7 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
 | Language (toolchain) | Size (bytes) | Approx | vs Zig | Linking |
 |----------------------|-------------:|-------:|-------:|---------|
 | Zig                  | 160,888      | ~157 KB | 1.00x | static, self-contained |
-| Lua (clx)            | 186,776      | ~182 KB | 1.16x | dynamic (libstdc++, libm, libc) |
+| Teal→Lua (clx)       | 186,776      | ~182 KB | 1.16x | dynamic (libstdc++, libm, libc) |
 | Go (goblin, stripped)| 2,095,288   | ~2.0 MB | 13.02x | dynamic (libc) |
 
 ### macOS (Darwin x86_64)
@@ -144,7 +153,7 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
 | Language (toolchain) | Size (bytes) | Approx | vs Zig | Linking |
 |----------------------|-------------:|-------:|-------:|---------|
 | Zig                  | 136,284      | ~133 KB | 1.00x | static, self-contained |
-| Lua (clx)            | 302,144      | ~295 KB | 2.22x | dynamic (libc++, libSystem) |
+| Teal→Lua (clx)       | 302,144      | ~295 KB | 2.22x | dynamic (libc++, libSystem) |
 | Go (goblin, stripped)| 2,512,824   | ~2.45 MB | 18.44x | dynamic (libc) |
 
 ### Takeaways
@@ -180,9 +189,9 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
   on-disk size excludes shared libs the binary still needs.
 - Size tables cover Linux x86_64 and macOS Intel only; no arm64 (or other
   arches) yet.
-- Repo hygiene: built binaries and leftover goblin artifacts
-  (`bar2psi.{ldflags,stripped,unstripped}`) sit next to source; keep them
-  gitignored and cleaned up.
+- Repo hygiene: built binaries, Teal output (`lua/bar2psi.lua`), and leftover
+  goblin artifacts (`bar2psi.{ldflags,stripped,unstripped}`) are gitignored;
+  clean them up locally as needed.
 
 ### TODO
 
@@ -193,3 +202,7 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
 - Upstream goblin `build-exe` still needs a matching source-checkout workaround
   (see `upstream-goblin-build-exe-runtime-mismatch.md`); drop the workaround
   once fixed.
+- Bump `lua/tlconfig.lua` `gen_target` from `"5.4"` to `"5.5"` once a Teal
+  release ships that target (already on `master` via
+  [teal-language/tl#1122](https://github.com/teal-language/tl/pull/1122); not
+  in v0.24.8).
