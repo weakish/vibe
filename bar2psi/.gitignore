@@ -1,0 +1,16 @@
+# Compiled executables (source files keep their extension, so this only
+# matches the built binaries named exactly "bar2psi")
+bar2psi
+
+# Zig build cache
+.zig-cache/
+zig-cache/
+
+# Goblin transpiled Go output, if produced locally
+bar2psi.go
+bar2psi.unstripped
+bar2psi.stripped
+bar2psi.ldflags
+
+# clx intermediate C++ (if left behind)
+*.cpp
