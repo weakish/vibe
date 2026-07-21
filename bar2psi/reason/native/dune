@@ -1,0 +1,5 @@
+(executable
+ (name bar2psi)
+ (modes native)
+ (modules Bar2psi)
+ (libraries shared))

@@ -1,10 +1,14 @@
 # Compiled executables (source files keep their extension, so this only
 # matches the built binaries named exactly "bar2psi")
 bar2psi
+bar2psi-js
 
 # Zig build cache
 .zig-cache/
 zig-cache/
+
+# Dune / Melange
+reason/_build/
 
 # Goblin transpiled Go output, if produced locally
 bar2psi.go

@@ -1,18 +1,20 @@
-# bar -> psi converter (three languages, executable-size comparison)
+# bar -> psi converter (multi-language executable-size comparison)
 
-The same `bar` -> `psi` converter implemented in three languages, each compiled
-to a single native executable, to compare binary sizes. The interesting pair is
-**clx (Teal→Lua) vs Zig**; **Go (via goblin)** is the baseline (expected largest).
+The same `bar` -> `psi` converter implemented in several languages, each
+compiled to a single native (or Deno-bundled) executable, to compare binary
+sizes. The interesting pair is **clx (Teal→Lua) vs Zig**; **Go (via goblin)**
+is the baseline (expected largest among AOT natives). Reason adds an OCaml
+native build plus a Melange→JS path frozen with `deno compile`.
 
 Conversion constant: `psi = bar * 14.503773773022` (from `100000 Pa / 6894.757293168 Pa`).
 
-All three CLIs print the same format, e.g.
+All CLIs print the same format, e.g.
 `2.5 bar = 36.259434432555004 32.6334909892995 27.194575824416255 psi`
 (psi, psi × 9/10, psi × 3/4), using shortest round-trip decimal formatting
-(Zig `{d}` / Goblin Go `FormatFloat('f', -1)` / Lua helper intended to match).
-The Lua helper scans fixed `'f'` precisions rather than Go/Zig's
-shortest-decimal algorithm, so output could theoretically diverge for some
-`f64` values; none observed for bar inputs in smoke tests.
+(Zig `{d}` / Goblin Go `FormatFloat('f', -1)` / Lua and Reason helpers
+intended to match). The Lua/Reason helpers scan fixed `'f'` precisions rather
+than Go/Zig's shortest-decimal algorithm, so output could theoretically
+diverge for some `f64` values; none observed for bar inputs in smoke tests.
 
 ## Layout
 
@@ -21,11 +23,13 @@ shortest-decimal algorithm, so output could theoretically diverge for some
 | `zig/bar2psi.zig` | Zig | `zig` (native AOT) |
 | `lua/bar2psi.tl` | Teal → Lua 5.5 | `tl gen` then `clx` (AOT Lua → C++20 → native) |
 | `goblin/bar2psi.goblin` | Goblin | `goblin` (transpiles to Go, then `go build`) |
+| `reason/` | Reason | dune + ocamlopt (native); Melange → `deno compile` (JS binary) |
 
-Edit `lua/bar2psi.tl` only. `tl gen --check bar2psi.tl` writes `lua/bar2psi.lua`
-(gitignored; not committed). Run `tl gen` before `clx` (or use `./build-all.sh`).
+Edit `lua/bar2psi.tl` only for the Lua port. `tl gen --check bar2psi.tl` writes
+`lua/bar2psi.lua` (gitignored; not committed). Run `tl gen` before `clx` (or
+use `./build-all.sh`).
 
-The Zig and Lua versions read the bar value from a CLI argument. Goblin has no
+Zig, Lua, and Reason read the bar value from a CLI argument. Goblin has no
 argv API, so it reads stdin (`echo <bar> | bar2psi`) instead.
 
 ## Reproducibility
@@ -37,7 +41,8 @@ From this directory:
 ```
 
 The script builds every variant available on the current machine, runs a smoke
-test, and prints an executable-size table. Set `GOBLIN_SRC` to an existing
+test against the expected `2.5 bar = …` line (requires Zig; fails on mismatch
+or crash), and prints executable-size tables. Set `GOBLIN_SRC` to an existing
 goblin checkout to skip cloning.
 
 ## Build + run
@@ -98,6 +103,36 @@ errors go to stdout via `print`, like Lua/clx; Zig writes those to stderr.
 
 Or use `GOFLAGS='-ldflags=-s -w'` when invoking `goblin build-exe` (as
 `build-all.sh` does) and `strip` afterwards.
+
+### Reason (native + Deno JS binary)
+Needs an opam switch with `dune`, `melange`, and `reason` (see
+`reason/bar2psi.opam`). Deno is only required for the JS binary. A switch named
+`bar2psi-reason` is picked up automatically by `reason/ensure-opam.sh` when the
+current env cannot build Reason targets:
+
+```sh
+opam switch create bar2psi-reason 5.2.1
+eval $(opam env --switch=bar2psi-reason)
+cd reason && opam install . --deps-only
+```
+
+```sh
+cd reason
+./build.sh native   # ocamlopt only (no deno)
+./build.sh js       # Melange → deno compile (needs deno)
+./build.sh          # native; js if deno is on PATH (Melange errors fail)
+./bar2psi 2.5       # ocamlopt native
+./bar2psi-js 2.5    # Melange ES modules → deno compile
+```
+
+Shared conversion lives in `reason/shared/Convert.re`. The native CLI is
+`reason/native/Bar2psi.re` (`Sys.argv`); the Melange entry is
+`reason/Bar2psi_js.re` (`Deno.args`). Native builds with dune's custom
+`release_small` profile (`-O2 -noassert`, no `-g`/`-O3`); Melange uses the
+default profile. From `_build/default/dist`, `deno check` validates the Melange
+emit, then `deno compile --no-check` bundles it (check once, skip re-check on
+compile); both use `--node-modules-dir=manual` so Melange’s `node_modules`
+layout resolves.
 
 ### Cursor Cloud dev VM notes
 
@@ -176,12 +211,13 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
   pulls in `fs`/`os`, which inflates the Go binary and muddies “same program,
   different language.” Goblin is Unix-only (`/dev/stdin`); Windows repro needs
   a code change.
-- Error handling diverges: Zig/Goblin distinguish bad input; Lua treats
-  `tonumber` failure like a missing arg (`usage:` only). Zig writes errors to
-  stderr; Lua/Goblin write them to stdout.
-- Lua `fmt` is only an approximation of Zig `{d}` / Go shortest-decimal; fine
-  for smoke-test bar values, fragile if identical output is treated as a hard
-  invariant.
+- Error handling diverges: Zig/Goblin/Reason-native distinguish bad input; Lua
+  treats `tonumber` failure like a missing arg (`usage:` only). Zig and
+  Reason-native write errors to stderr; Lua/Goblin/Reason-JS write them to
+  stdout.
+- Lua/Reason `fmt` is only an approximation of Zig `{d}` / Go shortest-decimal;
+  fine for smoke-test bar values, fragile if identical output is treated as a
+  hard invariant.
 - macOS “Zig = static, self-contained” is overstated: Zig still links
   `libSystem`. Prefer “no libc++” over “fully static” on Darwin.
 - Byte counts are not apples-to-apples across toolchains: Zig is mostly
@@ -189,16 +225,16 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
   on-disk size excludes shared libs the binary still needs.
 - Size tables cover Linux x86_64 and macOS Intel only; no arm64 (or other
   arches) yet.
-- Repo hygiene: built binaries, Teal output (`lua/bar2psi.lua`), and leftover
-  goblin artifacts (`bar2psi.{ldflags,stripped,unstripped}`) are gitignored;
-  clean them up locally as needed.
+- Repo hygiene: built binaries (`bar2psi`, `bar2psi-js`), Teal output
+  (`lua/bar2psi.lua`), Dune `_build/`, and leftover goblin artifacts
+  (`bar2psi.{ldflags,stripped,unstripped}`) are gitignored; clean them up
+  locally as needed.
 
 ### TODO
 
-- Deduplicate the conversion constant `14.503773773022` (hardcoded in three
+- Deduplicate the conversion constant `14.503773773022` (hardcoded in several
   sources).
-- Expand smoke beyond `2.5`; make `build-all.sh` fail if the three outputs
-  differ.
+- Expand smoke beyond `2.5`.
 - Upstream goblin `build-exe` still needs a matching source-checkout workaround
   (see `upstream-goblin-build-exe-runtime-mismatch.md`); drop the workaround
   once fixed.

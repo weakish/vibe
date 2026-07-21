@@ -1,0 +1,11 @@
+;; Size-oriented native build (closest OCaml analogue to zig -O ReleaseSmall).
+(env
+ (release_small
+  (ocamlopt_flags (:standard -O2 -noassert \ -g))))
+
+(melange.emit
+ (target dist)
+ (alias melange)
+ (libraries shared)
+ (preprocess (pps melange.ppx))
+ (module_systems (es6 mjs)))
