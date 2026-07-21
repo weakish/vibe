@@ -99,7 +99,8 @@ echo 2.5 | ./bar2psi    # 2.5 bar = 36.259434432555004 32.6334909892995 27.19457
 ```
 
 Input is read from `/dev/stdin` (Unix only: Linux/macOS). Usage and parse
-errors go to stdout via `print`, like Lua/clx; Zig writes those to stderr.
+errors go to stderr via `fs.append("/dev/stderr", …)` (Goblin has no
+`eprint`; same Unix-only path constraint as stdin).
 
 Or use `GOFLAGS='-ldflags=-s -w'` when invoking `goblin build-exe` (as
 `build-all.sh` does) and `strip` afterwards.
@@ -207,14 +208,14 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
 
 ### FIXME
 
-- CLI surface is not comparable: Zig/Lua take argv; Goblin reads stdin and
-  pulls in `fs`/`os`, which inflates the Go binary and muddies “same program,
-  different language.” Goblin is Unix-only (`/dev/stdin`); Windows repro needs
-  a code change.
-- Error handling diverges: Zig/Goblin/Reason-native distinguish bad input; Lua
-  treats `tonumber` failure like a missing arg (`usage:` only). Zig and
-  Reason-native write errors to stderr; Lua/Goblin/Reason-JS write them to
-  stdout.
+- CLI surface is not comparable: Zig/Lua/Reason take argv; Goblin reads stdin
+  and pulls in `fs`/`os`, which inflates the Go binary and muddies “same
+  program, different language.” Goblin is Unix-only (`/dev/stdin` and
+  `/dev/stderr`); Windows repro needs a code change.
+- Error handling diverges: Zig/Goblin/Reason distinguish bad input; Lua treats
+  `tonumber` failure like a missing arg (`usage:` only). Zig, Goblin, and both
+  Reason builds write errors to stderr; Lua/clx still uses stdout (`io.write`)
+  because clx has no `io.stderr`.
 - Lua/Reason `fmt` is only an approximation of Zig `{d}` / Go shortest-decimal;
   fine for smoke-test bar values, fragile if identical output is treated as a
   hard invariant.

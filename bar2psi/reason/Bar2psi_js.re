@@ -2,6 +2,7 @@
 
 [@mel.scope "Deno"] external args: array(string) = "args";
 [@mel.scope "Deno"] external exit: int => unit = "exit";
+[@mel.scope "console"] external console_error: string => unit = "error";
 
 let () = {
   switch (args) {
@@ -9,11 +10,11 @@ let () = {
     switch (Convert.parse_bar(raw)) {
     | Some(bar) => print_endline(Convert.line(bar))
     | None =>
-      print_endline("error: '" ++ raw ++ "' is not a number");
+      console_error("error: '" ++ raw ++ "' is not a number");
       exit(1);
     }
   | _ =>
-    print_endline("usage: bar2psi <bar>");
+    console_error("usage: bar2psi <bar>");
     exit(1);
   };
 };

@@ -2,6 +2,7 @@
 # psi = bar * 100000 / 6894.757293168
 # Goblin reads the bar value from stdin (Go-compiled size baseline).
 # Float print uses Go FormatFloat('f', -1); Zig/Lua match that shortest decimal.
+# Usage/errors go to stderr via /dev/stderr (Unix; Goblin has no eprint builtin).
 
 import "fs"
 import "os"
@@ -10,9 +11,13 @@ func bar_to_psi(bar) {
     return bar * 14.503773773022
 }
 
+func eprint(msg) {
+    fs.append("/dev/stderr", msg + "\n")
+}
+
 var raw = fs.open("/dev/stdin").read().trim()
 if raw == "" {
-    print("usage: echo <bar> | bar2psi")
+    eprint("usage: echo <bar> | bar2psi")
     os.exit(1)
 }
 try {
@@ -24,7 +29,7 @@ try {
     print(bar, "bar =", psi, psi_90, psi_75, "psi")
 } catch e {
     if e.is(ValueError) {
-        print("error: '" + raw + "' is not a number")
+        eprint("error: '" + raw + "' is not a number")
         os.exit(1)
     }
     raise e
