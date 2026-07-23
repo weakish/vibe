@@ -26,7 +26,7 @@ Agents like fewer states and fewer “interrupted operation” modes. jj’s mod
 
 ## Mapped to this repo’s agent habits
 
-1. **Multi-agent cwd** — Git forces social rules; jj reduces *repo* corruption risk but **not** WC file races. Still one workspace (or worktree) per agent.
+1. **Multi-agent cwd** — Git forces social rules; jj reduces *repo* corruption risk but **not** working-copy file races. Still one workspace (or worktree) per agent.
 2. **Review → new commit** — In git, follow-up commits are the safe default. In jj, the natural move is often `jj squash` / edit `@` / split — closer to amend. Rephrase the skill as “new *change*” vs “edit current change,” and keep “don’t rewrite published bookmarks” as the hard line.
 3. **Message hygiene** — Same policy either way: report; don’t auto-rewrite. jj just makes accidental rewrite more tempting.
 4. **Interchange** — Stay colocated: agents can use jj locally; `master` / PRs stay git for GitHub.
