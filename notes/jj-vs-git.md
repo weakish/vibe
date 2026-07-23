@@ -2,18 +2,18 @@
 
 **jj fits agent-heavy workflows better; git stays the interchange and ecosystem default.**
 
-For this repo’s agent rules (multi-agent cwd, review → follow-up commit, message hygiene = human rewrite), jj removes a lot of ceremony agents get wrong — but does not erase the need for isolation and review policy.
+For this repo’s agent rules (multi-agent cwd, review → follow-up commit, message hygiene = report-only; human decides rewrite), jj removes a lot of ceremony agents get wrong — but does not erase the need for isolation and review policy.
 
 ## Where jj treats agents as first-class
 
 | Concern | Git (status quo) | jj |
-|--------|------------------|-----|
-| Working state | Index + WC + stash; agents mishandle `add` / `stash` / `reset` | WC is always a commit (`@`); snapshot every command |
+| --- | --- | --- |
+| Working state | Index + working copy + stash; agents mishandle `add` / `stash` / `reset` | Working copy is always a commit (`@`); snapshot every command |
 | Concurrent local editors | Lockfiles; AGENTS.md must say “don’t touch others’ files” | Operation log merges divergent ops; conflicts recorded, repo not corrupt |
 | Conflicts | Block rebase/merge mid-flight | First-class in commits; work continues; resolve later |
 | Undo agent mistakes | reflog / careful reset (this repo bans hard reset) | `jj undo` / `jj op log` / `jj op restore` as normal tools |
 | Rewrite / squash | Scary; skills fence amend and message-only rewrite | Rewrites are routine; change identity is stable (`change_id`), commit id moves |
-| Parallel agents | Worktrees or “same tree, stay in your lane” | Prefer **one workspace per agent**; still don’t share a WC |
+| Parallel agents | Worktrees or “same tree, stay in your lane” | Prefer **one workspace per agent**; still don’t share a working copy |
 
 Agents like fewer states and fewer “interrupted operation” modes. jj’s model matches that; git’s staged / unstaged / detached / rebase-in-progress does not.
 
