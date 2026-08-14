@@ -30,8 +30,7 @@ Edit `lua/bar2psi.tl` only for the Lua port. `tl gen --check bar2psi.tl` writes
 `lua/bar2psi.lua` (gitignored; not committed). Run `tl gen` before `clx` (or
 use `./build-all.sh`).
 
-Zig, Lua, and Reason read the bar value from a CLI argument. Goblin has no
-argv API, so it reads stdin (`echo <bar> | bar2psi`) instead.
+Zig, Lua, Reason, and Goblin read the bar value from a CLI argument.
 
 ## Reproducibility
 
@@ -43,8 +42,9 @@ From this directory:
 
 The script builds every variant available on the current machine, runs a smoke
 test against the expected `2.5 bar = …` line (requires Zig; fails on mismatch
-or crash), and prints executable-size tables. Set `GOBLIN_SRC` to an existing
-goblin checkout to skip cloning.
+or crash), and prints executable-size tables. Set `GOBLIN_SRC` to a goblin
+checkout already at the `GOBLIN_COMMIT` pin in `build-all.sh` to skip cloning;
+a different HEAD skips Goblin (no `/tmp` fallback).
 
 ## Build + run
 
@@ -92,19 +92,19 @@ You may also see harmless linker warnings about the macOS deployment target
 
 ### Goblin (Go baseline)
 ```sh
-go install github.com/aisk/goblin@latest
+go install github.com/aisk/goblin@c6f7001043e00275fc66eafb5c400db3789cee1c
 cd goblin
-goblin build-exe bar2psi.goblin
+GOFLAGS='-ldflags=-s -w' goblin build-exe bar2psi.goblin
 strip bar2psi
-echo 2.5 | ./bar2psi    # 2.5 bar = 36.259434432555004 32.6334909892995 27.194575824416255 psi
+./bar2psi 2.5    # 2.5 bar = 36.259434432555004 32.6334909892995 27.194575824416255 psi
 ```
 
-Input is read from `/dev/stdin` (Unix only: Linux/macOS). Usage and parse
-errors go to stderr via `fs.append("/dev/stderr", …)` (Goblin has no
-`eprint`; same Unix-only path constraint as stdin).
-
-Or use `GOFLAGS='-ldflags=-s -w'` when invoking `goblin build-exe` (as
-`build-all.sh` does) and `strip` afterwards.
+Needs Goblin `c6f7001` for `os.argv()` and builtin `eprint`. Its versioned
+`go install` binary derives the generated runtime requirement from build info,
+so `build-exe` works outside a Goblin checkout. Usage and parse errors go to
+stderr via `eprint`. The Goblin step in `build-all.sh` needs `git` and Go: it
+checks out and runs this pin itself, so it does not depend on whichever
+`goblin` happens to be on `PATH`.
 
 ### Reason (native + Deno JS binary)
 Needs an opam switch with `dune`, `melange`, and `reason` (see
@@ -151,9 +151,9 @@ resolve.
 
 ### Cursor Cloud dev VM notes
 
-The clx and goblin steps below were debugged on a **Cursor Cloud development
-VM** (Linux x86_64). They are not required on every machine; use them when
-building in that environment.
+The clx step below was debugged on a **Cursor Cloud development VM** (Linux
+x86_64). It is not required on every machine; use it when building in that
+environment.
 
 **clx** — On the Cloud
 dev VM, `/etc/alternatives/c++` points at a broken `clang++`, so configure clx
@@ -164,19 +164,6 @@ cmake -S . -B build -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ && cmake --b
 ```
 
 (See **Teal → Lua via clx** above for install, `clx_simd.h`, and `--minimal` notes.)
-
-**goblin** — known upstream issue: `goblin build-exe` pins an older runtime
-(`defaultGoblinRuntimeVersion`) than the transpiler emits, so a plain run fails
-with `undefined: object.CallArgs`. Workaround: run `build-exe` from inside a
-checkout of the matching goblin commit (the transpiler adds a local `replace`
-directive when it finds a goblin source tree):
-
-```sh
-git clone https://github.com/aisk/goblin ~/goblin-src
-cd ~/goblin-src && git checkout 14a7a3faa9da     # == installed CLI commit
-GOFLAGS='-ldflags=-s -w' goblin build-exe /abs/path/to/bar2psi.goblin -o /abs/path/to/bar2psi
-strip /abs/path/to/bar2psi
-```
 
 ## Executable size comparison
 
@@ -214,18 +201,14 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
 - On macOS Intel, clx is ~2.2× Zig — still far smaller than Go, but a wider gap
   than on Linux (libc++/runtime differences).
 - Go (goblin) is an order of magnitude larger even after stripping (~13× on
-  Linux, ~18× on macOS) — it bundles the Go runtime + GC, and grows further
-  with `fs`/`os` for stdin input. Confirms Go as the heavyweight baseline.
+  Linux, ~18× on macOS) — it bundles the Go runtime + GC. Confirms Go as the
+  heavyweight baseline.
 - Absolute sizes vary by OS and linker; compare within a platform, not across.
 
 ## Known gaps
 
 ### FIXME
 
-- CLI surface is not comparable: Zig/Lua/Reason take argv; Goblin reads stdin
-  and pulls in `fs`/`os`, which inflates the Go binary and muddies “same
-  program, different language.” Goblin is Unix-only (`/dev/stdin` and
-  `/dev/stderr`); Windows repro needs a code change.
 - Error handling diverges: Zig/Goblin/Reason distinguish bad input; Lua treats
   `tonumber` failure like a missing arg (`usage:` only). Zig, Goblin, and both
   Reason builds write errors to stderr; Lua/clx still uses stdout (`io.write`)
@@ -250,9 +233,6 @@ Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
 - Deduplicate the conversion constant `14.503773773022` (hardcoded in several
   sources).
 - Expand smoke beyond `2.5`.
-- Upstream goblin `build-exe` still needs a matching source-checkout workaround
-  (see `upstream-goblin-build-exe-runtime-mismatch.md`); drop the workaround
-  once fixed.
 - Bump `lua/tlconfig.lua` `gen_target` from `"5.4"` to `"5.5"` once a Teal
   release ships that target (already on `master` via
   [teal-language/tl#1122](https://github.com/teal-language/tl/pull/1122); not

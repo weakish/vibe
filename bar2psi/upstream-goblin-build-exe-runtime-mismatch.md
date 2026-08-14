@@ -1,11 +1,14 @@
-# `goblin build-exe` generates a `go.mod` with an incompatible Goblin runtime
+# `goblin build-exe` generated a `go.mod` with an incompatible Goblin runtime
 
 **Target project:** [aisk/goblin](https://github.com/aisk/goblin)
 
-`goblin build-exe` fails when the CLI is installed normally and run outside a
-Goblin source checkout. The transpiler in the installed CLI emits calls to the
-current runtime API, but the generated `go.mod` requires an older, incompatible
-version of `github.com/aisk/goblin`.
+**Status:** fixed in Goblin `c6f7001` (`goblinRuntimeVersion` from build info).
+The reproduction below is historical (`14a7a3f`).
+
+Through `14a7a3f`, `goblin build-exe` failed when the CLI was installed
+normally and run outside a Goblin source checkout. The transpiler in the
+installed CLI emitted calls to the current runtime API, but the generated
+`go.mod` required an older, incompatible version of `github.com/aisk/goblin`.
 
 ## Reproduction
 
@@ -105,32 +108,23 @@ CI (`.github/workflows/ci.yml`) only runs `go test ./...` inside the repo
 checkout. That path naturally has a Goblin `go.mod` nearby, so it **does not**
 catch the `go install` → clean-dir `build-exe` failure mode.
 
-## Workaround (current)
+## Resolution (`c6f7001`)
+
+Goblin `c6f7001043e00275fc66eafb5c400db3789cee1c` sets `goblinRuntimeVersion`
+from `runtime/debug.ReadBuildInfo` when the CLI was installed at a released or
+pseudo-version. The generated `require github.com/aisk/goblin` follows the
+installed CLI instead of drifting from the transpiler. Development builds
+keep the local-checkout `replace` (`GOBLIN_ROOT` still wins over the installed
+version); the hard-coded default remains the fallback when build metadata has
+no usable version (`(devel)`).
+
+bar2psi pins that revision for `os.argv()` / builtin `eprint`. A versioned
+`go install` no longer needs a Goblin source checkout for `build-exe`:
 
 ```sh
-go install github.com/aisk/goblin@14a7a3faa9da
-
-# Use the same commit as the installed CLI:
-git clone https://github.com/aisk/goblin ~/goblin-src
-cd ~/goblin-src && git checkout 14a7a3faa9da
-
-# Run build-exe FROM the checkout so detectGoblinRoot() finds go.mod
-goblin build-exe /abs/path/to/hello.goblin -o /abs/path/to/hello
+go install github.com/aisk/goblin@c6f7001043e00275fc66eafb5c400db3789cee1c
+GOFLAGS='-ldflags=-s -w' goblin build-exe /abs/path/to/hello.goblin -o /abs/path/to/hello
 ```
-
-Alternatively: `goblin run hello.goblin` (interpreter) avoids the generated
-`go.mod` path entirely.
-
-## Suggested fix
-
-Do not let the runtime version drift independently from the transpiler. Derive
-the generated `require github.com/aisk/goblin` version from the CLI's build
-metadata (`runtime/debug.ReadBuildInfo`) when it is a released/pseudo-version.
-Retain the local-checkout `replace` behavior for development builds, and use a
-documented fallback only when build metadata has no usable version.
-
-At minimum, update `defaultGoblinRuntimeVersion` whenever runtime APIs change,
-but that remains vulnerable to another drift.
 
 ## Regression coverage
 

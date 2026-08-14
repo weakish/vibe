@@ -1,25 +1,19 @@
 # bar -> psi converter (transpiled to Go, then compiled with `goblin build-exe`)
 # psi = bar * 100000 / 6894.757293168
-# Goblin reads the bar value from stdin (Go-compiled size baseline).
 # Float print uses Go FormatFloat('f', -1); Zig/Lua match that shortest decimal.
-# Usage/errors go to stderr via /dev/stderr (Unix; Goblin has no eprint builtin).
 
-import "fs"
 import "os"
 
 func bar_to_psi(bar) {
     return bar * 14.503773773022
 }
 
-func eprint(msg) {
-    fs.append("/dev/stderr", msg + "\n")
-}
-
-var raw = fs.open("/dev/stdin").read().trim()
-if raw == "" {
-    eprint("usage: echo <bar> | bar2psi")
+var args = os.argv()
+if args.size() != 2 {
+    eprint("usage: bar2psi <bar>")
     os.exit(1)
 }
+var raw = args[1]
 try {
     var bar = Float(value=raw)
     var psi = bar_to_psi(bar)
