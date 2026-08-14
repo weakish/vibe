@@ -74,11 +74,10 @@
 
         <h3>Linux x86_64</h3>
         <p class="meta">
-          Measured 2026-07-17 on commit <code>5f589d7</code> via
-          <code>./build-all.sh</code> (zig 0.16.0, clx 0.1.0, goblin
-          <code>14a7a3faa9da</code>, Go 1.22.2). Reason native and
-          Melange→Deno sizes are not in this snapshot (those ports landed
-          later); re-run <code>./build-all.sh</code> for current numbers.
+          Measured 2026-08-14 on commit <code>281f4dd</code> via
+          <code>./build-all.sh</code> (zig 0.16.0, clx 0.3.0, goblin
+          <code>c6f7001</code>, Go 1.24.4, ocamlopt 5.2.1, deno 2.9.5).
+          Re-run <code>./build-all.sh</code> for current numbers.
         </p>
         <div class="table-wrap">
           <table>
@@ -94,24 +93,38 @@
             <tbody>
               <tr>
                 <td>Zig</td>
-                <td class="num">160,888</td>
+                <td class="num">160,480</td>
                 <td class="num">~157 KB</td>
                 <td class="num">1.00×</td>
                 <td>static</td>
               </tr>
               <tr>
                 <td>Teal→Lua (clx)</td>
-                <td class="num">186,776</td>
-                <td class="num">~182 KB</td>
-                <td class="num">1.16×</td>
+                <td class="num">175,240</td>
+                <td class="num">~171 KB</td>
+                <td class="num">1.09×</td>
                 <td>dynamic (libstdc++, libm, libc)</td>
               </tr>
               <tr>
+                <td>Reason (ocamlopt)</td>
+                <td class="num">849,312</td>
+                <td class="num">~829 KB</td>
+                <td class="num">5.29×</td>
+                <td>dynamic (libm, libc)</td>
+              </tr>
+              <tr>
                 <td>Go (goblin, stripped)</td>
-                <td class="num">2,095,288</td>
-                <td class="num">~2.0 MB</td>
-                <td class="num">13.02×</td>
+                <td class="num">2,872,256</td>
+                <td class="num">~2.8 MB</td>
+                <td class="num">17.90×</td>
                 <td>dynamic (libc)</td>
+              </tr>
+              <tr>
+                <td>Reason→JS (deno compile)</td>
+                <td class="num">105,369,288</td>
+                <td class="num">~100 MB</td>
+                <td class="num">656.6×</td>
+                <td>embeds Deno runtime</td>
               </tr>
             </tbody>
           </table>
@@ -119,8 +132,10 @@
 
         <h3>macOS Intel</h3>
         <p class="meta">
-          Same commit and script (Go 1.26.5). Absolute sizes differ; compare
-          within a platform.
+          Measured 2026-08-14 on commit <code>0e91e18</code> via
+          <code>./build-all.sh</code> (zig 0.16.0, clx 0.1.0, goblin
+          <code>c6f7001</code>, Go 1.26.5, ocamlopt 5.2.1, deno 2.9.3).
+          Absolute sizes differ; compare within a platform.
         </p>
         <div class="table-wrap">
           <table>
@@ -149,11 +164,25 @@
                 <td>dynamic (libc++, libSystem)</td>
               </tr>
               <tr>
+                <td>Reason (ocamlopt)</td>
+                <td class="num">691,136</td>
+                <td class="num">~675 KB</td>
+                <td class="num">5.07×</td>
+                <td>dynamic (libSystem)</td>
+              </tr>
+              <tr>
                 <td>Go (goblin, stripped)</td>
-                <td class="num">2,512,824</td>
-                <td class="num">~2.45 MB</td>
-                <td class="num">18.44×</td>
-                <td>dynamic (libc)</td>
+                <td class="num">3,044,632</td>
+                <td class="num">~2.9 MB</td>
+                <td class="num">22.34×</td>
+                <td>dynamic (libSystem, libresolv)</td>
+              </tr>
+              <tr>
+                <td>Reason→JS (deno compile)</td>
+                <td class="num">81,952,480</td>
+                <td class="num">~78 MB</td>
+                <td class="num">601.3×</td>
+                <td>embeds Deno runtime</td>
               </tr>
             </tbody>
           </table>
@@ -162,11 +191,17 @@
         <h3>Takeaways</h3>
         <ul>
           <li>
-            On Linux, clx and Zig are close; Zig is ~14% smaller and fully
+            On Linux, clx and Zig are close; Zig is ~8% smaller and fully
             static (clx’s on-disk size excludes libstdc++/libm).
           </li>
           <li>
-            On macOS Intel the gap widens (~2.2×) but both still dwarf Go.
+            Reason ocamlopt sits between them and Go (~5× Zig);
+            Melange→<code>deno compile</code> embeds Deno (~78–100 MB
+            by platform).
+          </li>
+          <li>
+            On macOS Intel the clx gap widens (~2.2×); Reason ocamlopt is
+            ~5× Zig. Both remain far smaller than Go.
           </li>
           <li>
             Goblin/Go is an order of magnitude larger even stripped — runtime +

@@ -11,7 +11,7 @@ source "$REASON/ensure-opam.sh"
 
 cd "$REASON"
 ensure_reason_opam melange || {
-  echo "dune/melange not available (opam switch bar2psi-reason + opam install . --deps-only)" >&2
+  echo "dune/refmt/melange not available (opam switch bar2psi-reason + opam install . --deps-only)" >&2
   exit 1
 }
 

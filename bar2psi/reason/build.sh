@@ -19,7 +19,7 @@ die_or_skip() {
 
 build_native() {
   if ! ensure_reason_opam; then
-    die_or_skip "dune not available (opam switch bar2psi-reason + opam install . --deps-only)"
+    die_or_skip "dune/refmt not available (opam switch bar2psi-reason + opam install . --deps-only)"
     return 1
   fi
   dune build --profile release_small native/bar2psi.exe
@@ -30,7 +30,7 @@ build_native() {
 
 build_js() {
   if ! ensure_reason_opam melange; then
-    die_or_skip "dune/melange not available (opam switch bar2psi-reason + opam install . --deps-only)"
+    die_or_skip "dune/refmt/melange not available (opam switch bar2psi-reason + opam install . --deps-only)"
     return 1
   fi
   if ! command -v deno >/dev/null; then

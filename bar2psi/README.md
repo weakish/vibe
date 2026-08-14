@@ -171,38 +171,46 @@ Release/size-optimized builds (`zig -O ReleaseSmall -fstrip`, clx default,
 `goblin build-exe` with `-ldflags=-s -w` plus `strip`). Re-run `./build-all.sh`
 to refresh numbers on your platform.
 
-### Linux x86_64 (Cursor Cloud dev VM)
+### Linux x86_64 (Cursor Cloud / OrbStack VM)
 
-Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
-0.1.0, goblin `14a7a3faa9da`, Go 1.22.2).
+Measured 2026-08-14 on commit `281f4dd` via `./build-all.sh` (zig 0.16.0, clx
+0.3.0, goblin `c6f7001`, Go 1.24.4, ocamlopt 5.2.1, deno 2.9.5).
 
 | Language (toolchain) | Size (bytes) | Approx | vs Zig | Linking |
 |----------------------|-------------:|-------:|-------:|---------|
-| Zig                  | 160,888      | ~157 KB | 1.00x | static, self-contained |
-| Teal→Lua (clx)       | 186,776      | ~182 KB | 1.16x | dynamic (libstdc++, libm, libc) |
-| Go (goblin, stripped)| 2,095,288   | ~2.0 MB | 13.02x | dynamic (libc) |
+| Zig                  | 160,480      | ~157 KB | 1.00x | static, self-contained |
+| Teal→Lua (clx)       | 175,240      | ~171 KB | 1.09x | dynamic (libstdc++, libm, libc) |
+| Reason (ocamlopt)    | 849,312      | ~829 KB | 5.29x | dynamic (libm, libc) |
+| Go (goblin, stripped)| 2,872,256   | ~2.8 MB | 17.90x | dynamic (libc) |
+| Reason→JS (deno compile) | 105,369,288 | ~100 MB | 656.6x | embeds Deno runtime |
 
 ### macOS (Darwin x86_64)
 
-Measured 2026-07-17 on commit `5f589d7` via `./build-all.sh` (zig 0.16.0, clx
-0.1.0, goblin `14a7a3faa9da`, Go 1.26.5).
+Measured 2026-08-14 on commit `0e91e18` via `./build-all.sh` (zig 0.16.0, clx
+0.1.0, goblin `c6f7001`, Go 1.26.5, ocamlopt 5.2.1, deno 2.9.3).
 
 | Language (toolchain) | Size (bytes) | Approx | vs Zig | Linking |
 |----------------------|-------------:|-------:|-------:|---------|
 | Zig                  | 136,284      | ~133 KB | 1.00x | static, self-contained |
 | Teal→Lua (clx)       | 302,144      | ~295 KB | 2.22x | dynamic (libc++, libSystem) |
-| Go (goblin, stripped)| 2,512,824   | ~2.45 MB | 18.44x | dynamic (libc) |
+| Reason (ocamlopt)    | 691,136      | ~675 KB | 5.07x | dynamic (libSystem) |
+| Go (goblin, stripped)| 3,044,632   | ~2.9 MB | 22.34x | dynamic (libSystem, libresolv) |
+| Reason→JS (deno compile) | 81,952,480 | ~78 MB | 601.3x | embeds Deno runtime |
 
 ### Takeaways
 
-- On Linux, clx and Zig are in the same ballpark; Zig is ~14% smaller than clx
-  AND fully static (clx's 182 KB excludes the libstdc++/libm it loads at
+- On Linux, clx and Zig are in the same ballpark; Zig is ~8% smaller than clx
+  AND fully static (clx's 171 KB excludes the libstdc++/libm it loads at
   runtime).
+- Reason ocamlopt lands between them and Go (~5× Zig); Melange→`deno compile`
+  embeds the Deno runtime (~78–100 MB by platform) and is not comparable to
+  AOT natives.
 - On macOS Intel, clx is ~2.2× Zig — still far smaller than Go, but a wider gap
-  than on Linux (libc++/runtime differences).
-- Go (goblin) is an order of magnitude larger even after stripping (~13× on
-  Linux, ~18× on macOS) — it bundles the Go runtime + GC. Confirms Go as the
-  heavyweight baseline.
+  than on Linux (libc++/runtime differences). Reason ocamlopt is ~5× Zig, in
+  the same ballpark as Linux.
+- Go (goblin) is an order of magnitude larger even after stripping (~18× on
+  Linux, ~22× on macOS) — it bundles the Go runtime + GC. Confirms Go as the
+  heavyweight AOT baseline.
 - Absolute sizes vary by OS and linker; compare within a platform, not across.
 
 ## Known gaps

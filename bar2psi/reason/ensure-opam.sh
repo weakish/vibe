@@ -3,13 +3,18 @@
 
 REASON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-reason_native_buildable() {
+reason_dune_and_refmt_on_path() {
   command -v dune >/dev/null || return 1
+  command -v refmt >/dev/null || return 1
+}
+
+reason_native_buildable() {
+  reason_dune_and_refmt_on_path || return 1
   (cd "$REASON_ROOT" && dune rules native/bar2psi.exe >/dev/null 2>&1)
 }
 
 reason_melange_buildable() {
-  command -v dune >/dev/null || return 1
+  reason_dune_and_refmt_on_path || return 1
   (cd "$REASON_ROOT" && dune rules @melange >/dev/null 2>&1)
 }
 
