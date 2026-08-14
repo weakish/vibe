@@ -35,6 +35,12 @@
           Same math as the CLIs: ψ, ψ×9/10, ψ×3/4 — Melange + vanilla DOM, no
           React.
         </p>
+        <noscript>
+          <p class="section-lede">
+            Live editing needs JavaScript. Values below are the static
+            <code>2.5</code> bar example (same numbers the CLIs print).
+          </p>
+        </noscript>
         <label class="bar-label" for="bar-input">bar</label>
         <input
           id="bar-input"
@@ -46,18 +52,18 @@
           spellcheck="false"
         />
         <p id="psi-err" class="psi-err" hidden role="status"></p>
-        <div id="psi-out" class="psi-out" hidden aria-live="polite">
+        <div id="psi-out" class="psi-out" aria-live="polite">
           <div class="psi-row">
             <span class="psi-tag">ψ</span>
-            <span id="psi-full" class="psi-val psi-full"></span>
+            <span id="psi-full" class="psi-val psi-full">36.259434432555004</span>
           </div>
           <div class="psi-row">
             <span class="psi-tag">ψ×9/10</span>
-            <span id="psi-90" class="psi-val psi-90"></span>
+            <span id="psi-90" class="psi-val psi-90">32.6334909892995</span>
           </div>
           <div class="psi-row">
             <span class="psi-tag">ψ×3/4</span>
-            <span id="psi-75" class="psi-val psi-75"></span>
+            <span id="psi-75" class="psi-val psi-75">27.194575824416255</span>
           </div>
         </div>
       </section>
