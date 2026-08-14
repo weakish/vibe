@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bar2psi — executable size bake-off</title>
+    <meta
+      name="description"
+      content="Same bar→psi converter in Zig, Teal/clx, Goblin, and Reason — comparing native executable sizes."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fragment+Mono:ital@0;1&family=Syne:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <header class="hero">
+      <p class="brand">bar2psi</p>
+      <h1>How small can a bar→psi CLI get?</h1>
+      <p class="lede">
+        One conversion, four toolchains. Zig and Teal→clx fight for the small
+        binary; Goblin is the heavy Go baseline; Reason adds OCaml native and a
+        Melange path.
+      </p>
+    </header>
+
+    <main>
+      <section class="calc" aria-labelledby="calc-title">
+        <h2 id="calc-title">Try the conversion</h2>
+        <p class="section-lede">
+          Same math as the CLIs: ψ, ψ×9/10, ψ×3/4 — Melange + vanilla DOM, no
+          React.
+        </p>
+        <label class="bar-label" for="bar-input">bar</label>
+        <input
+          id="bar-input"
+          name="bar"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          value="2.5"
+          spellcheck="false"
+        />
+        <p id="psi-err" class="psi-err" hidden role="status"></p>
+        <div id="psi-out" class="psi-out" hidden aria-live="polite">
+          <div class="psi-row">
+            <span class="psi-tag">ψ</span>
+            <span id="psi-full" class="psi-val psi-full"></span>
+          </div>
+          <div class="psi-row">
+            <span class="psi-tag">ψ×9/10</span>
+            <span id="psi-90" class="psi-val psi-90"></span>
+          </div>
+          <div class="psi-row">
+            <span class="psi-tag">ψ×3/4</span>
+            <span id="psi-75" class="psi-val psi-75"></span>
+          </div>
+        </div>
+      </section>
+
+      <article class="article">
+        <h2>The bake-off</h2>
+        <p>
+          <code>psi = bar × 14.503773773022</code> (from
+          <code>100000&nbsp;Pa / 6894.757293168&nbsp;Pa</code>). Each port prints
+          the same line shape the calculator uses above. The point of the repo
+          is not the physics — it is how much executable you drag along to do
+          almost nothing.
+        </p>
+
+        <h3>Linux x86_64</h3>
+        <p class="meta">
+          Measured 2026-07-17 on commit <code>5f589d7</code> via
+          <code>./build-all.sh</code> (zig 0.16.0, clx 0.1.0, goblin
+          <code>14a7a3faa9da</code>, Go 1.22.2). Reason native and
+          Melange→Deno sizes are not in this snapshot (those ports landed
+          later); re-run <code>./build-all.sh</code> for current numbers.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Language</th>
+                <th class="num">Bytes</th>
+                <th class="num">Approx</th>
+                <th class="num">vs Zig</th>
+                <th>Linking</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Zig</td>
+                <td class="num">160,888</td>
+                <td class="num">~157 KB</td>
+                <td class="num">1.00×</td>
+                <td>static</td>
+              </tr>
+              <tr>
+                <td>Teal→Lua (clx)</td>
+                <td class="num">186,776</td>
+                <td class="num">~182 KB</td>
+                <td class="num">1.16×</td>
+                <td>dynamic (libstdc++, libm, libc)</td>
+              </tr>
+              <tr>
+                <td>Go (goblin, stripped)</td>
+                <td class="num">2,095,288</td>
+                <td class="num">~2.0 MB</td>
+                <td class="num">13.02×</td>
+                <td>dynamic (libc)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>macOS Intel</h3>
+        <p class="meta">
+          Same commit and script (Go 1.26.5). Absolute sizes differ; compare
+          within a platform.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Language</th>
+                <th class="num">Bytes</th>
+                <th class="num">Approx</th>
+                <th class="num">vs Zig</th>
+                <th>Linking</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Zig</td>
+                <td class="num">136,284</td>
+                <td class="num">~133 KB</td>
+                <td class="num">1.00×</td>
+                <td>static</td>
+              </tr>
+              <tr>
+                <td>Teal→Lua (clx)</td>
+                <td class="num">302,144</td>
+                <td class="num">~295 KB</td>
+                <td class="num">2.22×</td>
+                <td>dynamic (libc++, libSystem)</td>
+              </tr>
+              <tr>
+                <td>Go (goblin, stripped)</td>
+                <td class="num">2,512,824</td>
+                <td class="num">~2.45 MB</td>
+                <td class="num">18.44×</td>
+                <td>dynamic (libc)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Takeaways</h3>
+        <ul>
+          <li>
+            On Linux, clx and Zig are close; Zig is ~14% smaller and fully
+            static (clx’s on-disk size excludes libstdc++/libm).
+          </li>
+          <li>
+            On macOS Intel the gap widens (~2.2×) but both still dwarf Go.
+          </li>
+          <li>
+            Goblin/Go is an order of magnitude larger even stripped — runtime +
+            GC, plus <code>fs</code>/<code>os</code> for stdin.
+          </li>
+        </ul>
+
+        <h3>Ports</h3>
+        <p>
+          Zig and Lua/Reason take argv; Goblin reads <code>/dev/stdin</code>.
+          Reason ships ocamlopt native and Melange→<code>deno compile</code>.
+          The widget on this page reuses the same Melange <code>Convert</code>
+          module as the Deno CLI — typed Reason, plain DOM.
+        </p>
+      </article>
+    </main>
+
+    <footer>
+      <p>
+        Build the calculator with <code>site/build.sh</code>, then serve
+        <code>site/</code> over HTTP (ES modules). Re-run
+        <code>./build-all.sh</code> in the repo to refresh size numbers on your
+        machine.
+      </p>
+    </footer>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "melange/": "./js/node_modules/melange/",
+          "melange.js/": "./js/node_modules/melange.js/"
+        }
+      }
+    </script>
+    <script type="module" src="./js/web/Site.mjs"></script>
+  </body>
+</html>

@@ -21,21 +21,42 @@ let fmt = (x: float): string => {
   loop(0);
 };
 
-let line = (bar: float): string => {
+/* psi, psi×9/10, psi×3/4 — same three numbers the CLIs print. */
+type triple = {
+  psi: string,
+  psi_90: string,
+  psi_75: string,
+};
+
+let triple = (bar: float): triple => {
   let psi = bar *. psi_per_bar;
   /* Fraction form keeps 90%/75% exact in binary float (0.9 is not). */
   let psi_90 = psi *. 9. /. 10.;
   let psi_75 = psi *. 3. /. 4.;
+  {
+    psi: fmt(psi),
+    psi_90: fmt(psi_90),
+    psi_75: fmt(psi_75),
+  };
+};
+
+let line = (bar: float): string => {
+  let t = triple(bar);
   Printf.sprintf(
     "%s bar = %s %s %s psi",
     fmt(bar),
-    fmt(psi),
-    fmt(psi_90),
-    fmt(psi_75),
+    t.psi,
+    t.psi_90,
+    t.psi_75,
   );
 };
 
+/* Reject NaN, infinity, and values whose psi conversion overflows. */
 let parse_bar = (raw: string): option(float) =>
-  try(Some(float_of_string(raw))) {
-  | Failure(_) => None
+  switch (float_of_string(raw)) {
+  | bar
+      when Float.is_finite(bar) && Float.is_finite(bar *. psi_per_bar) =>
+    Some(bar)
+  | _ => None
+  | exception Failure(_) => None
   };

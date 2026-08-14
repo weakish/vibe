@@ -10,6 +10,9 @@ zig-cache/
 # Dune / Melange
 reason/_build/
 
+# Melange web emit copied for the static site
+site/js/
+
 # Goblin transpiled Go output, if produced locally
 bar2psi.go
 bar2psi.unstripped

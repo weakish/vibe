@@ -1,0 +1,7 @@
+(melange.emit
+ (target dist)
+ (alias melange-web)
+ (modules Site)
+ (libraries shared)
+ (preprocess (pps melange.ppx))
+ (module_systems (es6 mjs)))

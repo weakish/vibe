@@ -24,6 +24,7 @@ diverge for some `f64` values; none observed for bar inputs in smoke tests.
 | `lua/bar2psi.tl` | Teal → Lua 5.5 | `tl gen` then `clx` (AOT Lua → C++20 → native) |
 | `goblin/bar2psi.goblin` | Goblin | `goblin` (transpiles to Go, then `go build`) |
 | `reason/` | Reason | dune + ocamlopt (native); Melange → `deno compile` (JS binary) |
+| `site/` | Melange + DOM | Static article + bar→psi calculator (vanilla DOM, no React) |
 
 Edit `lua/bar2psi.tl` only for the Lua port. `tl gen --check bar2psi.tl` writes
 `lua/bar2psi.lua` (gitignored; not committed). Run `tl gen` before `clx` (or
@@ -134,6 +135,19 @@ default profile. From `_build/default/dist`, `deno check` validates the Melange
 emit, then `deno compile --no-check` bundles it (check once, skip re-check on
 compile); both use `--node-modules-dir=manual` so Melange’s `node_modules`
 layout resolves.
+
+### Site (article + calculator)
+Static page under `site/` with a Melange vanilla-DOM calculator that reuses
+`reason/shared/Convert.re` (ψ / ψ×9/10 / ψ×3/4 in green / yellow / red):
+
+```sh
+cd site && ./build.sh
+python3 -m http.server 8080   # from site/; open http://localhost:8080
+```
+
+`site/build.sh` runs `dune build @melange-web` and copies the emit into
+`site/js/` (gitignored). Serve over HTTP so ES modules and the import map
+resolve.
 
 ### Cursor Cloud dev VM notes
 

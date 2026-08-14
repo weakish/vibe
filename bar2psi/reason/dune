@@ -6,6 +6,7 @@
 (melange.emit
  (target dist)
  (alias melange)
+ (modules Bar2psi_js)
  (libraries shared)
  (preprocess (pps melange.ppx))
  (module_systems (es6 mjs)))
