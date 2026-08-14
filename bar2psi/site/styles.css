@@ -11,6 +11,8 @@
   --accent: #185b74;
   --accent-ring: rgba(24, 91, 116, 0.25);
   --font-display: "Syne", sans-serif;
+  /* Headlines: Syne’s bold g loses its bowl–descender join in Safari. */
+  --font-headline: "Space Grotesk", sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, monospace;
 }
 
@@ -66,14 +68,21 @@ footer {
   font-weight: 800;
   font-size: clamp(2.75rem, 9vw, 4.25rem);
   letter-spacing: -0.04em;
-  line-height: 0.95;
+  /* >1 so Safari does not clip descenders (p in bar2psi). */
+  line-height: 1.05;
   color: var(--ink);
+}
+
+.hero h1,
+.calc h2,
+.article h2,
+.article h3 {
+  font-family: var(--font-headline);
+  font-weight: 700;
 }
 
 .hero h1 {
   margin: 0 0 1rem;
-  font-family: var(--font-display);
-  font-weight: 700;
   font-size: clamp(1.35rem, 3.5vw, 1.75rem);
   letter-spacing: -0.02em;
   line-height: 1.25;
@@ -97,8 +106,6 @@ footer {
 .calc h2,
 .article h2 {
   margin: 0 0 0.5rem;
-  font-family: var(--font-display);
-  font-weight: 700;
   font-size: 1.35rem;
   letter-spacing: -0.02em;
 }
@@ -187,8 +194,6 @@ footer {
 
 .article h3 {
   margin: 2rem 0 0.6rem;
-  font-family: var(--font-display);
-  font-weight: 700;
   font-size: 1.1rem;
 }
 
@@ -266,6 +271,8 @@ footer a {
   color: var(--accent);
 }
 
+/* Prefer transform: none over translateY(0): WebKit keeps a transform
+   box that clips descenders (worse with fill-mode: both on rise). */
 @keyframes rise {
   from {
     opacity: 0;
@@ -273,7 +280,7 @@ footer a {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -284,7 +291,7 @@ footer a {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
