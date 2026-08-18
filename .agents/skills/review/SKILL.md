@@ -3,8 +3,8 @@ name: review
 description: >-
   Review one git commit; letter-label tree findings; wait for `r` / `r <sha>` /
   `review <sha>` / a bare SHA, then fix selected labels (`all`, `y`, `fix b,d`,
-  `h`/`help`). `review-and-fix` / polish the tip fixes every tree item. Message
-  hygiene is report-only. Not for PR/issue creation or history rewrite.
+  `h`/`help`). `t` / `review-and-fix` / polish the tip fixes every tree item.
+  Message hygiene is report-only. Not for PR/issue creation or history rewrite.
 ---
 
 # Review one commit; fix after selection
@@ -19,6 +19,7 @@ Any of these invoke this skill. After a lettered report, how to parse `y` / `all
 |-------|-------------------|
 | `r` | `HEAD` — report with letter labels; **wait** (do not fix yet) |
 | `r <sha-or-ref>` | that commit — report; **wait** (`r HEAD` ok) |
+| `t` | `HEAD` (the tip) — report, then fix **all** tree items in the same turn (same as `review-and-fix HEAD`) |
 | message that is **only** a SHA / short SHA / ref | that commit — report; **wait** |
 | `review <sha-or-ref>`, run the review skill | named or `HEAD` — report; **wait** |
 | `review-and-fix`, `review and fix`, polish the tip | named or `HEAD` — report, then fix **all** tree items in the same turn (same as `all`) |
@@ -30,12 +31,12 @@ Do **not** treat show / explain / `git log` / questions like “what changed in 
 
 1. Review **one** commit (default: `HEAD`)
 2. Report tree findings with **letter labels** (`B`/`b`, `D`/`d`, …; or letter+number when they do not fit — see below); report message hygiene only (no letters)
-3. Fix the user’s **selected** tree items ([Select items to fix](#select-items-to-fix)), including nits they select. `review-and-fix` / `review and fix` / polish the tip is `all` in the same turn.
+3. Fix the user’s **selected** tree items ([Select items to fix](#select-items-to-fix)), including nits they select. `t` / `review-and-fix` / `review and fix` / polish the tip is `all` in the same turn (`t` is always the tip).
 4. Land tree fixes as a **new** commit — never amend unless the user explicitly asks
 
 If there are no tree findings, say so and stop (no empty commit). Still report message hygiene when present.
 
-On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix yet, and do **not** add a separate end-of-turn prompt line (the letter labels in the report are enough). On `review-and-fix` / `review and fix` / polish the tip, fix every tree item (upper and lower marks) in the same turn without waiting.
+On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix yet, and do **not** add a separate end-of-turn prompt line (the letter labels in the report are enough). On `t` / `review-and-fix` / `review and fix` / polish the tip, fix every tree item (upper and lower marks) in the same turn without waiting.
 
 ## Select the commit
 
@@ -94,16 +95,16 @@ Message hygiene (report only; human decides on rewrite):
 - **Uppercase** (`B`, `D1`, …): agent **recommends** a fix
 - **Lowercase** (`b`, `d1`, …): fine to **keep as is** (still selectable if the user wants it fixed)
 
-**Reserved letters** (never use as single-letter labels or as letter+number category letters): `a`, `c`, `f`, `h`, `n`, `r`, `s`, `y` — collide with `all`, `yes`/`y`/`continue`/`c`, `h`/`help`, `skip`/`none`, review (`r`), fix-ish replies, and similar one-letter inputs. Assign from the remaining alphabet in order: `b`, `d`, `e`, `g`, `i`, `j`, `k`, `l`, `m`, `o`, `p`, `q`, `t`, `u`, `v`, `w`, `x`, `z` (18 letters). Write each mark upper or lower for recommendation; letter **identity** for ordering, spans, and categories ignores case. Selection examples use assignable letters only (not reserved).
+**Reserved letters** (never use as single-letter labels or as letter+number category letters): `a`, `c`, `f`, `h`, `n`, `r`, `s`, `t`, `y` — collide with `all`, `yes`/`y`/`continue`/`c`, `h`/`help`, `skip`/`none`, review (`r`), review-and-fix tip (`t`), fix-ish replies, and similar one-letter inputs. Assign from the remaining alphabet in order: `b`, `d`, `e`, `g`, `i`, `j`, `k`, `l`, `m`, `o`, `p`, `q`, `u`, `v`, `w`, `x`, `z` (17 letters). Write each mark upper or lower for recommendation; letter **identity** for ordering, spans, and categories ignores case. Selection examples use assignable letters only (not reserved).
 
 Use **one** label scheme per report — never mix single-letter and letter+number labels in the same report:
 
 | Count | Scheme | Examples |
 |-------|--------|----------|
-| ≤ 18 | single letter (non-reserved; case = recommendation) | the 18-letter list above, in order (`B`/`b`, `D`/`d`, `E`/`e`, …) |
-| > 18 | letter + number | `B1`, `b2`, `D1`, `d2`, `D3`, … |
+| ≤ 17 | single letter (non-reserved; case = recommendation) | the 17-letter list above, in order (`B`/`b`, `D`/`d`, `E`/`e`, …) |
+| > 17 | letter + number | `B1`, `b2`, `D1`, `d2`, `D3`, … |
 
-When a report has more than 18 tree findings, label **all** of them in letter+number form (do not use single letters for the first 18 and switch partway). **Categorize when possible:** the letter identity (case-insensitive) groups related findings (non-reserved only); numbers are sequential within that category (`B1`, `b2`, … then `D1`, …). When findings do not group naturally (e.g. 19 unrelated items), a single category is fine (`B1` … `b19`).
+When a report has more than 17 tree findings, label **all** of them in letter+number form (do not use single letters for the first 17 and switch partway). **Categorize when possible:** the letter identity (case-insensitive) groups related findings (non-reserved only); numbers are sequential within that category (`B1`, `b2`, … then `D1`, …). When findings do not group naturally (e.g. 19 unrelated items), a single category is fine (`B1` … `b19`).
 
 Use each section’s `(or: …)` line instead of bullets when that section is empty.
 
@@ -113,7 +114,7 @@ When the user has chosen items to fix (see [Select items to fix](#select-items-t
 
 Parse the user’s selection from the latest lettered report in this session. Syntax depends on which label scheme that report used.
 
-**Single-letter reports** (≤ 18 findings):
+**Single-letter reports** (≤ 17 findings):
 
 | Form | Meaning |
 |------|---------|
@@ -123,7 +124,7 @@ Parse the user’s selection from the latest lettered report in this session. Sy
 | `b-d` | letter hyphen span (single-letter labels; see Both schemes) |
 | `b,d-g,i` | mix of singles and ranges |
 
-**Letter+number reports** (> 18 findings):
+**Letter+number reports** (> 17 findings):
 
 | Form | Meaning |
 |------|---------|
@@ -139,7 +140,7 @@ Cross-prefix numbered ranges (e.g. `d3-g4`) are **not** supported — ask the us
 
 - Selection matching is **case-insensitive** (`B,d` = `b,D` = findings marked `B`/`b` and `D`/`d`). Mark case in the report still encodes recommendation.
 - Ignore spaces around commas and hyphens.
-- **Parse order:** keyword forms first (`y`, bare `fix`, `fix y`, `help`, `h B,d`, `all`, …). Reserved-letter **pause** (below) applies only when a reserved letter is a **label** token in a list or scoped argument (e.g. `b,h,d`, `help h`), not when it is consumed as part of a keyword form (including bare `fix`).
+- **Parse order:** keyword forms first (`t`, `y`, bare `fix`, `fix y`, `help`, `h B,d`, `all`, …). Bare `t` is always review-and-fix of `HEAD` (a new review), never a label selection. Reserved-letter **pause** (below) applies only when a reserved letter is a **label** token in a list or scoped argument (e.g. `b,h,d`, `help h`), not when it is consumed as part of a keyword form (including bare `fix` / bare `t`).
 - No prior lettered report in session: say so; do not invent findings.
 - `yes`, `y`, `continue`, `c`, bare `fix` (`fix` prefix optional on the others): every **recommended** tree finding (uppercase marks only). Bare `fix` (message is **only** this word) is the same as `y`. If none are recommended, say so and do not fix.
 - `h`, `help` (message is **only** this word): explain **more detail** on **every** tree finding (upper and lower marks) — do **not** fix; then wait for selection as after the original report. If there are no tree findings, say so.
