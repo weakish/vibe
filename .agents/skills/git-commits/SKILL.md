@@ -3,8 +3,8 @@ name: git-commits
 description: >-
   Repo commit message and trailer contract: 13 Short Gitmojis subjects;
   Assisted-by; Reported-by for user-reported bugs; Suggested-by for human
-  ideas and approach. No human-review trailers (0% human review).
-  Use when committing or writing a commit message.
+  ideas and approach. No human-review trailers (0% human review). No agent
+  Co-authored-by. Use when committing or writing a commit message.
 ---
 
 # Git commits and trailers
@@ -78,6 +78,10 @@ Trailer order after the subject/body:
 3. `Assisted-by` (when an agent helped)
 
 `Reported-by` and `Suggested-by` name **humans** only — never an agent. Agent help (including when the user asks an agent to review code) belongs in `Assisted-by`.
+
+Never add `Co-authored-by` (or `Co-Authored-By`) naming an agent, bot, or Cursor (`cursoragent@cursor.com`, etc.). Leave legitimate human `Co-authored-by` untouched.
+
+Project Cursor hook [`.cursor/hooks/strip-agent-coauthor.py`](../../../.cursor/hooks/strip-agent-coauthor.py) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`) on `preToolUse` and `postToolUse`. After changing the hook or its tests, run `python3 -B .cursor/hooks/test_strip_agent_coauthor.py`.
 
 ### Author
 

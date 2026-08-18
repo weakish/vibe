@@ -42,6 +42,7 @@ Under `.agents/skills/<name>/SKILL.md` (repo-wide) or `<project>/.agents/skills/
 | Skill | Path |
 |-------|------|
 | Git commits and trailers | `.agents/skills/git-commits/SKILL.md` |
+| Review one commit; fix after selection | `.agents/skills/review/SKILL.md` |
 
 ## Git (multi-agent cwd)
 
