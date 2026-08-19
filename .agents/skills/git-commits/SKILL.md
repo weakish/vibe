@@ -90,14 +90,14 @@ Project Cursor hook [`.cursor/hooks/strip-agent-coauthor.py`](../../../.cursor/h
 
 ### Assisted-by
 
-Required on every commit an AI agent materially helped produce. Follows the [Linux kernel AI coding assistants guidance](https://docs.kernel.org/process/coding-assistants.html).
+Required on every commit an AI agent materially helped produce. Follows the [Linux kernel AI coding assistants guidance](https://docs.kernel.org/process/coding-assistants.html). Message-only rewrites do not qualify — see [Message-only rewrite](#message-only-rewrite).
 
 ```
 Assisted-by: AGENT_NAME:MODEL_VERSION [TOOL1] [TOOL2]
 ```
 
 - `AGENT_NAME` — the AI tool or framework (e.g. `Cursor`, `Claude Code`, `Copilot`)
-- `MODEL_VERSION` — the model for **this** commit (e.g. `gpt-5.6`, `cursor-grok-4.5`); take it from the current session identity, never from a previous commit
+- `MODEL_VERSION` — the model that helped **this** commit’s tree (e.g. `gpt-5.6`, `cursor-grok-4.5`). For a new commit, take it from the current session identity, not from a different commit. Message-only rewrite and amend union: see below.
 - `[TOOL1] [TOOL2]` — optional specialized analysis tools only (e.g. `coccinelle`, `sparse`, `clang-tidy`)
 
 Do not list basic development tools (git, compilers, make, editors).
@@ -108,7 +108,9 @@ Do not list basic development tools (git, compilers, make, editors).
 Assisted-by: Cursor:cursor-grok-4.5
 ```
 
-- Always write `Assisted-by` for **this** commit from the agent/model that helped. Do **not** copy an `Assisted-by` line from `git log`, prior commits, or examples — those often name a different model.
+- For a **new** commit this session produced: write `Assisted-by` from this session’s agent/model. Do **not** copy a line from `git log`, a different commit, or examples — those often name a different model.
+- [Message-only rewrite](#message-only-rewrite) (same tree): keep the existing lines; do not add this session if absent.
+- When **amending** a commit to add tree this session produced: union this session’s `AGENT_NAME:MODEL_VERSION` with that commit’s existing `Assisted-by` lines (one line per pair; dedupe exact duplicates). Do not drop the original model.
 
 ### Reported-by
 
@@ -136,3 +138,19 @@ Assisted-by: Cursor:composer-2.5
 Suggested-by: weakish <weakish@gmail.com>
 Assisted-by: Cursor:cursor-grok-4.5
 ```
+
+### Message-only rewrite
+
+Same tree, new commit object — polish message or strip bad trailers. The diff to the parent must stay identical; do not fold staged or working-tree path changes into the rewrite. No pathspec, so the index is ignored:
+
+```
+git commit --amend --only -m "$(cat <<'EOF'
+…message…
+EOF
+)"
+```
+
+- Keep existing `Assisted-by` line(s). Do **not** replace with the rewriting session’s model.
+- Do **not** add `Assisted-by` for the rewriter when absent — rewriting the message is not producing the diff.
+- Strip agent/bot `Co-authored-by`; leave legitimate human `Co-authored-by` untouched.
+- Do not drop `Reported-by` / `Suggested-by` when they still apply; correct them when hygiene requires it (see those sections above).

@@ -3,13 +3,18 @@ name: review
 description: >-
   Review one git commit; letter-label tree findings; wait for `r` / `r <sha>` /
   `review <sha>` / a bare SHA, then fix selected labels (`all`, `y`, `fix b,d`,
-  `h`/`help`). `t` / `review-and-fix` / polish the tip fixes every tree item.
-  Message hygiene is report-only. Not for PR/issue creation or history rewrite.
+  `h`/`help`). Bare `t` amends HEAD when amend is allowed and there is
+  work (tree fixes and/or message hygiene).
+  `review-and-fix` / polish the tip still lands a new follow-up commit
+  when there are tree findings.
+  Not for PR/issue creation or history rewrite (except bare `t` /
+  explicit amend).
 ---
 
 # Review one commit; fix after selection
 
-Read [git-commits](../git-commits/SKILL.md) before any commit this skill creates.
+Read [git-commits](../git-commits/SKILL.md) before any commit this skill creates
+(or amends).
 
 ## Triggers
 
@@ -19,10 +24,10 @@ Any of these invoke this skill. After a lettered report, how to parse `y` / `all
 |-------|-------------------|
 | `r` | `HEAD` — report with letter labels; **wait** (do not fix yet) |
 | `r <sha-or-ref>` | that commit — report; **wait** (`r HEAD` ok) |
-| `t` | `HEAD` (the tip) — report, then fix **all** tree items in the same turn (same as `review-and-fix HEAD`) |
+| `t` | `HEAD` (the tip) — report, then [Bare t](#bare-t) (amend when allowed; if blocked, keep the report and stop with no edits) |
 | message that is **only** a SHA / short SHA / ref | that commit — report; **wait** |
 | `review <sha-or-ref>`, run the review skill | named or `HEAD` — report; **wait** |
-| `review-and-fix`, `review and fix`, polish the tip | named or `HEAD` — report, then fix **all** tree items in the same turn (same as `all`) |
+| `review-and-fix`, `review and fix`, polish the tip | named or `HEAD` — report, then fix **all** tree items in the same turn (same as `all`); land a **new** follow-up commit when there are tree findings (not amend) |
 | `yes`, `y`, `continue`, `c`, bare `fix`, `all`, `fix all`, `fix b,d,e` / `b-d` / …, `h` / `help` / `h B,d`, `none`, `skip` | last lettered report — [Select items to fix](#select-items-to-fix) |
 
 Do **not** treat show / explain / `git log` / questions like “what changed in this commit” as this skill.
@@ -30,13 +35,27 @@ Do **not** treat show / explain / `git log` / questions like “what changed in 
 ## Goal
 
 1. Review **one** commit (default: `HEAD`)
-2. Report tree findings with **letter labels** (`B`/`b`, `D`/`d`, …; or letter+number when they do not fit — see below); report message hygiene only (no letters)
-3. Fix the user’s **selected** tree items ([Select items to fix](#select-items-to-fix)), including nits they select. `t` / `review-and-fix` / `review and fix` / polish the tip is `all` in the same turn (`t` is always the tip).
-4. Land tree fixes as a **new** commit — never amend unless the user explicitly asks
+2. Report tree findings with **letter labels** (`B`/`b`, `D`/`d`, …; or letter+number when they do not fit — see below); report message hygiene (no letters)
+3. Fix tree items: the user’s **selection** ([Select items to fix](#select-items-to-fix)), including nits they select. Same turn with no wait:
+   - bare `t` (always `HEAD`): when amend is allowed, follow [Bare t](#bare-t)
+   - `review-and-fix` / `review and fix` / polish the tip (named or `HEAD`): fix every tree item (design-choice pause in [Report, then fix](#report-then-fix) still applies); land a new commit when there are tree findings
+4. Land fixes:
+   - **[Bare t](#bare-t):** amend into `HEAD` when amend is allowed and there is work (tree and/or message hygiene)
+   - **Everything else** (`y` / `all` / label picks / `review-and-fix` / …): **new** follow-up commit when there are tree fixes — amend only if the user explicitly asks ([Amend (opt-in)](#amend-opt-in-only))
 
-If there are no tree findings, say so and stop (no empty commit). Still report message hygiene when present.
+If a bare-`t` amend guard fails: follow [Bare t](#bare-t) (stop after the report; no tree or message edits). Do **not** add a separate end-of-turn prompt line.
 
-On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix yet, and do **not** add a separate end-of-turn prompt line (the letter labels in the report are enough). On `t` / `review-and-fix` / `review and fix` / polish the tip, fix every tree item (upper and lower marks) in the same turn without waiting.
+If there are no tree findings:
+
+- On `r` / bare SHA / `review <sha-or-ref>` / selection paths: say so and stop (no empty commit). Still report message hygiene when present (report-only).
+- On `review-and-fix` / `review and fix` / polish the tip: say so and stop (no empty commit). Hygiene stays report-only.
+- On bare `t` with amend allowed: follow [Bare t](#bare-t) — hygiene-only amend when needed; if neither tree nor hygiene findings, say so and stop.
+
+On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix yet, and do **not** add a separate end-of-turn prompt line (the letter labels in the report are enough). Same turn without waiting:
+
+- bare `t` when amend is allowed: follow [Bare t](#bare-t)
+- bare `t` when amend is blocked: report and stop (no tree or message edits)
+- `review-and-fix` / `review and fix` / polish the tip: fix every tree item (design-choice pause still applies), then land a **new** commit when there were tree findings
 
 ## Select the commit
 
@@ -53,22 +72,27 @@ Check the commit against root [AGENTS.md](../../../AGENTS.md). When the diff tou
 - Incorrect behavior, edge cases, broken failure propagation (silent fallbacks, swallowed errors)
 - Intentional behavior removed or “cleaned up” without asking (aliases, redirects, platform workarounds, commented skips)
 - Style drift: duplication, parallel defaults, comments that restate the code, vague names
-- Commit message / trailers vs [git-commits](../git-commits/SKILL.md) (wrong gitmoji, agent `Co-authored-by`, missing `Assisted-by` when the diff was agent-helped) — message hygiene, report only
+- Commit message / trailers vs [git-commits](../git-commits/SKILL.md) (wrong gitmoji, agent `Co-authored-by`, missing `Assisted-by` when the diff was agent-helped) — message hygiene
 
 Report tree nits too, not only blockers. Mark case encodes the agent’s recommendation (see below).
 
-Message or trailer problems on the **reviewed** commit itself (wrong gitmoji, bad `Assisted-by`, etc.) are **report-only**. They need a history rewrite (human decides), not a tree follow-up. Do not amend or rewrite the reviewed commit’s message for hygiene findings as part of this skill.
+Message or trailer problems on the **reviewed** commit:
+
+- **[Bare t](#bare-t):** apply them when amending
+- **All other triggers:** **report-only** unless the user explicitly asks to amend ([Amend (opt-in)](#amend-opt-in-only)). Do not rewrite the reviewed commit’s message as part of a new follow-up commit.
 
 ### Out of scope
 
-- Do not push, force-push, or rewrite history (including message-only rewrites for hygiene findings)
+- Do not push, force-push, or push/merge to `master` (even if asked)
+- Do not rewrite history except: bare `t` amend (below), or an explicit user-requested amend that passes [Amend (opt-in)](#amend-opt-in-only)
 - Do not add `Acked-by` / `Reviewed-by` (this repo: 0% human review; see [git-commits](../git-commits/SKILL.md))
 - Do not invent content for other agents’ dirty/untracked files
 - Do not invent a root check/fmt toolchain; use each project’s documented tasks/scripts only
 
 ## Report, then fix
 
-Before editing, give a short review (agree/disagree style not required here):
+Before editing, give a short review (agree/disagree style not required here).
+Default hygiene header below is for `r` / selection / `review-and-fix`. On bare `t`, check amend guards first and use the header in the next subsection — do not copy this default when amend is allowed.
 
 ```
 Commit: <short-sha> <subject>
@@ -82,20 +106,34 @@ Tree findings:
 
 (or: No tree findings.)
 
-Message hygiene (report only; human decides on rewrite):
+Message hygiene (report only unless user asks to amend):
 - <finding>
 - …
 
 (or: No message hygiene findings.)
 ```
 
-**Letter labels:** assign labels to tree findings only; keep the mapping stable for the session. Message-hygiene bullets are not lettered (not tree-fixable here).
+On bare `t`, check amend guards before choosing the hygiene header (findings still unlettered). Do not copy the default `report only` header when amend is allowed:
+
+- Amend allowed:
+
+```
+Message hygiene (will apply on amend):
+- <finding>
+- …
+
+(or: No message hygiene findings.)
+```
+
+- Amend blocked: keep `Message hygiene (report only unless user asks to amend):`, then after the report say why amend is blocked (do not edit)
+
+**Letter labels:** assign labels to tree findings only; keep the mapping stable for the session. Message-hygiene bullets are not lettered (not tree-fixable via label selection).
 
 **Mark case (report only; selection ignores case):**
 - **Uppercase** (`B`, `D1`, …): agent **recommends** a fix
 - **Lowercase** (`b`, `d1`, …): fine to **keep as is** (still selectable if the user wants it fixed)
 
-**Reserved letters** (never use as single-letter labels or as letter+number category letters): `a`, `c`, `f`, `h`, `n`, `r`, `s`, `t`, `y` — collide with `all`, `yes`/`y`/`continue`/`c`, `h`/`help`, `skip`/`none`, review (`r`), review-and-fix tip (`t`), fix-ish replies, and similar one-letter inputs. Assign from the remaining alphabet in order: `b`, `d`, `e`, `g`, `i`, `j`, `k`, `l`, `m`, `o`, `p`, `q`, `u`, `v`, `w`, `x`, `z` (17 letters). Write each mark upper or lower for recommendation; letter **identity** for ordering, spans, and categories ignores case. Selection examples use assignable letters only (not reserved).
+**Reserved letters** (never use as single-letter labels or as letter+number category letters): `a`, `c`, `f`, `h`, `n`, `r`, `s`, `t`, `y` — collide with `all`, `yes`/`y`/`continue`/`c`, `h`/`help`, `skip`/`none`, review (`r`), bare `t`, fix-ish replies, and similar one-letter inputs. Assign from the remaining alphabet in order: `b`, `d`, `e`, `g`, `i`, `j`, `k`, `l`, `m`, `o`, `p`, `q`, `u`, `v`, `w`, `x`, `z` (17 letters). Write each mark upper or lower for recommendation; letter **identity** for ordering, spans, and categories ignores case. Selection examples use assignable letters only (not reserved).
 
 Use **one** label scheme per report — never mix single-letter and letter+number labels in the same report:
 
@@ -108,7 +146,7 @@ When a report has more than 17 tree findings, label **all** of them in letter+nu
 
 Use each section’s `(or: …)` line instead of bullets when that section is empty.
 
-When the user has chosen items to fix (see [Select items to fix](#select-items-to-fix)), apply only those **tree** fixes in the working tree. Prefer the smallest change that addresses the finding. If a finding needs a product/design choice, ask — do not guess. Do not rewrite the reviewed commit’s message.
+When applying tree fixes — from [Select items to fix](#select-items-to-fix), bare `t` when amend is allowed, or `review-and-fix` / polish the tip — prefer the smallest change that addresses the finding. On selection paths, apply only the chosen labels; on those same-turn fix paths, fix every tree item. If a finding needs a product/design choice, ask — do not guess; stop with no commit or amend until the user replies. Do not rewrite the reviewed commit’s message on selection / `review-and-fix` paths (report-only hygiene) unless the user explicitly asks to amend ([Amend (opt-in)](#amend-opt-in-only)).
 
 ### Select items to fix
 
@@ -140,7 +178,7 @@ Cross-prefix numbered ranges (e.g. `d3-g4`) are **not** supported — ask the us
 
 - Selection matching is **case-insensitive** (`B,d` = `b,D` = findings marked `B`/`b` and `D`/`d`). Mark case in the report still encodes recommendation.
 - Ignore spaces around commas and hyphens.
-- **Parse order:** keyword forms first (`t`, `y`, bare `fix`, `fix y`, `help`, `h B,d`, `all`, …). Bare `t` is always review-and-fix of `HEAD` (a new review), never a label selection. Reserved-letter **pause** (below) applies only when a reserved letter is a **label** token in a list or scoped argument (e.g. `b,h,d`, `help h`), not when it is consumed as part of a keyword form (including bare `fix` / bare `t`).
+- **Parse order:** keyword forms first (`t`, `y`, bare `fix`, `fix y`, `help`, `h B,d`, `all`, …). Bare `t` is always a new review of `HEAD` ([Bare t](#bare-t)), never a label selection. The phrase **polish the tip** is the `review-and-fix` path (new commit), not `t`. Reserved-letter **pause** (below) applies only when a reserved letter is a **label** token in a list or scoped argument (e.g. `b,h,d`, `help h`), not when it is consumed as part of a keyword form (including bare `fix` / bare `t`).
 - No prior lettered report in session: say so; do not invent findings.
 - `yes`, `y`, `continue`, `c`, bare `fix` (`fix` prefix optional on the others): every **recommended** tree finding (uppercase marks only). Bare `fix` (message is **only** this word) is the same as `y`. If none are recommended, say so and do not fix.
 - `h`, `help` (message is **only** this word): explain **more detail** on **every** tree finding (upper and lower marks) — do **not** fix; then wait for selection as after the original report. If there are no tree findings, say so.
@@ -158,25 +196,74 @@ When fixes touch code a project documents checks/tests for, run those project-lo
 
 ## Commit the fixes
 
-New commit only. Stage **only** files this review-fix changed.
+Default path (selection / `review-and-fix` / polish the tip): **new commit only**. Leave other agents’ staged/unstaged/untracked paths untouched. Do not `git add -A` / `git add .`. For new untracked paths this pass created, `git add -- <those-paths>` first (pathspec only; required before `--only` will accept them). Then commit so unrelated staged paths stay out (do not `git commit` the whole index). Put `-m` / HEREDOC / other commit options **before** `--`; after `--`, git treats words as pathspecs:
+
+```
+git commit --only -m "$(cat <<'EOF'
+…message…
+EOF
+)" -- <paths-this-pass-changed>
+```
 
 - Message: pick gitmoji from the **primary** nature of the fixes (`:bug:` for real bugs, `:art:` for refactor/clarity, `:memo:` for docs, `:zzz:` for chore). Prefer optional monorepo scope (project directory). Subject should say it is review follow-up when that helps (e.g. `:art:foo: review follow-up: tighten error paths`).
 - Body: what landed; optional one line that it follows review of `<short-sha>`.
 - Trailers: `Assisted-by` for this session’s model (required when this session produced the fix diff). Do **not** copy review trailers onto the fix commit. Do **not** add agent `Co-authored-by` (the Cursor hook strips injected `cursoragent@cursor.com` trailers; see [git-commits](../git-commits/SKILL.md)).
 - Report the new commit hash when done.
 
+### Bare t
+
+Bare `t` always targets `HEAD`. In the same turn: check amend guards; report (hygiene header per [Report, then fix](#report-then-fix)); if amend is allowed, fix **every** tree finding (upper and lower), **apply message hygiene**, then **amend** into `HEAD` when there is work (not a new follow-up commit). The design-choice pause in [Report, then fix](#report-then-fix) still applies (ask — do not guess; no amend until the user replies). The phrase **polish the tip** does not use this path.
+
+**Amend is allowed only if all of:**
+
+- Reviewed commit **is** `HEAD`
+- Tip is **not** on any remote-tracking ref (`git branch -r --contains HEAD` is empty). If it is, stop and say so — do not amend published history (never force-push, including to `master`)
+- Tip has no `Acked-by` / `Reviewed-by`
+
+If a guard fails, stop after the report, say why — do not edit the tree and do not amend. Tree fixes can still land via selection on that report (`all` / `y` / labels) or `review-and-fix` / polish the tip (new commit).
+
+**Amend when any of:** tree fixes landed, and/or message hygiene needs a rewrite. If neither, stop (clean tip). Working tree changes from this pass must belong in that same commit story.
+
+**Index (multi-agent):** Check `git status` before amend. Leave other agents’ staged/unstaged/untracked paths untouched. Do not `git add -A` / `git add .`. For new untracked paths this pass created, `git add -- <those-paths>` first (pathspec only). Fold this pass with the `--only` forms below — never a plain `git commit --amend` that commits the whole index (that would pick up unrelated staged paths).
+
+**Message on amend** (read [git-commits](../git-commits/SKILL.md)):
+
+- Keep the tip’s **story** (same feature/fix subject intent) — do **not** retitle to “review follow-up”
+- Apply every reported hygiene finding: wrong/missing gitmoji, subject/body shape, trailer order, strip agent `Co-authored-by`, fix `Reported-by` / `Suggested-by` per git-commits
+- `Assisted-by` (do **not** copy a line from an unrelated commit in `git log`):
+  - **Hygiene-only** (message rewrite, same tree): keep the tip’s existing `Assisted-by` line(s). Do **not** replace with this session’s model; do **not** add this session if absent (see [message-only rewrite](../git-commits/SKILL.md#message-only-rewrite)).
+  - **This session landed tree fixes:** union this session’s `AGENT_NAME:MODEL_VERSION` with the tip’s existing `Assisted-by` lines (one line per pair; dedupe exact duplicates). Do **not** drop the original model.
+- Hygiene-only (no pathspec so the index is ignored; do not use `--no-edit`):
+
+```
+git commit --amend --only -m "$(cat <<'EOF'
+…message…
+EOF
+)"
+```
+
+- With tree fixes (working tree of those paths; unrelated staged paths stay out). Put `-m` / HEREDOC **before** `--`:
+
+```
+git commit --amend --only -m "$(cat <<'EOF'
+…message…
+EOF
+)" -- <paths-this-pass-changed>
+```
+
+- Prefer `git commit --amend --only --no-edit -- <paths-this-pass-changed>` only when the existing message is already clean, `Assisted-by` already includes this session (no missing union), and you have tree-only changes with no hygiene work
+
+Report the new `HEAD` hash when done (note it replaced the reviewed tip).
+
 ### Amend (opt-in only)
 
-Amend folds **tree** fixes into the reviewed tip — not message hygiene (still report-only above). Use **only** if the user explicitly asks **and** all of:
-
-- Tip is the reviewed commit
-- Not pushed (or user accepts rewrite; still never force-push to `master`)
-- Tip has no `Acked-by` / `Reviewed-by` yet
-- Working tree changes belong in that same story
+For paths other than bare `t`, amend only if the user explicitly asks **and** all bare-`t` amend guards above hold. Fold **tree** fixes into the reviewed tip; apply message hygiene when the user asked for amend (same message and `--only` rules as [Bare t](#bare-t)).
 
 Otherwise keep the new-commit path and say why amend was skipped.
 
 ## Done
 
 - Summarize what changed (brief)
-- Hashes: reviewed commit → fix commit (or “clean, no fix commit”)
+- Hashes:
+  - New-commit path: reviewed commit → fix commit (or “clean, no fix commit”)
+  - Bare `t` / amend: reviewed tip → new `HEAD` after amend (or “clean, no amend”)
