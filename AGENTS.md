@@ -43,6 +43,11 @@ Under `.agents/skills/<name>/SKILL.md` (repo-wide) or `<project>/.agents/skills/
 |-------|------|
 | Git commits and trailers | `.agents/skills/git-commits/SKILL.md` |
 | Review one commit; fix after selection | `.agents/skills/review/SKILL.md` |
+| Herdr (only when the user asks) | `.agents/skills/herdr/SKILL.md` |
+
+## Herdr
+
+Herdr is a terminal multiplexer for coding agents (workspaces, tabs, panes). Use it **only** when the user mentions Herdr or asks to inspect/control panes, tabs, workspaces, commands, or another agent — not merely because work could run in a background pane. Requires `HERDR_ENV=1`; if unset or not `1`, say you are not inside Herdr and stop. When using it, read and follow [`.agents/skills/herdr/SKILL.md`](.agents/skills/herdr/SKILL.md).
 
 ## Git (multi-agent cwd)
 
