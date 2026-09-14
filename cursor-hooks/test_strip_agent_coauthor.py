@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for strip-agent-coauthor.py. Run: python3 -B .cursor/hooks/test_strip_agent_coauthor.py"""
+"""Tests for strip-agent-coauthor.py. Run: python3 -B cursor-hooks/test_strip_agent_coauthor.py"""
 
 from __future__ import annotations
 
@@ -15,8 +15,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-HOOK = Path(__file__).with_name("strip-agent-coauthor.py")
-HOOK_CONFIG = HOOK.parent.parent / "hooks.json"
+HOOK = Path(__file__).resolve().parent / ".apm" / "hooks" / "strip-agent-coauthor.py"
+HOOK_CONFIG = HOOK.with_name("strip-agent-coauthor.json")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_hook():
@@ -677,10 +678,7 @@ class HookConfigTests(unittest.TestCase):
             "Shell",
         )
         command = config["hooks"]["postToolUse"][0]["command"]
-        self.assertEqual(
-            command,
-            "python3 -B .cursor/hooks/strip-agent-coauthor.py",
-        )
+        self.assertIn("strip-agent-coauthor.py", command)
         self.assertEqual(
             config["hooks"]["preToolUse"][0]["command"],
             command,
@@ -690,7 +688,7 @@ class HookConfigTests(unittest.TestCase):
 
     def test_git_commits_skill_documents_hook_test_command(self) -> None:
         skill = (
-            Path(__file__).resolve().parents[2]
+            REPO_ROOT
             / ".agents"
             / "skills"
             / "git-commits"
@@ -698,7 +696,7 @@ class HookConfigTests(unittest.TestCase):
         )
         text = skill.read_text(encoding="utf-8")
         self.assertIn(
-            "python3 -B .cursor/hooks/test_strip_agent_coauthor.py",
+            "python3 -B cursor-hooks/test_strip_agent_coauthor.py",
             text,
         )
 

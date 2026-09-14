@@ -3,14 +3,14 @@
   "hooks": {
     "preToolUse": [
       {
-        "command": "python3 -B .cursor/hooks/strip-agent-coauthor.py",
+        "command": "python3 -B .cursor/hooks/cursor-hooks/strip-agent-coauthor.py",
         "matcher": "Shell",
         "timeout": 180
       }
     ],
     "postToolUse": [
       {
-        "command": "python3 -B .cursor/hooks/strip-agent-coauthor.py",
+        "command": "python3 -B .cursor/hooks/cursor-hooks/strip-agent-coauthor.py",
         "matcher": "Shell",
         "timeout": 180
       }

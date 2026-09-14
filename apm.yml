@@ -1,0 +1,12 @@
+name: vibe
+version: "0.0.0"
+description: >-
+  Shared agent skills and always-on instructions for the vibe monorepo.
+author: weakish
+repository: https://github.com/weakish/vibe
+license: 0BSD
+includes: auto
+dependencies:
+  apm:
+    - ./cursor-hooks
+  mcp: []

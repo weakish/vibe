@@ -1,0 +1,7 @@
+---
+description: "Keep root agent context short; load details on demand"
+---
+
+Keep this file short: many agents inject it into the system prompt. Details that are only needed for some tasks live under `.agents/` — read them on demand.
+
+This repo is a **monorepo** for independent vibe-coding projects (any language). Root docs cover shared hygiene; each project owns its stack.

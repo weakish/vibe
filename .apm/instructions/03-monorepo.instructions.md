@@ -1,0 +1,12 @@
+---
+description: Monorepo layout and per-project ownership
+---
+
+## Monorepo layout
+
+- One top-level directory per project (e.g. `foo/`, `bar/`)
+- Do not share build tooling or deps across projects unless a project explicitly opts in
+- Prefer project-local config (`package.json`, `deno.json`, `Cargo.toml`, `go.mod`, etc.) inside that project
+- Project-specific agent notes: optional `AGENTS.md` and/or `.agents/skills/` under that project — follow those when working there
+- Do not invent a root workspace/toolchain until a project needs it
+- Never edit or delete `README.md` at the repo root — it is human-written

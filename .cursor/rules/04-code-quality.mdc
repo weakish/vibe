@@ -1,0 +1,12 @@
+---
+description: "How to edit code in this monorepo"
+---
+
+## Code quality
+
+- Read files in full before broad edits, audits, or changing unread files; do not rely on search snippets
+- Ask before removing intentional behavior
+- One clear approach; refactor duplication; no weird parallel defaults
+- Propagate failures (throw/exit); no silent fallbacks; no shims unless asked
+- Prefer a small function with a long, descriptive name over a comment that restates what the code does; reserve comments for non-obvious details (formats, limits, platform quirks)
+- Match the language and conventions of the project you are in; do not impose another project's stack

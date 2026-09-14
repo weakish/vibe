@@ -81,7 +81,7 @@ Trailer order after the subject/body:
 
 Never add `Co-authored-by` (or `Co-Authored-By`) naming an agent, bot, or Cursor (`cursoragent@cursor.com`, etc.). Leave legitimate human `Co-authored-by` untouched.
 
-Project Cursor hook [`.cursor/hooks/strip-agent-coauthor.py`](../../../.cursor/hooks/strip-agent-coauthor.py) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`) on `preToolUse` and `postToolUse`. After changing the hook or its tests, run `python3 -B .cursor/hooks/test_strip_agent_coauthor.py`.
+Project Cursor hook [`cursor-hooks/.apm/hooks/strip-agent-coauthor.py`](../../../cursor-hooks/.apm/hooks/strip-agent-coauthor.py) (APM package `vibe-cursor-hooks`, Cursor-only) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`) on `preToolUse` and `postToolUse`. After changing the hook or its tests, run `python3 -B cursor-hooks/test_strip_agent_coauthor.py`.
 
 ### Author
 
