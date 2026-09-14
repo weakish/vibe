@@ -4,7 +4,9 @@ description: >-
   Review one git commit; letter-label tree findings; wait for `r` / `r <sha>` /
   `review <sha>` / a bare SHA, then fix selected labels (`all`, `y`, `fix b,d`,
   `h`/`help`). Bare `t` amends HEAD when amend is allowed and there is
-  work (tree fixes and/or message hygiene).
+  work (tree fixes and/or message hygiene). After a tree amend, hand off `t`
+  to another agent; do not wait. They prompt this pane with `t` after their
+  own tree amend until either side has no tree findings.
   `review-and-fix` / polish the tip still lands a new follow-up commit
   when there are tree findings.
   Not for PR/issue creation or history rewrite (except bare `t` /
@@ -24,7 +26,7 @@ Any of these invoke this skill. After a lettered report, how to parse `y` / `all
 |-------|-------------------|
 | `r` | `HEAD` — report with letter labels; **wait** (do not fix yet) |
 | `r <sha-or-ref>` | that commit — report; **wait** (`r HEAD` ok) |
-| `t` | `HEAD` (the tip) — report, then [Bare t](#bare-t) (amend when allowed; if blocked, keep the report and stop with no edits) |
+| `t` | `HEAD` (the tip) — report, then [Bare t](#bare-t) (amend when allowed; if blocked, keep the report and stop with no edits). After a **tree** amend, [Ping-pong](#ping-pong) (handoff `t`; do not wait) |
 | message that is **only** a SHA / short SHA / ref | that commit — report; **wait** |
 | `review <sha-or-ref>`, run the review skill | named or `HEAD` — report; **wait** |
 | `review-and-fix`, `review and fix`, polish the tip | named or `HEAD` — report, then fix **all** tree items in the same turn (same as `all`); land a **new** follow-up commit when there are tree findings (not amend) |
@@ -36,11 +38,11 @@ Do **not** treat show / explain / `git log` / questions like “what changed in 
 
 1. Review **one** commit (default: `HEAD`)
 2. Report tree findings with **letter labels** (`B`/`b`, `D`/`d`, …; or letter+number when they do not fit — see below); report message hygiene (no letters)
-3. Fix tree items: the user’s **selection** ([Select items to fix](#select-items-to-fix)), including nits they select. Same turn with no wait:
-   - bare `t` (always `HEAD`): when amend is allowed, follow [Bare t](#bare-t)
+3. Fix tree items: the user’s **selection** ([Select items to fix](#select-items-to-fix)), including nits they select. Same turn with no wait for a user selection:
+   - bare `t` (always `HEAD`): when amend is allowed, follow [Bare t](#bare-t); after a tree amend, [Ping-pong](#ping-pong)
    - `review-and-fix` / `review and fix` / polish the tip (named or `HEAD`): fix every tree item (design-choice pause in [Report, then fix](#report-then-fix) still applies); land a new commit when there are tree findings
 4. Land fixes:
-   - **[Bare t](#bare-t):** amend into `HEAD` when amend is allowed and there is work (tree and/or message hygiene)
+   - **[Bare t](#bare-t):** amend into `HEAD` when amend is allowed and there is work (tree and/or message hygiene). After a **tree** amend, [Ping-pong](#ping-pong)
    - **Everything else** (`y` / `all` / label picks / `review-and-fix` / …): **new** follow-up commit when there are tree fixes — amend only if the user explicitly asks ([Amend (opt-in)](#amend-opt-in-only))
 
 If a bare-`t` amend guard fails: follow [Bare t](#bare-t) (stop after the report; no tree or message edits). Do **not** add a separate end-of-turn prompt line.
@@ -49,12 +51,12 @@ If there are no tree findings:
 
 - On `r` / bare SHA / `review <sha-or-ref>` / selection paths: say so and stop (no empty commit). Still report message hygiene when present (report-only).
 - On `review-and-fix` / `review and fix` / polish the tip: say so and stop (no empty commit). Hygiene stays report-only.
-- On bare `t` with amend allowed: follow [Bare t](#bare-t) — hygiene-only amend when needed; if neither tree nor hygiene findings, say so and stop.
+- On bare `t` with amend allowed: follow [Bare t](#bare-t) — hygiene-only amend when needed; if neither tree nor hygiene findings, say so and stop. **No tree findings** also ends [Ping-pong](#ping-pong) (do not hand off).
 
-On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix yet, and do **not** add a separate end-of-turn prompt line (the letter labels in the report are enough). Same turn without waiting:
+On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix yet, and do **not** add a separate end-of-turn prompt line (the letter labels in the report are enough). Same turn without waiting for a user selection:
 
-- bare `t` when amend is allowed: follow [Bare t](#bare-t)
-- bare `t` when amend is blocked: report and stop (no tree or message edits)
+- bare `t` when amend is allowed: follow [Bare t](#bare-t), then [Ping-pong](#ping-pong) after a tree amend
+- bare `t` when amend is blocked: report and stop (no tree or message edits; no ping-pong)
 - `review-and-fix` / `review and fix` / polish the tip: fix every tree item (design-choice pause still applies), then land a **new** commit when there were tree findings
 
 ## Select the commit
@@ -212,7 +214,7 @@ EOF
 
 ### Bare t
 
-Bare `t` always targets `HEAD`. In the same turn: check amend guards; report (hygiene header per [Report, then fix](#report-then-fix)); if amend is allowed, fix **every** tree finding (upper and lower), **apply message hygiene**, then **amend** into `HEAD` when there is work (not a new follow-up commit). The design-choice pause in [Report, then fix](#report-then-fix) still applies (ask — do not guess; no amend until the user replies). The phrase **polish the tip** does not use this path.
+Bare `t` always targets `HEAD`. In the same turn: check amend guards; report (hygiene header per [Report, then fix](#report-then-fix)); if amend is allowed, fix **every** tree finding (upper and lower), **apply message hygiene**, then **amend** into `HEAD` when there is work (not a new follow-up commit). After a **tree** amend, [Ping-pong](#ping-pong). The design-choice pause in [Report, then fix](#report-then-fix) still applies (ask — do not guess; no amend and no handoff until the user replies). The phrase **polish the tip** does not use this path.
 
 **Amend is allowed only if all of:**
 
@@ -253,7 +255,23 @@ EOF
 
 - Prefer `git commit --amend --only --no-edit -- <paths-this-pass-changed>` only when the existing message is already clean, `Assisted-by` already includes this session (no missing union), and you have tree-only changes with no hygiene work
 
-Report the new `HEAD` hash when done (note it replaced the reviewed tip).
+Report the new `HEAD` hash when done (note it replaced the reviewed tip). Then, if this pass landed **tree** fixes, follow [Ping-pong](#ping-pong). Hygiene-only amend does **not** start or continue ping-pong.
+
+### Ping-pong
+
+Bare `t` only. Two agents take turns on the **same tip** until **either** side has **no tree findings**. Message hygiene does not keep the loop alive. After a tree amend, **handoff and end the turn** — do not wait for the other agent, poll `HEAD`, or poll their status.
+
+After **this** agent’s tree amend:
+
+1. Identify the **other agent**. When `HERDR_ENV=1`, use [herdr](../herdr/SKILL.md) and prefer a sibling pane in this tab. If not inside Herdr, or there is no other agent, stop after this pass and say so.
+2. If they are already busy on this SHA, do not double-prompt; **end the turn**.
+3. If they are idle, start them with a bare-`t` pass on this tip (`herdr agent prompt <target> t` — do **not** pass `--wait`). Then **end the turn**.
+
+The next pass on this pane is a later `t` (from them after their tree amend, or from the user). If they have no tree findings, they stop in their pane and do not prompt you. Do not stay `working` to observe that.
+
+Stop without handing off when **this** pass has **no tree findings** (clean, or hygiene-only amend only).
+
+Re-check amend guards each pass. Design-choice pause still applies (ask — do not guess; no amend and no handoff until the user replies).
 
 ### Amend (opt-in only)
 
@@ -266,4 +284,4 @@ Otherwise keep the new-commit path and say why amend was skipped.
 - Summarize what changed (brief)
 - Hashes:
   - New-commit path: reviewed commit → fix commit (or “clean, no fix commit”)
-  - Bare `t` / amend: reviewed tip → new `HEAD` after amend (or “clean, no amend”)
+  - Bare `t` / amend: reviewed tip → new `HEAD` after each amend (or “clean, no amend”). Ping-pong: say whether this pass handed off `t`, skipped handoff (already busy / no other agent / not in Herdr), or stopped for no tree findings here. Do not claim the other side’s result unless they already reported it in this pane.
