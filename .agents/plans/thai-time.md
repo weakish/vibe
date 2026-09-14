@@ -6,7 +6,7 @@ Single static page: current clock in Thailand’s historical/legal zone rules, *
 
 Ship one static web page that:
 
-1. Shows **only** the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (`Intl` / `DateTimeFormat` unusable — see Degrade gate), a **Latin Unix-seconds** decimal string instead (not HHMM). Nothing else on screen either way.
+1. Shows the current time on screen: in the normal path, **four-digit HHMM** (prefer Thai numerals e.g. `๒๒๐๐`; Latin e.g. `2200` if `numberingSystem: 'thai'` unavailable); in **degrade mode** (`Intl` / `DateTimeFormat` unusable — see Degrade gate), a **Latin Unix-seconds** decimal string instead (not HHMM). On the normal path, a corner **bell toggle** (SVG) is the only extra control; degrade has no bell control.
 2. Interprets “now” as the **visitor’s system clock instant** (`Date.now()`), as **Bangkok wall time** when **`DateTimeFormat` is usable** (probe **A** → `Asia/Bangkok` via `Intl`; if **A** fails → **`bangkokWallManual`**; display numbering via probe **B** — see Zone resolution). If **`Intl` / `DateTimeFormat` is unusable**, degrade to **Latin Unix timestamp** (seconds); no hourly announcement in that mode.
 3. On each new hour (**normal path only** — **not** in degrade mode), **announces** with the Thai-script six-hour label (special cases below) and bell chimes **when audio is armed** (silent label-only announce if unarmed — see During announcement).
 
@@ -69,7 +69,7 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
 
 ## Normal UI
 
-- Full viewport, no chrome, no title text in the document body beyond the time (page `<title>` can be minimal, e.g. `thai-time`; **`html lang="th"`**).
+- Viewport-centered time (page `<title>` can be minimal, e.g. `thai-time`; **`html lang="th"`**). No extra captions; the **bell toggle** is the only chrome.
 - **Layout:** viewport-centered (`min-height: 100vh`, flex or grid center); system font stack (no custom webfont in v1).
   - **HHMM:** single line; `font-size: clamp(3rem, 20vmin, 12rem)`; `white-space: nowrap`.
   - **Announce labels:** may be longer than HHMM — allow wrap (`white-space: normal`) and/or a slightly smaller clamp so long strings (e.g. `หนึ่งโมงเช้า`) stay on-screen on narrow viewports; do not clip with `nowrap` + huge type.
@@ -77,8 +77,8 @@ Logic tests compare **latn** `HH:MM` at minute precision (e.g. `1920-03-31T17:17
   - **`clock`** — normal HHMM (four digits, no colon; prefer Thai numerals via `numberingSystem: 'thai'`, e.g. `๐๙๐๕`; Latin `0905` if `thai` unavailable). Uses HHMM typography (`nowrap` + large clamp).
   - **`announce`** — Thai word label during announce (wrap / smaller clamp as above).
   - **`degrade`** — Latin Unix seconds (`Math.floor(Date.now() / 1000)`); **not** announce typography (same or near-`clock` sizing is fine; do not use `announce` styles).
+- **Bell toggle** (normal path only; hidden in degrade): inline SVG in a corner `button` with a visible compact **Space** keycap (`kbd`, not a separate caption or spacebar silhouette). Default **off** (`audioArmed: false`). Click the button, or **Space** (not other keys; ignore when the target is editable; if the button is focused, let the native click handle Space — do not double-toggle). Clicking the HHMM does **not** arm. Toggling **off** stops in-flight samples but does **not** abort the announce complete timer (label duration unchanged). Toggling **on** mid–silent-announce does not start leftover chimes (see During announcement).
 - Update at least every second (or on `visibilitychange`) so hour rollover is caught; normal path still minute precision on screen.
-- No other visible widgets.
 
 ## On-the-hour announcement
 
@@ -92,7 +92,7 @@ When the Bangkok wall **hour int** from `Zone` logic advances to a new value wit
 - **After any announce:** set `lastAnnouncedHour = currentHour` when the sequence **completes** (foreground `:00` transition, background return on the hour, or **silent** label-only announce — audio optional). On **supersede**, only the **replacement** sequence’s completion updates `lastAnnouncedHour` — the aborted hour does not. Counts as “announced” even if `Bell` no-oped.
 - **At most one announce sequence** at a time (label + chime queue).  
 - **Hour changes during announce:** **supersede** — **cancel** in-flight chime timers/audio **and** any pending **`POST_CHIME_TAIL_MS`** (including during a **silent** announce — tail timer alone must not revert to HHMM mid–new-announce), then run the **new** hour’s label + chime count from chime **1** with a fresh `CHIME_GAP_MS` schedule (see Audio).  
-- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`** and `lastAnnouncedHour ≠ currentHour` (current hour’s label + chimes). Set **`lastAnnouncedHour = currentHour` when that sequence completes** (same as “After any announce”; audible or silent). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively.  
+- **Tab backgrounded across one or more hours:** on `visibilitychange` → visible, announce **only if `minute === 0`**, `lastAnnouncedHour ≠ currentHour`, and that hour is **not already in flight** (do not restart a same-hour sequence). Set **`lastAnnouncedHour = currentHour` when that sequence completes** (same as “After any announce”; audible or silent). If visible but not on the hour (e.g. `:30`), **do not** announce — wait for the normal foreground `:00` trigger. Missed `:00` while hidden are not replayed retroactively. If the hour advanced while an announce was in flight, **supersede** as above.
 - **Refresh at `:00`:** do not announce (covered by init; no transition from a prior open-session hour).
 
 ### Chime count (Thai six-hour)
@@ -145,7 +145,7 @@ Labels in the table use **spelled Thai words** (หนึ่ง/สอง/…), 
 - Replace **HHMM** with the Thai **word** label for that hour (full string; spelled Thai words only — no Thai or Latin digits); class → **`announce`**.
 - Keep that label visible for the duration of the chime sequence and **post-chime tail** (`POST_CHIME_TAIL_MS`, see Audio), then revert to **HHMM** / **`clock`**.
 - **Label is independent of audio:** if bells are blocked (autoplay / not yet armed), still show the word label for the full announce window (silent announce). **Unarmed duration:** **`N * CHIME_GAP_MS + POST_CHIME_TAIL_MS`** from announce start (`N` = chime count for that hour). **Arming mid–silent-announce:** does not re-trigger the label and does **not** play bells for **this** hour — the whole announce stays silent; bells only on a **future** `:00` if armed by then.
-- Still “nothing else”: only the label text swaps; no extra caption.
+- Still only the time string in the center; the corner bell toggle stays visible on the normal path (not an extra caption).
 
 ### Audio
 
@@ -154,8 +154,8 @@ Labels in the table use **spelled Thai words** (หนึ่ง/สอง/…), 
 - **Timing constants** in `Bell.re` (tune in impl; test with injected clock where needed):
   - `CHIME_GAP_MS` = **800** — delay from **previous chime start** to **next chime start** (not “after end”). Keep the asset < 800ms, or raise the constant.
   - `POST_CHIME_TAIL_MS` = **1000** — keep announce label visible after the last chime **ends**, then revert to HHMM. If unarmed, tail starts after **`N * CHIME_GAP_MS`** (scheduled silent chime window).
-- **Supersede:** `Bell.re` / `App.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`** (whether or not any chime audio played), and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
-- Respect browser autoplay policy: first chime may require a prior user gesture; document that a click/tap anywhere arms audio if needed (arming gesture should not add visible chrome — listen on `window`). Unarmed at announce start → silent label-only announce for that hour (see During announcement); arming mid-announce does not resume chimes.
+- **Supersede:** `Bell.re` / `ReactApp.re` must clear pending **gap** timers, pending **`POST_CHIME_TAIL_MS`** (whether or not any chime audio played), and stop the current sample before starting the replacement sequence (no carry-over delay or late HHMM revert from the aborted hour).
+- Respect browser autoplay policy: unmuted `Audio.play` needs a user gesture. Arm via the **bell button** click or **Space** (see Normal UI). Unarmed at announce start → silent label-only announce for that hour (see During announcement); arming mid-announce does not resume chimes. Muting mid-announce stops samples and skips remaining `playOne`s; the complete timer still fires.
 - No speech synthesis in v1 (bells only).
 
 ## Stack
@@ -197,7 +197,8 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 ### Tests
 
 - **Jest** + **`melange-jest`** (opam bindings; `jest` on npm) for Melange-compiled unit tests — **CommonJS** test emit (see Build).
-- Pure modules (`ThaiClock`, `Zone`) and **`App` announce FSM** tested this way; optional UI later via `melange-testing-library` + Jest.
+- Pure modules (`ThaiClock`, `Zone`) and **`AppLogic` announce FSM** tested this way.
+- **Bell UI:** Playwright (Chromium) against the Vite page — visible **Space** keycap on the control; click and Space toggle `aria-pressed` / slash; time click does not. Not Vitest.
 - `Intl` / zone tests must run in JS (Node), not native Alcotest.
 - Do **not** use Vitest (no first-class Melange path).
 - **`Zone` / `App` test seams** (injectable, defaults = production behavior):
@@ -209,7 +210,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 
 - `Zone.re` — Approach A: **BMT probe (A)** + **display-numbering probe (B, normal path only)** + logic `Intl`/`bangkokWallManual`; **`now` + probe seams** for tests; not used when degrade gate fails
 - `ThaiClock.re` — hour → display label and chime count (separate)
-- `App.re` — run **Degrade gate** at init (smoke + session throw catch); if unusable, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; on runtime **required** `DateTimeFormat` throw (including mid-announce), **cancel** announce timers/audio then switch to degrade for the session; otherwise tick, announce state machine, render one string (`clock` / `announce` only); passes `now` into `Zone`; label timing independent of audio arming
+- `ReactApp.re` — run **Degrade gate** at init (smoke + session throw catch); if unusable, render **`degrade`** (Unix seconds) and **do not** call `Zone` or announce; on runtime **required** `DateTimeFormat` throw (including mid-announce), **cancel** announce timers/audio then switch to degrade for the session; otherwise tick, announce state machine, render time (`clock` / `announce`) plus bell toggle; passes `now` into `Zone`; label timing independent of audio arming
 - `Bell.re` — play N chimes (`CHIME_GAP_MS`, `POST_CHIME_TAIL_MS`); no-op sound when unarmed
 
 ## Acceptance checks
@@ -230,6 +231,7 @@ Separate `dune` aliases (e.g. `@melange` / `@jest`). Jest `rootDir` → test emi
 - [ ] Audio unarmed: word label still shows for chime+tail duration; no error UI.
 - [ ] Arming mid–silent-announce: label unchanged; **no** bells for that hour; next `:00` chimes if armed.
 - [ ] Bell asset: free/libre or public-domain preferred (search first); AI-generated only as fallback; provenance noted.
+- [ ] Bell UI: default off; visible **Space** keycap on the control; click and Space toggle on/off; clicking the HHMM does not arm.
 - [ ] Static deploy: open `index.html` (or static host) with no server logic; root element has **`lang="th"`**.
 
 ## Implementation order

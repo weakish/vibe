@@ -1,0 +1,6 @@
+(library
+ (name thai_time)
+ (wrapped false)
+ (modes melange)
+ (preprocess
+  (pps melange.ppx)))

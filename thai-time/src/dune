@@ -1,0 +1,12 @@
+(melange.emit
+ (target output)
+ (alias melange)
+ (libraries reason-react thai_time)
+ (modules ReactApp)
+ (preprocess
+  (pps melange.ppx reason-react-ppx))
+ (module_systems es6)
+ (runtime_deps
+  (glob_files ../assets/*)
+  ../index.html
+  ./styles.css))

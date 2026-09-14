@@ -1,0 +1,10 @@
+_build/
+_opam/
+node_modules/
+dist/
+.merlin
+*.install
+.DS_Store
+/playwright-report/
+/test-results/
+/playwright/.cache/

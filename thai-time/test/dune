@@ -1,0 +1,15 @@
+(melange.emit
+ (target jest)
+ (alias jest)
+ (libraries thai_time melange-jest.jest melange.belt)
+ (preprocess
+  (pps melange.ppx))
+ (module_systems commonjs))
+
+(rule
+ (alias runtest)
+ (deps
+  (alias_rec jest))
+ (action
+  (chdir %{project_root}
+    (run npx jest))))

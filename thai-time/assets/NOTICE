@@ -1,0 +1,13 @@
+bell.mp3
+-------
+
+Source: OpenGameArt “Bell dings/chimes” by qubodup
+URL: https://opengameart.org/content/bell-dingschimes
+Original file: bell_ding2.wav (public domain)
+License: Public Domain
+
+Processing: trimmed to 550ms with fade-out (ffmpeg) so sample duration
+is shorter than CHIME_GAP_MS (800ms). Converted to mono MP3.
+Bell.re sampleDurationMs must match this trim (550). If you replace
+this file, keep the sample shorter than CHIME_GAP_MS and update
+sampleDurationMs — armed completeAt uses last start + sample + tail.

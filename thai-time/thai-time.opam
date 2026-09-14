@@ -1,0 +1,17 @@
+opam-version: "2.0"
+synopsis: "Thai six-hour clock static page"
+description: "Bangkok wall time HHMM with Thai six-hour announcements"
+maintainer: ["weakish"]
+authors: ["weakish"]
+license: "MIT"
+depends: [
+  "ocaml" {>= "5.2.0"}
+  "reason" {>= "3.10.0"}
+  "dune" {>= "3.16"}
+  "melange" {>= "5.0.0"}
+  "reason-react" {>= "0.16.0"}
+  "reason-react-ppx"
+  "melange-jest"
+  "ocaml-lsp-server" {with-dev-setup}
+]
+dev-repo: "git+https://github.com/weakish/vibe.git"

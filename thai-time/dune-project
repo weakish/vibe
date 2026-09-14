@@ -1,0 +1,13 @@
+(lang dune 3.16)
+
+(using melange 0.1)
+
+(name thai-time)
+
+(license "MIT")
+
+(package
+ (allow_empty)
+ (name thai-time)
+ (synopsis "Thai six-hour clock static page")
+ (description "Bangkok wall time HHMM with Thai six-hour announcements"))
