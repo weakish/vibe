@@ -4,6 +4,5 @@ description: "How to run project tasks and tests"
 
 ## Commands
 
-- Use each project's documented tasks/scripts (README, `package.json` scripts, `deno task`, `make`, etc.)
+- Use documented tasks/scripts (README, `package.json` scripts, `deno task`, `make`, etc.)
 - After creating/modifying a test: run it until it passes. No sleeps in tests.
-- Do not invent repo-wide check/fmt commands; there is no shared toolchain at the root

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for strip-agent-coauthor.py. Run: python3 -B cursor-hooks/test_strip_agent_coauthor.py"""
+"""Tests for strip-agent-coauthor.py. Run: python3 -B .cursor/hooks/test_strip_agent_coauthor.py"""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-HOOK = Path(__file__).resolve().parent / ".apm" / "hooks" / "strip-agent-coauthor.py"
-HOOK_CONFIG = HOOK.with_name("strip-agent-coauthor.json")
-REPO_ROOT = Path(__file__).resolve().parent.parent
+HOOK = Path(__file__).resolve().parent / "strip-agent-coauthor.py"
+HOOK_CONFIG = Path(__file__).resolve().parents[2] / ".cursor" / "hooks.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_hook():
@@ -696,7 +696,7 @@ class HookConfigTests(unittest.TestCase):
         )
         text = skill.read_text(encoding="utf-8")
         self.assertIn(
-            "python3 -B cursor-hooks/test_strip_agent_coauthor.py",
+            "python3 -B .cursor/hooks/test_strip_agent_coauthor.py",
             text,
         )
 

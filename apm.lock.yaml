@@ -1,47 +1,7 @@
 lockfile_version: '1'
 apm_version: 0.30.0
-dependencies:
-- repo_url: _local/cursor-hooks
-  name: vibe-cursor-hooks
-  version: 0.0.0
-  package_type: apm_package
-  deployed_files:
-  - .cursor/hooks/cursor-hooks/.gitignore
-  - .cursor/hooks/cursor-hooks/strip-agent-coauthor.py
-  deployed_file_hashes:
-    .cursor/hooks/cursor-hooks/.gitignore: sha256:32dae3052f331ee34d628ef535709b301259a45df7c7522c4d35dcf49873f00b
-    .cursor/hooks/cursor-hooks/strip-agent-coauthor.py: sha256:99a6ff3bd3105e93f804c7786e406b1ced148f2829ba9e38419b226c6ac58f90
-  source: local
-  local_path: ./cursor-hooks
-  declared_license: 0BSD
+dependencies: []
 deployments:
-- kind: project-relative
-  target: cursor
-  value: .cursor/hooks/cursor-hooks/.gitignore
-  runtime: null
-  scope: project
-  owners:
-  - ./cursor-hooks
-  active_owner: ./cursor-hooks
-  content_hash: sha256:32dae3052f331ee34d628ef535709b301259a45df7c7522c4d35dcf49873f00b
-- kind: project-relative
-  target: cursor
-  value: .cursor/hooks/cursor-hooks/strip-agent-coauthor.py
-  runtime: null
-  scope: project
-  owners:
-  - ./cursor-hooks
-  active_owner: ./cursor-hooks
-  content_hash: sha256:99a6ff3bd3105e93f804c7786e406b1ced148f2829ba9e38419b226c6ac58f90
-- kind: project-relative
-  target: cursor
-  value: .cursor/rules/01-context.mdc
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:6a67617f061884878bcd1df04b4aefa85b1fb638e1b1e458ea8cae89b287b5a0
 - kind: project-relative
   target: cursor
   value: .cursor/rules/02-style.mdc
@@ -50,16 +10,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:55c06e7c04e2403f83ad5464292e627ac5e50b6573396e6df4487838968d1ab5
-- kind: project-relative
-  target: cursor
-  value: .cursor/rules/03-monorepo.mdc
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:e03e8b9666b88b31d5de160e879b4c06381fdfb037b3f8d4c2d089d80b090d3b
+  content_hash: sha256:beab55d293acdd3916ec6275a906bc7b54ec0ce8568eaddc481eafeb955f452e
 - kind: project-relative
   target: cursor
   value: .cursor/rules/04-code-quality.mdc
@@ -68,7 +19,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:6a24545ad8fc045e5800ec83e2e90bd470f5dc7930277403263876e1b3b16346
+  content_hash: sha256:5a7298f4e3e44be7bb3eadbd4a95e29bb38d601bc79f32e6047ffe27eca6040a
 - kind: project-relative
   target: cursor
   value: .cursor/rules/05-commands.mdc
@@ -77,7 +28,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:596bc3ed6f1c9f1c07be1b30acc255d2de534a067b178a9a183e0d2a0b7949bf
+  content_hash: sha256:0981617bcf5f2810c3336fd08dc06ca77eddcd6ce6f9282fca692feb97edfe8e
 - kind: project-relative
   target: cursor
   value: .cursor/rules/06-skills.mdc
@@ -86,7 +37,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:0a9ae8071299b7b4ced30faa85477a1ce33c57bad8bd904c5758bd3bc1631e38
+  content_hash: sha256:d40b50f4c11155dd72bf3f009f0d5c78a705864257853507d5e1dbd078a59477
 - kind: project-relative
   target: cursor
   value: .cursor/rules/07-herdr.mdc
@@ -122,7 +73,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:7eccf5f5edbe3fff5234642a7fcd18f7bc3a97675f56e515efbb0610c080e560
+  content_hash: sha256:8fa27dac332ea878a3b7c817c760b4d92a71d2e6fb45590296d1fe7600eb4c13
 - kind: project-relative
   target: legacy
   value: .agents/skills/herdr
@@ -158,7 +109,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:1d3785ccd02af2bc90209ae48b0609a4d01ed54ddd59bd91cddea7259fb5a4af
+  content_hash: sha256:9eebe50719283f900982da35679face7e2d0ab7c35c740cf88456f9dd9adec2c
 local_deployed_files:
 - .agents/skills/git-commits
 - .agents/skills/git-commits/SKILL.md
@@ -166,23 +117,19 @@ local_deployed_files:
 - .agents/skills/herdr/SKILL.md
 - .agents/skills/review
 - .agents/skills/review/SKILL.md
-- .cursor/rules/01-context.mdc
 - .cursor/rules/02-style.mdc
-- .cursor/rules/03-monorepo.mdc
 - .cursor/rules/04-code-quality.mdc
 - .cursor/rules/05-commands.mdc
 - .cursor/rules/06-skills.mdc
 - .cursor/rules/07-herdr.mdc
 - .cursor/rules/08-git.mdc
 local_deployed_file_hashes:
-  .agents/skills/git-commits/SKILL.md: sha256:7eccf5f5edbe3fff5234642a7fcd18f7bc3a97675f56e515efbb0610c080e560
+  .agents/skills/git-commits/SKILL.md: sha256:8fa27dac332ea878a3b7c817c760b4d92a71d2e6fb45590296d1fe7600eb4c13
   .agents/skills/herdr/SKILL.md: sha256:0a7bacfe0223e9607ac2400fad83322b10b1a40665c5d197975f94c376722fe5
-  .agents/skills/review/SKILL.md: sha256:1d3785ccd02af2bc90209ae48b0609a4d01ed54ddd59bd91cddea7259fb5a4af
-  .cursor/rules/01-context.mdc: sha256:6a67617f061884878bcd1df04b4aefa85b1fb638e1b1e458ea8cae89b287b5a0
-  .cursor/rules/02-style.mdc: sha256:55c06e7c04e2403f83ad5464292e627ac5e50b6573396e6df4487838968d1ab5
-  .cursor/rules/03-monorepo.mdc: sha256:e03e8b9666b88b31d5de160e879b4c06381fdfb037b3f8d4c2d089d80b090d3b
-  .cursor/rules/04-code-quality.mdc: sha256:6a24545ad8fc045e5800ec83e2e90bd470f5dc7930277403263876e1b3b16346
-  .cursor/rules/05-commands.mdc: sha256:596bc3ed6f1c9f1c07be1b30acc255d2de534a067b178a9a183e0d2a0b7949bf
-  .cursor/rules/06-skills.mdc: sha256:0a9ae8071299b7b4ced30faa85477a1ce33c57bad8bd904c5758bd3bc1631e38
+  .agents/skills/review/SKILL.md: sha256:9eebe50719283f900982da35679face7e2d0ab7c35c740cf88456f9dd9adec2c
+  .cursor/rules/02-style.mdc: sha256:beab55d293acdd3916ec6275a906bc7b54ec0ce8568eaddc481eafeb955f452e
+  .cursor/rules/04-code-quality.mdc: sha256:5a7298f4e3e44be7bb3eadbd4a95e29bb38d601bc79f32e6047ffe27eca6040a
+  .cursor/rules/05-commands.mdc: sha256:0981617bcf5f2810c3336fd08dc06ca77eddcd6ce6f9282fca692feb97edfe8e
+  .cursor/rules/06-skills.mdc: sha256:d40b50f4c11155dd72bf3f009f0d5c78a705864257853507d5e1dbd078a59477
   .cursor/rules/07-herdr.mdc: sha256:1e40acfc28a838212b1273aec835509de64f13e728766b380f9f6e6130894ad9
   .cursor/rules/08-git.mdc: sha256:d7faf4f6149ace799f3f09b6918d20ef09d450a331541e4a61b42cb4a4b50e03

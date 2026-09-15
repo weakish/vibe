@@ -6,5 +6,3 @@ description: Prose and review style for agent output
 
 - Short, direct, technical prose
 - On feedback/analysis: say agree or disagree, then what changed
-- Vibe first: ship working experiments; do not gate on human review or polish theater
-- 0% human review — never add `Acked-by` or `Reviewed-by` commit trailers

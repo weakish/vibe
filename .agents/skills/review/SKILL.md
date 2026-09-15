@@ -69,7 +69,14 @@ On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix 
 
 ## Review
 
-Check the commit against root [AGENTS.md](../../../AGENTS.md). When the diff touches a project directory, also follow that project’s `AGENTS.md` and project-local `.agents/skills/` if present. Match the language and conventions of the project you are in — do not impose another project’s stack. Look for:
+Check the commit against root [AGENTS.md](../../../AGENTS.md).
+
+If in a monorepo:
+
+- When the diff touches a project directory, also follow that project’s `AGENTS.md` and project-local `.agents/skills/` if present.
+- Match the language and conventions of the project you are in — do not impose another project’s stack.
+
+Look for:
 
 - Incorrect behavior, edge cases, broken failure propagation (silent fallbacks, swallowed errors)
 - Intentional behavior removed or “cleaned up” without asking (aliases, redirects, platform workarounds, commented skips)
@@ -87,9 +94,8 @@ Message or trailer problems on the **reviewed** commit:
 
 - Do not push, force-push, or push/merge to `master` (even if asked)
 - Do not rewrite history except: bare `t` amend (below), or an explicit user-requested amend that passes [Amend (opt-in)](#amend-opt-in-only)
-- Do not add `Acked-by` / `Reviewed-by` (this repo: 0% human review; see [git-commits](../git-commits/SKILL.md))
 - Do not invent content for other agents’ dirty/untracked files
-- Do not invent a root check/fmt toolchain; use each project’s documented tasks/scripts only
+- If in a monorepo, do not invent a root check/fmt toolchain; use each project’s documented tasks/scripts only
 
 ## Report, then fix
 
@@ -194,7 +200,7 @@ Cross-prefix numbered ranges (e.g. `d3-g4`) are **not** supported — ask the us
 - Unknown or out-of-range labels (not part of a letter span or numeric range token): say which, continue with the rest.
 - A **reserved** letter used as a **label** token in a list or scoped argument (e.g. `b,h,d`, `help h`) is **invalid** — **pause**, say which, and ask for confirmation; do not apply or explain until the user replies.
 
-When fixes touch code a project documents checks/tests for, run those project-local tasks before committing. After creating or modifying a test, run that test until it passes. Do not invent repo-wide check/fmt commands.
+When fixes touch code a project documents checks/tests for, run those project-local tasks before committing. After creating or modifying a test, run that test until it passes. If in a monorepo, do not invent repo-wide check/fmt commands.
 
 ## Commit the fixes
 
@@ -207,7 +213,7 @@ EOF
 )" -- <paths-this-pass-changed>
 ```
 
-- Message: pick gitmoji from the **primary** nature of the fixes (`:bug:` for real bugs, `:art:` for refactor/clarity, `:memo:` for docs, `:zzz:` for chore). Prefer optional monorepo scope (project directory). Subject should say it is review follow-up when that helps (e.g. `:art:foo: review follow-up: tighten error paths`).
+- Message: pick gitmoji from the **primary** nature of the fixes (`:bug:` for real bugs, `:art:` for refactor/clarity, `:memo:` for docs, `:zzz:` for chore). Scope is optional; in a monorepo prefer the project directory. Subject should say it is review follow-up when that helps (e.g. `:art:foo: review follow-up: tighten error paths`).
 - Body: what landed; optional one line that it follows review of `<short-sha>`.
 - Trailers: `Assisted-by` for this session’s model (required when this session produced the fix diff). Do **not** copy review trailers onto the fix commit. Do **not** add agent `Co-authored-by` (the Cursor hook strips injected `cursoragent@cursor.com` trailers; see [git-commits](../git-commits/SKILL.md)).
 - Report the new commit hash when done.
@@ -220,7 +226,6 @@ Bare `t` always targets `HEAD`. In the same turn: check amend guards; report (hy
 
 - Reviewed commit **is** `HEAD`
 - Tip is **not** on any remote-tracking ref (`git branch -r --contains HEAD` is empty). If it is, stop and say so — do not amend published history (never force-push, including to `master`)
-- Tip has no `Acked-by` / `Reviewed-by`
 
 If a guard fails, stop after the report, say why — do not edit the tree and do not amend. Tree fixes can still land via selection on that report (`all` / `y` / labels) or `review-and-fix` / polish the tip (new commit).
 

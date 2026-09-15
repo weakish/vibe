@@ -3,8 +3,8 @@ name: git-commits
 description: >-
   Repo commit message and trailer contract: 13 Short Gitmojis subjects;
   Assisted-by; Reported-by for user-reported bugs; Suggested-by for human
-  ideas and approach. No human-review trailers (0% human review). No agent
-  Co-authored-by. Use when committing or writing a commit message.
+  ideas and approach. No agent Co-authored-by. Use when committing or
+  writing a commit message.
 ---
 
 # Git commits and trailers
@@ -22,7 +22,7 @@ Use [13 Short Gitmojis](https://mmap.page/dive-into/gitmoji/). Prefer the emoji 
 ```
 
 - `<type>` — one of the 13 codes below (required)
-- `scope` — optional; prefer the project directory name in this monorepo (e.g. `:new:foo: add CLI`)
+- `scope` — optional; in a monorepo prefer the project directory (e.g. `:new:foo: add CLI`)
 - `<summary>` — short description; imperative mood preferred
 - Keep the first line under **50 characters** when practical
 
@@ -35,8 +35,9 @@ Use [13 Short Gitmojis](https://mmap.page/dive-into/gitmoji/). Prefer the emoji 
 Examples:
 
 ```
+:new: add CLI
 :new:foo: scaffold Deno CLI
-:memo: document monorepo layout
+:memo: document trailer rules
 :zzz: ignore .DS_Store
 ```
 
@@ -69,8 +70,6 @@ Examples:
 
 Trailers record attribution (`Assisted-by` per commit when an agent helped; squash before merge if you prefer). Git `Author` is always the human, for `git blame`.
 
-This repo has **0% human review**. Never add `Acked-by` or `Reviewed-by`.
-
 Trailer order after the subject/body:
 
 1. `Reported-by` (when the user reported a valid bug this commit fixes)
@@ -79,9 +78,10 @@ Trailer order after the subject/body:
 
 `Reported-by` and `Suggested-by` name **humans** only — never an agent. Agent help (including when the user asks an agent to review code) belongs in `Assisted-by`.
 
-Never add `Co-authored-by` (or `Co-Authored-By`) naming an agent, bot, or Cursor (`cursoragent@cursor.com`, etc.). Leave legitimate human `Co-authored-by` untouched.
+Never add `Co-authored-by` (or `Co-Authored-By`) naming an agent or bot, e.g. `Cursor <cursoragent@cursor.com>`.
+Leave legitimate human `Co-authored-by` untouched.
 
-Project Cursor hook [`cursor-hooks/.apm/hooks/strip-agent-coauthor.py`](../../../cursor-hooks/.apm/hooks/strip-agent-coauthor.py) (APM package `vibe-cursor-hooks`, Cursor-only) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`) on `preToolUse` and `postToolUse`. After changing the hook or its tests, run `python3 -B cursor-hooks/test_strip_agent_coauthor.py`.
+Project Cursor hook [`.cursor/hooks/strip-agent-coauthor.py`](../../../.cursor/hooks/strip-agent-coauthor.py) (`.cursor/hooks.json`, `preToolUse` and `postToolUse`) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`). After changing the hook or its tests, run `python3 -B .cursor/hooks/test_strip_agent_coauthor.py`.
 
 ### Author
 
