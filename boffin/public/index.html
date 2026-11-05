@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e1014" media="(prefers-color-scheme: dark)" />
+    <script src="/theme-init.js"></script>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Boffin" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Boffin</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app" id="app" inert>
+      <header class="topbar">
+        <div class="title-block">
+          <h1 class="title">Boffin</h1>
+          <p class="people" id="people-line" hidden></p>
+        </div>
+        <div class="topbar-actions">
+          <div class="settings-host">
+            <button
+              type="button"
+              class="icon-button"
+              id="settings"
+              aria-expanded="false"
+              aria-controls="settings-panel"
+              aria-label="Settings"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                />
+                <path
+                  d="M19.4 13a7.7 7.7 0 0 0 .06-2l1.74-1.32-1.8-3.12-2.06.62a7.8 7.8 0 0 0-1.73-1l-.28-2.14h-3.66l-.28 2.14a7.8 7.8 0 0 0-1.73 1l-2.06-.62-1.8 3.12L7.54 11a7.7 7.7 0 0 0 .06 2l-1.74 1.32 1.8 3.12 2.06-.62c.52.42 1.1.76 1.73 1l.28 2.14h3.66l.28-2.14c.63-.24 1.21-.58 1.73-1l2.06.62 1.8-3.12L19.4 13Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <div class="menu-panel" id="settings-panel" hidden>
+              <div class="menu-field">
+                <span id="theme-label">Theme</span>
+                <div class="theme-picker" id="theme" role="radiogroup" aria-labelledby="theme-label"></div>
+              </div>
+              <div class="menu-field">
+                <span id="size-label">Size</span>
+                <div class="theme-picker" id="size" role="radiogroup" aria-labelledby="size-label"></div>
+              </div>
+              <div class="menu-field">
+                <span id="locale-label">Language</span>
+                <div class="lang-picker" id="locale" role="radiogroup" aria-labelledby="locale-label" aria-orientation="vertical"></div>
+              </div>
+              <button type="button" class="menu-action" id="export-log" disabled>Export</button>
+              <button type="button" class="menu-action" id="people" hidden>Members</button>
+              <button type="button" class="menu-action" id="passkeys" hidden>Passkeys</button>
+              <button type="button" class="menu-action" id="log-out">Log out</button>
+              <a class="menu-action" id="spec-link" href="/spec">Spec</a>
+            </div>
+          </div>
+          <button type="button" class="pill-button" id="new-chat">New chat</button>
+        </div>
+      </header>
+
+      <noscript><p class="status">Boffin needs JavaScript enabled.</p></noscript>
+
+      <p class="status" id="status" role="status" hidden></p>
+
+      <main class="conversation-list" id="conversation-list" hidden>
+        <h2 id="conversation-list-title">Conversations</h2>
+        <div id="conversation-entries"></div>
+      </main>
+
+      <main class="messages" id="messages">
+        <div class="empty" id="empty">
+          <p class="empty-title" id="empty-title">The LORD bless thee, and keep thee.</p>
+        </div>
+        <div class="transcript" id="transcript" role="log" aria-live="polite"></div>
+        <div class="typing" id="typing" hidden aria-label="The agent is working">
+          <span></span><span></span><span></span>
+        </div>
+      </main>
+
+      <div class="composer">
+        <div class="pending" id="pending" hidden></div>
+        <div class="composer-row">
+          <label class="attach-button" id="attach" aria-label="Attach files">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8.2 12.4 14.4 6.2a3.1 3.1 0 0 1 4.4 4.4l-7.9 7.9a4.3 4.3 0 0 1-6.1-6.1l7.1-7.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <input id="files" type="file" multiple tabindex="-1" />
+          </label>
+          <textarea
+            id="input"
+            rows="1"
+            placeholder="Message the agent"
+            aria-label="Message"
+            maxlength="32768"
+            autocomplete="off"
+            autocapitalize="sentences"
+            enterkeyhint="enter"
+          ></textarea>
+          <button type="button" class="send-button" id="send" aria-label="Send">
+            <svg class="icon-send" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg class="icon-stop" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <dialog class="sheet" id="passkeys-dialog" aria-labelledby="passkeys-title">
+      <div class="login-card">
+        <h2 id="passkeys-title">Passkeys</h2>
+        <ul class="people-list" id="passkey-entries"></ul>
+        <input
+          id="passkey-label"
+          type="text"
+          maxlength="40"
+          autocomplete="off"
+          spellcheck="false"
+          enterkeyhint="done"
+          placeholder="Label"
+          aria-label="Label"
+        />
+        <p class="status-line" id="passkeys-status" role="status"></p>
+        <button type="button" class="primary-button" id="passkey-add">Add passkey</button>
+        <button type="button" class="ghost-button" id="passkeys-close">Cancel</button>
+      </div>
+    </dialog>
+
+    <dialog class="sheet" id="people-dialog" aria-labelledby="people-title">
+      <div class="login-card">
+        <h2 id="people-title">Members</h2>
+        <ul class="people-list" id="people-members"></ul>
+        <h3 id="previous-title">Previously invited</h3>
+        <ul class="people-list" id="previous-people"></ul>
+        <button type="button" class="primary-button" id="invite" hidden>Invite</button>
+        <p id="people-status" role="status" hidden></p>
+        <h3 id="pending-title">Invitation links</h3>
+        <ul class="people-list" id="pending-invites"></ul>
+        <button type="button" class="ghost-button" id="people-close">Cancel</button>
+      </div>
+    </dialog>
+
+    <dialog class="sheet" id="new-chat-dialog" aria-labelledby="new-chat-title" aria-describedby="new-chat-body">
+      <div class="login-card">
+        <h2 id="new-chat-title">New chat</h2>
+        <p id="new-chat-body">Start a new chat? The current conversation will be cleared.</p>
+        <div class="sheet-actions">
+          <button type="button" class="primary-button" id="new-chat-export" data-action="export">Export log and start</button>
+          <button type="button" class="secondary-button" id="new-chat-clear" data-action="clear">Start without exporting</button>
+          <button type="button" class="ghost-button" id="new-chat-cancel" data-action="cancel">Cancel</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="landing" id="landing">
+      <div class="landing-page">
+        <div class="landing-toolbar">
+          <div class="settings-host">
+            <button
+              type="button"
+              class="icon-button"
+              id="landing-settings"
+              aria-expanded="false"
+              aria-controls="landing-settings-panel"
+              aria-label="Settings"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                />
+                <path
+                  d="M19.4 13a7.7 7.7 0 0 0 .06-2l1.74-1.32-1.8-3.12-2.06.62a7.8 7.8 0 0 0-1.73-1l-.28-2.14h-3.66l-.28 2.14a7.8 7.8 0 0 0-1.73 1l-2.06-.62-1.8 3.12L7.54 11a7.7 7.7 0 0 0 .06 2l-1.74 1.32 1.8 3.12 2.06-.62c.52.42 1.1.76 1.73 1l.28 2.14h3.66l.28-2.14c.63-.24 1.21-.58 1.73-1l2.06.62 1.8-3.12L19.4 13Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+            <div class="menu-panel" id="landing-settings-panel" hidden>
+              <div class="menu-field">
+                <span id="landing-theme-label">Theme</span>
+                <div class="theme-picker" id="landing-theme" role="radiogroup" aria-labelledby="landing-theme-label"></div>
+              </div>
+              <div class="menu-field">
+                <span id="landing-size-label">Size</span>
+                <div class="theme-picker" id="landing-size" role="radiogroup" aria-labelledby="landing-size-label"></div>
+              </div>
+              <div class="menu-field">
+                <span id="landing-locale-label">Language</span>
+                <div class="lang-picker" id="landing-locale" role="radiogroup" aria-labelledby="landing-locale-label" aria-orientation="vertical"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="status" id="landing-status" role="status" hidden></p>
+        <h1 class="landing-title">Boffin</h1>
+        <p class="landing-tagline" id="landing-tagline">The AI assistant free to shoot itself in the foot.</p>
+        <div class="landing-actions">
+          <button type="button" class="primary-button" id="landing-signin" disabled>Start</button>
+          <button type="button" class="landing-invite" id="landing-invite" hidden></button>
+        </div>
+        <div class="landing-demo" id="landing-demo">
+          <header class="topbar">
+            <div class="title-block">
+              <h2 class="title" id="demo-title">Boffin</h2>
+              <p class="people" id="demo-people"></p>
+            </div>
+            <div class="topbar-actions">
+              <button type="button" class="pill-button" id="demo-spec-back" hidden>Chat</button>
+              <button type="button" class="pill-button" id="demo-spec-edit" hidden>Edit</button>
+              <div class="settings-host">
+                <button
+                  type="button"
+                  class="icon-button"
+                  id="demo-settings"
+                  aria-expanded="false"
+                  aria-controls="demo-settings-panel"
+                  aria-label="Settings"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    />
+                    <path
+                      d="M19.4 13a7.7 7.7 0 0 0 .06-2l1.74-1.32-1.8-3.12-2.06.62a7.8 7.8 0 0 0-1.73-1l-.28-2.14h-3.66l-.28 2.14a7.8 7.8 0 0 0-1.73 1l-2.06-.62-1.8 3.12L7.54 11a7.7 7.7 0 0 0 .06 2l-1.74 1.32 1.8 3.12 2.06-.62c.52.42 1.1.76 1.73 1l.28 2.14h3.66l.28-2.14c.63-.24 1.21-.58 1.73-1l2.06.62 1.8-3.12L19.4 13Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+                <div class="menu-panel" id="demo-settings-panel" hidden>
+                  <div class="menu-field">
+                    <span id="demo-theme-label">Theme</span>
+                    <div class="theme-picker" id="demo-theme" role="radiogroup" aria-labelledby="demo-theme-label"></div>
+                  </div>
+                  <div class="menu-field">
+                    <span id="demo-size-label">Size</span>
+                    <div class="theme-picker" id="demo-size" role="radiogroup" aria-labelledby="demo-size-label"></div>
+                  </div>
+                  <div class="menu-field">
+                    <span id="demo-locale-label">Language</span>
+                    <div class="lang-picker" id="demo-locale" role="radiogroup" aria-labelledby="demo-locale-label" aria-orientation="vertical"></div>
+                  </div>
+                  <button type="button" class="menu-action" id="demo-export">Export</button>
+                  <button type="button" class="menu-action" id="demo-members">Members</button>
+                  <button type="button" class="menu-action" id="demo-passkeys">Passkeys</button>
+                  <button type="button" class="menu-action" id="demo-log-out">Log out</button>
+                  <button type="button" class="menu-action" id="demo-spec">Spec</button>
+                </div>
+              </div>
+            </div>
+          </header>
+          <div class="messages" id="demo-messages">
+            <div class="transcript" id="demo-transcript"></div>
+            <div class="typing" id="demo-typing" hidden aria-label="The agent is working">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="messages" id="demo-spec-view" hidden>
+            <p class="status" id="demo-spec-status" role="status" hidden></p>
+            <article class="md spec-doc" id="demo-spec-rendered" dir="auto"></article>
+          </div>
+          <div class="composer" id="demo-composer">
+            <div class="composer-row">
+              <button type="button" class="attach-button" id="demo-attach" aria-label="Attach files">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8.2 12.4 14.4 6.2a3.1 3.1 0 0 1 4.4 4.4l-7.9 7.9a4.3 4.3 0 0 1-6.1-6.1l7.1-7.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+              <textarea
+                id="demo-input"
+                rows="1"
+                placeholder="Message the agent"
+                aria-label="Message"
+              ></textarea>
+              <button type="button" class="send-button" id="demo-send" disabled aria-label="Send">
+                <svg class="icon-send" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <dialog class="sheet" id="demo-passkeys-dialog" aria-labelledby="demo-passkeys-title" aria-describedby="demo-passkeys-body">
+            <div class="login-card">
+              <h2 id="demo-passkeys-title">Passkeys</h2>
+              <p id="demo-passkeys-body">In the real application, you can manage your passkeys here.</p>
+              <button type="button" class="ghost-button" id="demo-passkeys-close">Cancel</button>
+            </div>
+          </dialog>
+          <dialog class="sheet" id="demo-attach-dialog" aria-labelledby="demo-attach-title" aria-describedby="demo-attach-body">
+            <div class="login-card">
+              <h2 id="demo-attach-title">Attach files</h2>
+              <p id="demo-attach-body">In the real application, you can attach files here.</p>
+              <button type="button" class="ghost-button" id="demo-attach-close">Cancel</button>
+            </div>
+          </dialog>
+          <dialog class="sheet" id="demo-invite-dialog" aria-labelledby="demo-invite-title" aria-describedby="demo-invite-body">
+            <div class="login-card">
+              <h2 id="demo-invite-title">Invite</h2>
+              <p id="demo-invite-body">In the real application, you can generate an invitation link here.</p>
+              <button type="button" class="ghost-button" id="demo-invite-close">Cancel</button>
+            </div>
+          </dialog>
+          <dialog class="sheet" id="demo-log-out-dialog" aria-labelledby="demo-log-out-title" aria-describedby="demo-log-out-body">
+            <div class="login-card">
+              <h2 id="demo-log-out-title">Log out</h2>
+              <p id="demo-log-out-body">In the real application, you can log out here.</p>
+              <button type="button" class="ghost-button" id="demo-log-out-close">Cancel</button>
+            </div>
+          </dialog>
+        </div>
+      </div>
+    </div>
+
+    <dialog class="sheet" id="login" aria-labelledby="login-title" aria-describedby="login-hint">
+      <form class="login-card" id="login-form">
+        <h2 id="login-title">Start</h2>
+        <p id="login-hint">Use the <code>username</code> and <code>password</code> from the server's config file.</p>
+        <input
+          id="login-username"
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          placeholder="Username"
+        />
+        <input
+          id="login-password"
+          type="password"
+          autocomplete="current-password"
+          autocapitalize="none"
+          placeholder="Password"
+        />
+        <button type="submit" class="primary-button" id="login-submit">Unlock</button>
+        <button type="button" class="primary-button" id="login-join" hidden>Create passkey and join</button>
+        <button type="button" class="ghost-button" id="login-close">Cancel</button>
+        <p class="login-error" id="login-error" role="alert"></p>
+        <p id="login-invite-only">At this phase, Boffin is invite-only.</p>
+      </form>
+    </dialog>
+
+    <dialog class="sheet" id="join-warning-dialog" aria-labelledby="join-warning-title" aria-describedby="join-warning-text">
+      <div class="login-card">
+        <h2 id="join-warning-title">Join</h2>
+        <p id="join-warning-text"></p>
+        <div class="sheet-actions">
+          <button type="button" class="primary-button" id="join-warning-cancel" autofocus>Cancel</button>
+          <button type="button" class="secondary-button" id="join-warning-continue">Continue</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="sheet" id="passkey-warning-dialog" aria-labelledby="passkey-warning-title" aria-describedby="passkey-warning-text">
+      <div class="login-card">
+        <h2 id="passkey-warning-title">Passkeys</h2>
+        <p id="passkey-warning-text"></p>
+        <div class="sheet-actions">
+          <button type="button" class="primary-button" id="passkey-warning-cancel" autofocus>Cancel</button>
+          <button type="button" class="secondary-button" id="passkey-warning-continue">Continue</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

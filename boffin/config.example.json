@@ -1,0 +1,10 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "model": "composer-2.5",
+  "agent_bin": "agent",
+  "force": true,
+  "username": "your-username",
+  "password": "replace-with-a-strong-password",
+  "state_file": "data/state.json"
+}

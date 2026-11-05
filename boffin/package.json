@@ -1,0 +1,14 @@
+{
+  "name": "boffin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-friendly chat web UI for the Cursor CLI, bound to a fixed working directory and model.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

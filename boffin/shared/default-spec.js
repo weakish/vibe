@@ -1,0 +1,137 @@
+// Shown until the owner saves their own copy.
+export const DEFAULT_SPEC = `# What Boffin is
+
+Boffin is a mobile-friendly chat page for the Cursor CLI. One server keeps one active conversation, and a log of each conversation that has ended. The active conversation is tied to one working directory and one model. The working directory is the first argument to the server, or the current directory, and the model is set in the server config. More than one person can take part in it.
+
+# Sign-in
+
+The page first shows a landing page. The slogan is “The AI assistant free to shoot itself in the foot.” Under the start button is a sample of the shared conversation (see Sample script). Start opens the password form when nobody has signed in yet. The form says this phase is invite-only. A passkey can be created only when the page is served over HTTPS, or over HTTP on localhost, and the address is a hostname rather than an IP address. Passkeys are bound to the hostname they were created on (see BUGS).
+
+The owner's username and password come from the config file. \`BOFFIN_USERNAME\` and \`BOFFIN_PASSWORD\` override the file. The username must not contain a colon. The password must be at least 8 characters, and the placeholders in the example config are rejected. The owner's name in the conversation is that username.
+
+The first time anyone signs in, Start asks for that username and password and checks them against the config file. A rejected password asks again. When the password is accepted, the page asks the owner to add a passkey, and the owner should add it right after the first sign-in. Sign-in is finished only after that passkey exists. Until then, the app does not block access to the other API routes for anyone who has the owner's username and password. The browser does not keep the password. After that, Start asks for a username. The server returns a sign-in challenge for every username. That challenge lists 8 credential ids, using placeholders when the name has fewer passkeys, so a short list does not show by itself whether the name exists. A name with more than 8 passkeys lists each of them. Placeholders stay the same across a restart because their key is kept in the state file. A list changes when a name first gets a passkey. The page then asks for a passkey, including one saved on another device. A passkey for a different person is refused. The password is not asked again.
+
+Each client address may submit the password form 8 times in 15 minutes, counting from its first submission. A wrong Basic password on other routes counts too, while the password is still accepted. A correct Basic password leaves the count unchanged. A separate count allows 30 passkey requests from that address in 15 minutes, counting from its first such request: registering a passkey, asking for a sign-in challenge, submitting a sign-in, starting or finishing a join, and each step of adding a passkey. Past either limit, the server refuses further attempts until that window ends, and sends how many seconds are left. The counts live in memory, so a restart clears them. IPv6 addresses in one global or unique-local /64 share one count. An IPv4 address written as an IPv4-mapped IPv6 address, in dotted or hex form, is counted as the IPv4 address. Every other address, including IPv4, localhost, and link-local, is counted one by one. The exception is a connection over loopback, such as from a reverse proxy on the same host: it is counted under the last entry of its X-Forwarded-For header when that is a valid IP address, so clients behind such a proxy have separate counts. Connections from any other address ignore that header. A missing or malformed header is ignored too, so the connection's own address is used. A process on the same host can connect over loopback and set the header itself. Clients behind a proxy on another host share the proxy's address and therefore a count.
+
+Only the owner can invite people, from Members. Members stays in Settings when the owner is the only person in the conversation. Everyone who has joined before but is not in this conversation is listed under Previously invited, including people who were removed from it. Clicking their name, or their name on a message they sent, adds them to this conversation. A new person still uses an invitation link.
+
+A person who opens a valid invitation link does not see Start. The page shows that the owner invited them to use Boffin, and a link to accept it. Accepting asks for a username and a passkey. A later visit uses Start, that username, and the passkey, including from another device that has the same passkey.
+
+The server keeps each passkey's public key. The private key stays with the person. A signed-in person can add another passkey and can remove one. The last passkey cannot be removed. Adding a passkey when they already have 8 or more passkeys first warns that sign-in will then list more than 8 passkey ids, so anyone could tell that name has passkeys and how many; they can cancel or add it anyway. Adding a passkey from Settings sets its label then. The label is trimmed, it may be empty, and it may be up to 40 characters. It cannot be changed later. A passkey saved at first sign-in, or a passkey saved earlier, starts without a label. Removing a person does not delete their passkeys: those passkeys still open the conversations and logs that person may keep.
+
+A signed-in person can log out from Settings. That ends this browser's session. A later visit uses Start, that username, and the passkey. A session never expires. Sessions live in the server's memory, so a restart signs everyone out, and they sign in again with their username and passkey.
+
+# Sample script
+
+The landing page shows a sample of the shared conversation under the start button, with more than one member. Theme, size, and language inside the sample change only the sample. The page's own theme, size, and language stay as they are.
+
+Spec opens a short stand-in inside the sample, not this text. Edit deletes “color” and types “background color”. Chat returns to the sample, and the names then use that background color. Members opens the members list for the people in the sample. Previously invited lists people from an earlier conversation; clicking a name adds them to the sample. Invite opens a note that you can invite people in the real application, and does not do it. Remove takes that person out of the sample; their messages stay.
+
+The sample plays Ryu and Ken asking to move Export next to Settings. Messages appear one by one, with the agent typing. Then the sample refreshes, and Export becomes an icon beside Settings. That icon downloads the sample conversation. The sample accepts a message. After the first send it shows that the real application will reply, and does not call the agent.
+
+Attach opens a note that you can attach files in the real application, and does not do it. Passkeys opens a note that you can manage passkeys in the real application, and does not do it. Log out opens a note that you can log out in the real application, and does not do it.
+
+# Conversation
+
+There is one active transcript, shared by the owner and anyone who has joined.
+
+The page lists the people in the active conversation. A user message shows the name of the person who sent it, and that person's messages use their own color. The people list and the names in the header use the same color. Until the page is reloaded, the same name keeps the same color (see BUGS). The log names that person too.
+
+The first message starts a CLI chat. Later messages resume that same chat. The chat id is saved with the transcript.
+
+Only the owner can start a new chat. New chat ends the active conversation and keeps its log, then starts a fresh transcript and forgets the chat id, so the next message starts a fresh CLI chat. People who had joined are not in the new conversation, and every invitation is cancelled. The kept log remains for them to export later, whether or not anyone downloads it during new chat. If a run is still going, new chat is refused. Anyone in the active conversation can download its JSON log. The owner can export the log when starting a new chat. After that, the owner has no list of ended logs and cannot download them in the app. The file records the agent and the model, not the working directory. The agent is Cursor. The file name looks like \`boffin-chat-2026-10-17T031900Z.json\`. A kept log uses the time that conversation ended. A log cut off by removal uses the time of the removal.
+
+Only one agent run happens at a time. Sending again while a run is active is refused. Anyone in the conversation can stop the run.
+
+Closing the page does not stop a run. Once a person is in the active conversation, opening it again shows the saved transcript, and if the run is still going the page follows it until it finishes.
+
+When a person who joined by invitation opens the page, the page looks at the conversations they have joined. If the only one is the active conversation and they are still in it, the page opens it. Otherwise the page lists every conversation they have joined. Choosing the active conversation opens it when they are still in it. Choosing a conversation they are no longer in downloads the log they may keep. An ended conversation includes the whole log. A conversation they were removed from includes only the part before the removal.
+
+The active transcript and every kept log are written to the state file (\`state_file\` in the config, \`data/state.json\` by default). A state file that is not valid version-1 JSON is refused, so a bad file is not overwritten.
+
+# The agent
+
+The server runs \`agent\` (or \`agent_bin\` from the config) in the working directory, with no shell. The arguments are:
+
+- \`--print\`
+- \`--output-format stream-json\`
+- \`--stream-partial-output\`
+- \`--trust\`
+- \`--model\` and the configured model
+- \`--force\` when \`force\` is true (the default)
+- \`--resume\` and the chat id on follow-up turns
+- \`--image\` and a file path for each attached image
+- \`--\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag
+
+More than one person may be in the conversation, and a send still starts one agent run with that person's name and message. The assistant does not need a full reply to every message. Greetings, sign-offs, and small talk clearly meant for other people, such as good night, need no answer unless the sender is asking the assistant for something. When there is nothing to do, the assistant may send nothing or only a short acknowledgment.
+
+Assistant text is shown as it streams. Tool calls appear with a name and a short summary. Images the agent creates are stored and shown in the transcript. An image larger than 8 MB (8,388,608 bytes) is not stored or shown, and no notice is given. The first bad line of agent output in a run becomes one error notice. Later bad lines are logged on the server only. Lines after a bad line are still read.
+
+Sign-in secrets are not passed to the agent's environment or arguments. The agent can still read files in the workdir (see BUGS).
+
+# Composer
+
+A message may be up to 32768 characters.
+
+Up to 8 files can be attached, and each file may be up to 4 MB.
+
+Image files are sent to the agent with \`--image\`. Every file, images included, is saved in \`.boffin/uploads\` under the workdir, and its path is included in the prompt.
+
+On a touch device, such as a phone or tablet, Enter inserts a newline and the send button sends. On other devices, Enter sends and Shift+Enter inserts a newline. While a run is active, Enter inserts a newline and the button becomes Stop.
+
+# Appearance
+
+The language choice is remembered in the browser. A browser language tag selects a language when the tag is unambiguous. Each language has its own flag. Each language is labeled in its own language, except Indonesia, which is labeled with the country's name.
+
+- English is labeled English and uses the St George's Cross of the Kingdom of England. An empty chat shows The LORD bless thee, and keep thee, from Numbers 6:24 in the King James Bible.
+- 日本語 uses the flag of Japan. An empty chat shows 天の御加護がありますように.
+- Melayu uses the flag of the Federated Malay States. An empty chat shows Salam.
+- Kedayan uses the Sabah state flag. The menu name is Kedayan. Kedayan has no official spelling, so the interface uses the working spelling from the Universiti Brunei Darussalam pronunciation notes: the letter r is dropped, pepet e is written a, and f is written p. The tags kedayan and kadayan both select it. An empty chat shows Mualaikum, the Sabah clip of Assalamualaikum that drops the assala half.
+- ملايو بروني is Brunei Malay in Jawi. The spelling is Sistem Ejaan Jawi yang Disempurnakan. tidak is written ايندا and hantar is written انتت. It uses the Brunei flag of 1906 to 1959: a yellow field with a white diagonal stripe over a black one, before the crest was added. The tags ms-BN-Arab, ms-Arab, ms-MY-Arab, and ms-bn-jawi select it. Choosing it sets the chrome and the composer to right to left. Each chat message and the spec body follow the direction of their own text. An empty chat shows السلام عليكم.
+- Indonesia uses the red-over-white flag of Indonesia. An empty chat shows As-salamu alaykum.
+- தமிழ் uses the green Pudukkottai standard. An empty chat shows வணக்கம்.
+- 粵語 uses the Hong Kong flag of 1876 to 1955: a blue ensign with the harbor badge of the Peak, a square-rigged ship, a junk, and the waterfront. The tags zh-HK and zh-Hant-HK select it. An empty chat shows 願上帝賜福畀你, spoken Cantonese for Ruth 2:4.
+- Pe̍h-ōe-jī is labeled with that romanization and uses the Hearts-in-Harmony flag. The tags nan, nan-TW, and zh-min-nan select it. An empty chat shows Goān Iâ-hô-hoa sù-hok lí, Ruth 2:4 in the vernacular Bible.
+
+Theme is Light, Dark, or System. System follows the device. Light stays light even when the device is dark. The choice is remembered in the browser.
+
+Size is Default or Larger. Larger makes the text and the controls bigger. The choice is remembered in the browser. Size inside the sample changes only the sample.
+
+The layout fits a phone, including the on-screen keyboard.
+
+# Invitations
+
+Only the owner can create an invitation link. The link does not include the owner's password.
+
+Opening a valid link replaces Start with the invitation. Accepting asks for a username, then the person creates a passkey and joins this conversation. The username is trimmed, it is required, and it may be up to 40 characters. A username is refused if the owner or anyone who has joined before has it, including someone who left the conversation or was in an earlier one. If it is a previous joiner's name, the owner adds that person from Previously invited instead. Each link admits one person. A used or cancelled link admits no one. A signed-out visitor sees the start page with the message “This invitation has already been used.”, which is also shown for cancelled links. A signed-in person who is not in the conversation sees the join form for such a link, and submitting a name shows the same message. Another device joins no one with that link; it signs in with the username and passkey. Opening a link while signed in as someone in the conversation does nothing. The server also refuses a join from anyone signed in as the owner or as someone in the conversation. If the device already holds the passkey of someone in the conversation, the page warns before it creates a passkey. The person can cancel, which opens the sign-in form, or continue to join as a new person with another username. A member on a device without their passkey gets no warning and can join with a different name; see BUGS.
+
+The owner can cancel a link that has not been used. An invite link never expires. It stays valid until the owner cancels it or a new chat cancels every invitation. Invite links are saved in the state file, so they survive a restart. The owner can remove a person who has joined. The owner can add someone who joined before by clicking that person's name. That does not use a new link. Their passkey still signs them in. A removed person can no longer open that conversation. They can export its log only through the moment of removal. Later messages stay in the conversation for the people who remain, and are not part of the removed person's export. If that was the only conversation they joined, the page lists it for export and does not open it.
+
+# This spec
+
+This page is the spec. The landing sample shows a short stand-in, not this text. Anyone in the conversation can read this page. Only the owner can edit it and save. The saved text is kept in \`spec.md\` next to the state file and replaces this built-in copy. If that file is missing, this built-in copy is shown again. An empty save is kept as empty. The spec can be up to 100,000 characters. A longer save is refused, and the saved text stays as it was.
+
+# Config
+
+The config file is \`config.json\` in the workdir. The workdir is the first argument, or the current directory when that argument is omitted. A missing workdir is created. A missing config file is written at startup with host \`0.0.0.0\`, port \`8080\`, model \`composer-2.5\`, \`agent_bin\` \`agent\`, \`force\` true, username \`boffin\`, a random password, and \`state_file\` \`data/state.json\`. \`state_file\` is resolved relative to the workdir. \`model\` is required. \`username\` is required unless \`BOFFIN_USERNAME\` is set, and \`password\` is required unless \`BOFFIN_PASSWORD\` is set. A \`workdir\` key and any unknown key are refused.
+
+# BUGS
+
+Known issues, with their status.
+
+**Members can bypass access rules through the agent.** Status: by design. The agent runs in the workdir with \`--force\` (on by default), so it can read and write the files there: the config file, which holds the owner's password; the state file, which holds every kept log, the passkey records, and the sign-in placeholder key; and the saved spec file. A member can ask the agent to read logs they were never part of, read the owner's password, or edit this spec. The assistant is free to shoot itself in the foot.
+
+**The owner's password is sent over plain HTTP.** Status: wontfix. Boffin serves plain HTTP and does not handle TLS itself. The default \`host\` is \`0.0.0.0\`, which listens on every interface. The server checks the password before it checks for HTTPS, so the password crosses the network in clear text even when the passkey step then fails. If the network is not trusted, the owner should set \`host\` in \`config.json\` to an address they control, such as \`127.0.0.1\`, and serve Boffin over HTTPS through a proxy.
+
+**Losing every passkey locks the owner out.** Status: open. Once the owner has a passkey, the password is no longer accepted, and nothing else in the app can add a passkey without a signed-in session. Recovery means editing the state file by hand. Keep a second passkey, for example on another device.
+
+**The app assumes the hostname will not change.** Status: open. Passkeys are bound to the hostname they were created on. If the hostname changes, the passkeys stop working and the owner is locked out, as above. Choose the final hostname before the first passkey is created.
+
+**Uploaded files are never deleted.** Status: open. Each file stays in \`.boffin/uploads\` under the workdir. \`.boffin\` has a \`.gitignore\` that ignores everything inside it, so git ignores the uploads.
+
+**Member colors repeat.** Status: open. A name keeps its color until the page is reloaded. The first name drawn takes a hue from that name. Each later name takes an unused hue as far as possible from the ones already chosen. The landing sample is drawn first, so Ryu and Ken take two hues before the people in the conversation. There are 23 hues, and the sample uses two, so a name repeats once the conversation has 22 people. Names from older messages and the Members list use hues too, so a repeat can come sooner. A reload chooses again. The same names, drawn in the same order, keep the same colors. A name can get a different color when the names drawn before it have changed.
+
+**A member can join again from a device without their passkey.** Status: open. The server cannot tell that such a device belongs to a member, and no warning is shown, so a join with a different name makes a second identity for the same person.
+`;
+
+export const MAX_SPEC_CHARS = 100_000;
