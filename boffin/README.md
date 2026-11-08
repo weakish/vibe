@@ -59,12 +59,15 @@ Notes:
 | `port` | `8080` | Port to listen on. |
 | `model` | *(required; example uses `composer-2.5`)* | Model passed to `agent --model`. |
 | `agent_bin` | `agent` | Path to the Cursor Agent CLI. Use an absolute path under systemd or other minimal environments. In production this is `/home/boffin/.local/bin/agent`. |
+| `bun_bin` | `bun` | Bun executable used when the owner switches static assets to **release** (bundled) mode. |
 | `force` | `true` | Pass `--force` to the agent (auto-approve its actions). |
 | `username` | *(required\*)* | Bootstrap username for first passkey enrollment. Must not contain a colon. |
 | `password` | *(required\*)* | Bootstrap password, at least 8 characters. Keep `config.json` at mode `0600`. |
 | `state_file` | `data/state.json` | Conversation/passkey state, resolved relative to the working directory. |
 
 \* `username`/`password` can instead come from the `BOFFIN_USERNAME` / `BOFFIN_PASSWORD` environment variables, which override the file. `config.json` and `data/` are git-ignored and must never be committed.
+
+By default the web UI loads separate JavaScript modules (handy while editing). The owner can switch to **release** in Settings to bundle those files with Bun for faster first loads on slow links; everyone shares that mode. Install Bun with `scripts/install-bun.sh` (uses `unzip` or, if missing, `python3` to extract the release zip). See the deploy skill. Generated output lives in `public/dist/` (not committed).
 
 ## Deploying to production
 

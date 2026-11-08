@@ -29,7 +29,12 @@ function main() {
     throw error;
   }
 
-  const server = createServer({ conversation, username: config.username, password: config.password });
+  const server = createServer({
+    conversation,
+    username: config.username,
+    password: config.password,
+    bunBin: config.bunBin,
+  });
   server.on('error', (error) => {
     console.error(`[boffin] ${error.stack || error}`);
     process.exit(1);

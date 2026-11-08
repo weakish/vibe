@@ -20,8 +20,9 @@ function basicHeader(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
 }
 
-async function startServer({ username = USER, password = PASS } = {}) {
+async function startServer({ username = USER, password = PASS, beforeStart } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-http-'));
+  beforeStart?.(dir);
   const logFile = path.join(dir, 'calls.jsonl');
   const conversation = new Conversation({
     model: 'composer-2.5',
@@ -607,4 +608,100 @@ test('refuses passkey ceremonies after the attempt limit', async (t) => {
   });
   assert.equal(blocked.status, 429);
   assert.equal((await blocked.json()).error, 'Too many attempts. Try again later.');
+});
+
+test('records a switch to development static assets', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const response = await api(app.baseUrl, '/api/static-assets', {
+    method: 'PUT',
+    body: { mode: 'dev' },
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.mode, 'dev');
+  assert.equal(body.bundling, false);
+  const after = await api(app.baseUrl, '/api/static-assets');
+  const reported = await after.json();
+  assert.equal(reported.mode, 'dev');
+  assert.equal(reported.bundling, false);
+});
+
+test('reports static asset mode to signed-in clients', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const response = await api(app.baseUrl, '/api/static-assets');
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.mode, 'dev');
+  assert.equal(body.stale, false);
+  assert.equal(body.canManage, true);
+});
+
+test('rejects release bundling when bun is missing', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-http-'));
+  const logFile = path.join(dir, 'calls.jsonl');
+  const conversation = new Conversation({
+    model: 'composer-2.5',
+    workdir: dir,
+    agentBin: FAKE_AGENT,
+    force: true,
+    stateFile: path.join(dir, 'state', 'state.json'),
+    runAgent: (options) => runAgent({ ...options, env: { ...process.env, FAKE_AGENT_LOG: logFile }, logger: quietLogger }),
+    logger: quietLogger,
+  });
+  const server = createServer({
+    conversation,
+    username: USER,
+    password: PASS,
+    bunBin: 'definitely-missing-bun-binary',
+    logger: quietLogger,
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  t.after(async () => {
+    await conversation.stop();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const response = await api(baseUrl, '/api/static-assets', {
+    method: 'PUT',
+    body: { mode: 'release' },
+  });
+  assert.equal(response.status, 500);
+  assert.equal((await response.json()).error, 'Bun was not found on the server.');
+  const after = await api(baseUrl, '/api/static-assets');
+  assert.equal((await after.json()).mode, 'dev');
+});
+
+test('falls back to development when the release bundle is missing', async (t) => {
+  const app = await startServer({
+    beforeStart: (dir) => {
+      fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'data', 'static-assets.json'),
+        JSON.stringify({
+          version: 1,
+          mode: 'release',
+          manifest: {
+            builtAt: '2026-01-01T00:00:00.000Z',
+            fingerprint: 'x',
+            app: '/dist/app-x.js',
+            spec: '/dist/spec-x.js',
+            styles: '/dist/styles-x.css',
+          },
+        }),
+      );
+    },
+  });
+  t.after(() => app.close());
+
+  const state = await api(app.baseUrl, '/api/static-assets');
+  assert.equal((await state.json()).mode, 'dev');
+  const page = await fetch(`${app.baseUrl}/`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /src="\/app\.js"/);
 });

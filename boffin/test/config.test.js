@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ConfigError, loadConfig } from '../src/config.js';
+import { ConfigError, loadConfig, readBunBin } from '../src/config.js';
 
 const USER = 'tester';
 const PASS = 'correct-horse';
@@ -19,6 +19,17 @@ function writeConfig(overrides = {}) {
   return workdir;
 }
 
+test('reads only bun_bin, without creating or validating config.json', () => {
+  const missing = tempWorkdir();
+  assert.equal(readBunBin(missing), 'bun');
+  assert.equal(fs.existsSync(path.join(missing, 'config.json')), false);
+
+  const workdir = writeConfig({ bun_bin: '/home/boffin/.bun/bin/bun' });
+  assert.equal(readBunBin(workdir), '/home/boffin/.bun/bin/bun');
+  fs.writeFileSync(path.join(workdir, 'config.json'), JSON.stringify({ unknown_key: 1 }));
+  assert.equal(readBunBin(workdir), 'bun');
+});
+
 test('applies defaults and resolves paths relative to the workdir', () => {
   const workdir = writeConfig({ state_file: 'state/chat.json' });
   const config = loadConfig(workdir, {});
@@ -29,6 +40,7 @@ test('applies defaults and resolves paths relative to the workdir', () => {
   assert.equal(config.stateFile, path.join(workdir, 'state/chat.json'));
   assert.equal(config.model, 'composer-2.5');
   assert.equal(config.agentBin, 'agent');
+  assert.equal(config.bunBin, 'bun');
   assert.equal(config.force, true);
   assert.equal(config.host, '0.0.0.0');
   assert.equal(config.port, 8080);
@@ -56,6 +68,7 @@ test('writes a config in the workdir when it is missing', () => {
   assert.equal(saved.password, config.password);
   assert.ok(saved.password.length >= 8);
   assert.equal(saved.state_file, 'data/state.json');
+  assert.equal(saved.bun_bin, 'bun');
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 
   const again = loadConfig(workdir, {});

@@ -1,6 +1,6 @@
-import { applyOp } from '/shared/transcript.js';
-import { conversationLogFilename, formatConversationLog } from '/shared/export.js';
-import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '/shared/limits.js';
+import { applyOp } from '../shared/transcript.js';
+import { conversationLogFilename, formatConversationLog } from '../shared/export.js';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { flagMarkup } from './flags.js';
 import { LOCALES, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from './i18n.js';
 import { memberHue } from './member-color.js';
@@ -12,6 +12,9 @@ import { readWithStallTimeout } from './stream.js';
 const SESSION_KEY = 'boffin.session';
 const CREDENTIALS_KEY = 'boffin.credentials';
 const LOCALE_KEY = 'boffin.locale';
+const STATIC_ASSET_MODES = ['dev', 'release'];
+const STATIC_ASSET_LABELS = { dev: 'staticAssetsDevelopment', release: 'staticAssetsRelease' };
+const RADIO_NAV_KEYS = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'];
 const THEME_KEY = 'boffin.theme';
 const SIZE_KEY = 'boffin.size';
 const THEME_LABELS = {
@@ -91,6 +94,10 @@ const el = {
   settingsPanel: document.getElementById('settings-panel'),
   locale: document.getElementById('locale'),
   localeLabel: document.getElementById('locale-label'),
+  staticAssetsField: document.getElementById('static-assets-field'),
+  staticAssets: document.getElementById('static-assets'),
+  staticAssetsLabel: document.getElementById('static-assets-label'),
+  staticAssetsStatus: document.getElementById('static-assets-status'),
   theme: document.getElementById('theme'),
   themeLabel: document.getElementById('theme-label'),
   size: document.getElementById('size'),
@@ -231,6 +238,14 @@ class RequestError extends Error {
 let sessionToken = readSession();
 let joinId = new URLSearchParams(location.search).get('join');
 let locale = readStoredLocale();
+let staticAssetsMode = 'dev';
+let staticAssetsStale = false;
+let staticAssetsBundling = false;
+let staticAssetsBusy = false;
+let staticAssetsRefresh = null;
+let staticAssetsGeneration = 0;
+// False until the server has confirmed the mode, so the picker never shows a guess.
+let staticAssetsLoaded = false;
 let theme = readStoredTheme();
 let size = readStoredSize();
 let demoLocale = locale;
@@ -431,7 +446,7 @@ function onSizeClick(event) {
 }
 
 function onSizeKey(event) {
-  if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
     return;
   }
   const options = [...event.currentTarget.querySelectorAll('.theme-option')];
@@ -444,7 +459,7 @@ function onSizeKey(event) {
 }
 
 function onThemeKey(event) {
-  if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
     return;
   }
   const options = [...event.currentTarget.querySelectorAll('.theme-option')];
@@ -507,8 +522,11 @@ function applyChrome() {
   syncSizePicker(el.landingSize);
   el.localeLabel.textContent = msg('language');
   el.landingLocaleLabel.textContent = msg('language');
+  el.staticAssetsLabel.textContent = msg('staticAssets');
   syncLocalePicker(el.locale);
   syncLocalePicker(el.landingLocale);
+  syncStaticAssetsPicker();
+  paintStaticAssetsStatus();
   el.landingTagline.textContent = msg('landingTagline');
   el.landingSignIn.textContent = msg('landingSignIn');
   applyLandingGate();
@@ -795,7 +813,7 @@ function onDemoSizeClick(event) {
 }
 
 function onDemoSizeKey(event) {
-  if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
     return;
   }
   const options = [...event.currentTarget.querySelectorAll('.theme-option')];
@@ -808,7 +826,7 @@ function onDemoSizeKey(event) {
 }
 
 function onDemoThemeKey(event) {
-  if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
     return;
   }
   const options = [...event.currentTarget.querySelectorAll('.theme-option')];
@@ -831,7 +849,7 @@ function onDemoLocaleClick(event) {
 }
 
 function onDemoLocaleKey(event) {
-  if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
     return;
   }
   const options = [...event.currentTarget.querySelectorAll('.lang-option')];
@@ -853,8 +871,214 @@ function onLocaleClick(event) {
   applyChrome();
 }
 
+function fillStaticAssetsPicker() {
+  el.staticAssets.replaceChildren();
+  for (const id of STATIC_ASSET_MODES) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'theme-option';
+    option.role = 'radio';
+    option.dataset.staticAssets = id;
+    option.textContent = msg(STATIC_ASSET_LABELS[id]);
+    el.staticAssets.append(option);
+  }
+  syncStaticAssetsPicker();
+}
+
+function syncStaticAssetsPicker() {
+  for (const option of el.staticAssets.querySelectorAll('.theme-option')) {
+    const id = option.dataset.staticAssets;
+    option.textContent = msg(STATIC_ASSET_LABELS[id]);
+    const on = id === staticAssetsMode;
+    option.setAttribute('aria-checked', on ? 'true' : 'false');
+    option.tabIndex = on ? 0 : -1;
+    option.disabled = staticAssetsBusy || staticAssetsBundling || !staticAssetsLoaded;
+  }
+}
+
+function paintStaticAssetsStatus() {
+  if (!state.canManage || !staticAssetsLoaded) {
+    el.staticAssetsStatus.hidden = true;
+    return;
+  }
+  let text = '';
+  if (staticAssetsBundling) {
+    text = msg('staticAssetsBundling');
+  } else if (staticAssetsStale) {
+    text = msg('staticAssetsStale');
+  } else {
+    text = msg(staticAssetsMode === 'release' ? 'staticAssetsReleaseHint' : 'staticAssetsDevelopmentHint');
+  }
+  el.staticAssetsStatus.textContent = text;
+  el.staticAssetsStatus.hidden = !text;
+}
+
+function resetStaticAssets() {
+  staticAssetsGeneration += 1;
+  staticAssetsRefresh = null;
+  staticAssetsMode = 'dev';
+  staticAssetsStale = false;
+  staticAssetsBundling = false;
+  staticAssetsBusy = false;
+  staticAssetsLoaded = false;
+  el.staticAssetsField.hidden = true;
+  syncStaticAssetsPicker();
+  paintStaticAssetsStatus();
+}
+
+function refreshStaticAssets({ fresh = false } = {}) {
+  if (fresh) {
+    staticAssetsGeneration += 1;
+  }
+  if (!fresh && staticAssetsRefresh) {
+    return { request: staticAssetsRefresh, created: false };
+  }
+  const generation = staticAssetsGeneration;
+  const quiet = staticAssetsLoaded;
+  const request = fetchStaticAssets(generation, quiet).finally(() => {
+    if (staticAssetsRefresh === request) {
+      staticAssetsRefresh = null;
+    }
+  });
+  staticAssetsRefresh = request;
+  return { request, created: true };
+}
+
+// ifMissing skips a refetch once the server has answered. Session polls use that
+// so the picker does not blank on every snapshot. Opening Settings always refetches.
+function requestStaticAssets({ ifMissing = false } = {}) {
+  if (!state.canManage || staticAssetsBusy) {
+    return;
+  }
+  // Keep polling while another tab holds the lock so the picker unlocks when it finishes.
+  if (ifMissing && staticAssetsLoaded && !staticAssetsBundling) {
+    return;
+  }
+  const { request, created } = refreshStaticAssets();
+  if (created) {
+    request.catch(handleFailure);
+  }
+}
+
+async function fetchStaticAssets(generation, quiet) {
+  if (!quiet) {
+    staticAssetsLoaded = false;
+    syncStaticAssetsPicker();
+    paintStaticAssetsStatus();
+  }
+  try {
+    const response = await api('/api/static-assets');
+    if (generation !== staticAssetsGeneration) {
+      response.body?.cancel()?.catch(() => {});
+      return;
+    }
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const body = await response.json();
+    if (generation !== staticAssetsGeneration) {
+      return;
+    }
+    staticAssetsMode = body.mode === 'release' ? 'release' : 'dev';
+    staticAssetsStale = Boolean(body.stale);
+    staticAssetsBundling = Boolean(body.bundling);
+    staticAssetsLoaded = true;
+    syncStaticAssetsPicker();
+    paintStaticAssetsStatus();
+  } catch (error) {
+    if (generation !== staticAssetsGeneration) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function setStaticAssetsMode(next) {
+  // Choosing Release while the bundle is stale rebuilds it.
+  const rebuild = next === 'release' && staticAssetsStale;
+  if (staticAssetsBusy || staticAssetsBundling || !staticAssetsLoaded || (next === staticAssetsMode && !rebuild)) {
+    return;
+  }
+  staticAssetsGeneration += 1;
+  staticAssetsBusy = true;
+  staticAssetsBundling = next === 'release';
+  syncStaticAssetsPicker();
+  paintStaticAssetsStatus();
+  let response;
+  try {
+    response = await api('/api/static-assets', { method: 'PUT', body: { mode: next } });
+  } catch (error) {
+    staticAssetsBusy = false;
+    staticAssetsBundling = false;
+    syncStaticAssetsPicker();
+    paintStaticAssetsStatus();
+    if (error instanceof AuthError || error instanceof SessionEndedError) {
+      throw error;
+    }
+    setStatus(() => msg('cannotReach'));
+    return;
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 409) {
+      // This tab is not the in-flight bundler. Drop this tab's busy flag, then refresh.
+      // A successful GET keeps server bundling. A failed refresh keeps the last mode.
+      staticAssetsBusy = false;
+      try {
+        await refreshStaticAssets({ fresh: true }).request;
+        syncStaticAssetsPicker();
+        paintStaticAssetsStatus();
+        return;
+      } catch (error) {
+        if (error instanceof AuthError || error instanceof SessionEndedError) {
+          throw error;
+        }
+        staticAssetsLoaded = true;
+        staticAssetsBundling = false;
+        syncStaticAssetsPicker();
+        paintStaticAssetsStatus();
+        setStatus(() => translateError(locale, body.error) || msg('bundleFailed'));
+        return;
+      }
+    }
+    staticAssetsBusy = false;
+    staticAssetsBundling = false;
+    syncStaticAssetsPicker();
+    paintStaticAssetsStatus();
+    setStatus(() => translateError(locale, body.error) || msg('bundleFailed'));
+    return;
+  }
+  staticAssetsBusy = false;
+  staticAssetsBundling = false;
+  staticAssetsMode = body.mode === 'release' ? 'release' : 'dev';
+  staticAssetsStale = Boolean(body.stale);
+  window.location.reload();
+}
+
+function onStaticAssetsClick(event) {
+  const option = event.target.closest('.theme-option');
+  if (!option || option.disabled) {
+    return;
+  }
+  setStaticAssetsMode(option.dataset.staticAssets).catch(handleFailure);
+}
+
+function onStaticAssetsKey(event) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
+    return;
+  }
+  const options = [...el.staticAssets.querySelectorAll('.theme-option')];
+  const index = options.findIndex((option) => option.dataset.staticAssets === staticAssetsMode);
+  const next = nextRadioIndex(event.key, index, options.length, localeDir(locale));
+  event.preventDefault();
+  if (next === index || !options[next] || options[next].disabled) {
+    return;
+  }
+  setStaticAssetsMode(options[next].dataset.staticAssets).catch(handleFailure);
+}
+
 function onLocaleKey(event) {
-  if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
     return;
   }
   const options = [...event.currentTarget.querySelectorAll('.lang-option')];
@@ -898,7 +1122,11 @@ function isDemoSettingsTarget(node) {
 }
 
 function onSettingsClick() {
-  setSettingsOpen(el.settingsPanel.hidden);
+  const opening = el.settingsPanel.hidden;
+  setSettingsOpen(opening);
+  if (opening) {
+    requestStaticAssets();
+  }
 }
 
 function onDocumentPointerDown(event) {
@@ -980,6 +1208,7 @@ function forgetSession() {
     // Nothing to clean up when storage is unavailable.
   }
   removeLegacyAccessToken();
+  resetStaticAssets();
 }
 
 function removeLegacyAccessToken() {
@@ -1076,6 +1305,8 @@ async function loadSession() {
 function applySessionIdentity(session) {
   state.you = session.you ?? null;
   state.canManage = Boolean(session.canManage);
+  el.staticAssetsField.hidden = !state.canManage;
+  requestStaticAssets({ ifMissing: true });
 }
 
 function tintMember(node, name) {
@@ -1341,6 +1572,7 @@ function showConversationList(conversations) {
   el.newChat.hidden = true;
   el.people.hidden = true;
   el.passkeys.hidden = false;
+  el.staticAssetsField.hidden = true;
   el.conversationListTitle.textContent = msg('conversationList');
   el.conversationEntries.replaceChildren();
   for (const conversation of conversations) {
@@ -3376,6 +3608,8 @@ el.passkeysClose.addEventListener('click', () => el.passkeysDialog.close());
 el.logOut.addEventListener('click', () => {
   logOut().catch(handleFailure);
 });
+el.staticAssets.addEventListener('click', onStaticAssetsClick);
+el.staticAssets.addEventListener('keydown', onStaticAssetsKey);
 el.locale.addEventListener('click', onLocaleClick);
 el.landingLocale.addEventListener('click', onLocaleClick);
 el.demoLocale.addEventListener('click', onDemoLocaleClick);
@@ -3430,6 +3664,7 @@ if (window.visualViewport) {
   syncAppToVisualViewport();
 }
 
+fillStaticAssetsPicker();
 fillLocalePicker(el.locale);
 fillLocalePicker(el.landingLocale);
 fillLocalePicker(el.demoLocale);

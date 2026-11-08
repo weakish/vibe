@@ -100,6 +100,8 @@ Size is Default or Larger. Larger makes the text and the controls bigger. The ch
 
 The layout fits a phone, including the on-screen keyboard.
 
+Static assets are either development or release. Development serves the separate source files so edits show up after refresh; release serves Bun-bundled files with long-lived caching for faster loading over slow links. Only the owner can switch modes; switching to release builds the bundle on the server with Bun. Everyone uses the same mode.
+
 # Invitations
 
 Only the owner can create an invitation link. The link does not include the owner's password.
@@ -114,7 +116,7 @@ This page is the spec. The landing sample shows a short stand-in, not this text.
 
 # Config
 
-The config file is \`config.json\` in the workdir. The workdir is the first argument, or the current directory when that argument is omitted. A missing workdir is created. A missing config file is written at startup with host \`0.0.0.0\`, port \`8080\`, model \`composer-2.5\`, \`agent_bin\` \`agent\`, \`force\` true, username \`boffin\`, a random password, and \`state_file\` \`data/state.json\`. \`state_file\` is resolved relative to the workdir. \`model\` is required. \`username\` is required unless \`BOFFIN_USERNAME\` is set, and \`password\` is required unless \`BOFFIN_PASSWORD\` is set. A \`workdir\` key and any unknown key are refused.
+The config file is \`config.json\` in the workdir. The workdir is the first argument, or the current directory when that argument is omitted. A missing workdir is created. A missing config file is written at startup with host \`0.0.0.0\`, port \`8080\`, model \`composer-2.5\`, \`agent_bin\` \`agent\`, \`bun_bin\` \`bun\`, \`force\` true, username \`boffin\`, a random password, and \`state_file\` \`data/state.json\`. \`state_file\` is resolved relative to the workdir. \`model\` is required. \`username\` is required unless \`BOFFIN_USERNAME\` is set, and \`password\` is required unless \`BOFFIN_PASSWORD\` is set. A \`workdir\` key and any unknown key are refused.
 
 # BUGS
 

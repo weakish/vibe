@@ -85,6 +85,33 @@ node --version   # must be >= 20 (package.json engines); trixie ships Node 20.x
 
 If Node ever reports < 20, stop and install a supported Node.js (e.g. the NodeSource 22 LTS repository) before continuing. Boffin has zero npm dependencies — do not run `npm install`. The Cursor Agent CLI bundles its own runtime. No firewall tooling is installed or configured here: the firewall is part of the pre-configured environment, and port 8080 needs no rule because Boffin is loopback-only.
 
+**Bundled static assets (optional, for slow client links):** Boffin serves unbundled files by default so agent edits to `public/` show up after refresh. The owner can switch to **release** in Settings, which runs `bun build` on the server and serves hashed bundles from `public/dist/`. Install Bun for the `boffin` user before using that mode:
+
+```bash
+sudo -u boffin bash /srv/boffin/scripts/install-bun.sh
+sudo -u boffin /home/boffin/.bun/bin/bun --version
+```
+
+That script downloads the same GitHub release zip as `bun.sh/install`, but extracts with `unzip` when available and otherwise with `python3` (no `unzip` Debian package required if `python3` is already on the system).
+
+Set `"bun_bin": "/home/boffin/.bun/bin/bun"` in `config.json` (step 5). The service PATH in step 6 includes `/home/boffin/.bun/bin`, so an unset `bun_bin` still runs `bun`. After pushing UI changes you expect to stay stable for a while, the owner switches to **release** once in the browser. That updates the running process. The other way is `sudo -u boffin node scripts/bundle-static.mjs` from `/srv/boffin`, then write `data/static-assets.json` and restart. The script only fills `public/dist/` and does not change the mode the process has already loaded. The state file must be version 1, and the object in `public/dist/manifest.json` must be nested under `manifest`:
+
+```json
+{
+  "version": 1,
+  "mode": "release",
+  "manifest": {
+    "builtAt": "<from public/dist/manifest.json>",
+    "fingerprint": "<from public/dist/manifest.json>",
+    "app": "/dist/app-<hash>.js",
+    "spec": "/dist/spec-<hash>.js",
+    "styles": "/dist/styles-<hash>.css"
+  }
+}
+```
+
+Switch back to **development** while actively editing `public/`. `public/dist/` is generated output and is not committed.
+
 ## Step 3 — Dedicated user and code
 
 Create the service account and the shared group (no SSH key is installed for `boffin` — all SSH stays on `<github-username>`). `useradd` creates a `boffin` group as the account's primary group; adding the operator to that group is what lets both accounts write the same working tree, so ownership never has to change hands:
@@ -175,6 +202,7 @@ Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u b
   "port": 8080,
   "model": "<model>",
   "agent_bin": "/home/boffin/.local/bin/agent",
+  "bun_bin": "/home/boffin/.bun/bin/bun",
   "force": true,
   "username": "boffin",
   "password": "<generated-on-the-server>",
@@ -182,7 +210,7 @@ Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u b
 }
 ```
 
-- Use the absolute `agent_bin` to avoid PATH surprises under systemd. Set `"model"` to the operator's chosen `<model>` from Inputs (ask first if they did not supply one). The web-login `username` is the literal `boffin` — the GitHub username plays no role here.
+- Use the absolute `agent_bin` and `bun_bin` to avoid PATH surprises under systemd. Set `"model"` to the operator's chosen `<model>` from Inputs (ask first if they did not supply one). The web-login `username` is the literal `boffin` — the GitHub username plays no role here.
 - Generate the password on the server (e.g. `openssl rand -base64 24`), put it only in this file, and report it to the operator once at handover.
 - **What the password is for:** it is only the bootstrap credential for first-time owner passkey enrollment. Once an owner passkey exists, the server answers "The password is no longer used" and sign-in is passkey-only. Whoever enrolls first becomes the owner, so the operator must enroll as the very first action after step 7 — from the moment Caddy is live, the service is publicly reachable (enrollment is still gated by this password and per-client rate limits, but do not leave it unenrolled).
 
@@ -201,7 +229,7 @@ User=boffin
 Group=boffin
 WorkingDirectory=/srv/boffin
 Environment=HOME=/home/boffin
-Environment=PATH=/home/boffin/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/home/boffin/.local/bin:/home/boffin/.bun/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/node /srv/boffin/src/index.js /srv/boffin
 UMask=0002
 Restart=on-failure

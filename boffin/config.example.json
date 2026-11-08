@@ -3,6 +3,7 @@
   "port": 8080,
   "model": "composer-2.5",
   "agent_bin": "agent",
+  "bun_bin": "bun",
   "force": true,
   "username": "your-username",
   "password": "replace-with-a-strong-password",

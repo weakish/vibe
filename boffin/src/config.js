@@ -12,12 +12,14 @@ const KNOWN_KEYS = new Set([
   'username',
   'password',
   'state_file',
+  'bun_bin',
 ]);
 const MIN_PASSWORD_LENGTH = 8;
 const PLACEHOLDER_USERNAME = 'your-username';
 const PLACEHOLDER_PASSWORD_PREFIX = 'replace-with-';
 const DEFAULT_MODEL = 'composer-2.5';
 const DEFAULT_USERNAME = 'boffin';
+export const DEFAULT_BUN_BIN = 'bun';
 
 export class ConfigError extends Error {
   constructor(message) {
@@ -59,12 +61,22 @@ export function loadConfig(workdirInput, env = process.env) {
   return Object.freeze({ ...materialize(raw, workdir, env), configFile, created });
 }
 
+// Reads only bun_bin, so a build script beside the server never creates or validates config.json.
+export function readBunBin(workdirInput) {
+  const configFile = path.join(resolveWorkdir(workdirInput), 'config.json');
+  if (!fs.existsSync(configFile)) {
+    return DEFAULT_BUN_BIN;
+  }
+  return optionalString(readConfigObject(configFile), 'bun_bin', DEFAULT_BUN_BIN);
+}
+
 function defaultConfig(env) {
   return {
     host: '0.0.0.0',
     port: 8080,
     model: DEFAULT_MODEL,
     agent_bin: 'agent',
+    bun_bin: DEFAULT_BUN_BIN,
     force: true,
     username: env.BOFFIN_USERNAME?.trim() || DEFAULT_USERNAME,
     password: env.BOFFIN_PASSWORD || randomBytes(18).toString('base64url'),
@@ -110,6 +122,7 @@ function materialize(raw, workdir, env) {
     workdir,
     model: requiredString(raw, 'model'),
     agentBin: optionalString(raw, 'agent_bin', 'agent'),
+    bunBin: optionalString(raw, 'bun_bin', DEFAULT_BUN_BIN),
     force: optionalBoolean(raw, 'force', true),
     username,
     password,

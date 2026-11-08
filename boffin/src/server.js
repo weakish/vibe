@@ -7,6 +7,7 @@ import { conversationLogFilename, formatConversationLog } from '../shared/export
 import { MAX_SPEC_CHARS, DEFAULT_SPEC } from '../shared/default-spec.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { AttachmentError, parseAttachments } from './attachments.js';
+import { DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, MembershipError, checkedPasskeyLabel } from './conversation.js';
 import { readSavedSpec, specPathForState, writeSavedSpec } from './spec-store.js';
 import {
@@ -15,6 +16,17 @@ import {
   createAttemptLimiter,
   requestAddress,
 } from './attempt-limit.js';
+import {
+  BundleError,
+  bundleIsComplete,
+  bundleStaticAssets,
+  defaultStaticAssetsState,
+  isManifestStale,
+  readStaticAssetsState,
+  resolveStaticFile,
+  sourceFingerprint,
+  writeStaticAssetsState,
+} from './static-assets.js';
 import {
   creationOptions,
   passkeyOrigin,
@@ -94,10 +106,11 @@ const PUBLIC_PASSKEY_ROUTES = new Set([
 ]);
 const OWNER_ONLY = 'Only the owner can do that.';
 const NOT_IN_CONVERSATION = 'You are not in this conversation.';
+const BUNDLE_IN_PROGRESS = 'Bundling is already in progress.';
 // Same text as addMember's refusal, so every language already has it.
 const ALREADY_IN_CONVERSATION = 'That person is already in the conversation.';
 
-export function createServer({ conversation, username, password, logger = console }) {
+export function createServer({ conversation, username, password, bunBin = DEFAULT_BUN_BIN, logger = console }) {
   const expectedUser = digest(username);
   const expectedPassword = digest(password);
   const specFile = specPathForState(conversation.stateFile);
@@ -106,15 +119,33 @@ export function createServer({ conversation, username, password, logger = consol
     username,
     expectedUser,
     expectedPassword,
+    bunBin,
     logger,
     specFile,
+    workdir: conversation.workdir,
+    projectRoot: PROJECT_ROOT,
+    staticAssetsState: defaultStaticAssetsState(),
+    staticAssetsReady: null,
+    bundlePromise: null,
     sessions: new Map(),
     challenges: new Map(),
     // Kept in the state file. Not derived from the password, see coverCredentialId.
     coverKey: conversation.coverKey,
     passwordAttempts: createAttemptLimiter(PASSWORD_ATTEMPT_LIMIT),
     passkeyAttempts: createAttemptLimiter(PASSKEY_ATTEMPT_LIMIT),
+    reloadStaticAssets: async () => {
+      const state = await readStaticAssetsState(context.workdir);
+      if (state.mode === 'release' && !(await bundleIsComplete(context.projectRoot, state.manifest))) {
+        logger.error('[boffin] release bundle is missing from public/dist; serving development files until it is bundled again.');
+        context.staticAssetsState = defaultStaticAssetsState();
+        return;
+      }
+      context.staticAssetsState = state;
+    },
   };
+  context.staticAssetsReady = context.reloadStaticAssets().catch((error) => {
+    logger.error(`[boffin] could not load static assets state: ${error.stack || error}`);
+  });
   return http.createServer((req, res) => {
     handleRequest(req, res, context).catch((error) => {
       logger.error(`[boffin] request failed: ${error.stack || error}`);
@@ -128,6 +159,7 @@ export function createServer({ conversation, username, password, logger = consol
 }
 
 async function handleRequest(req, res, context) {
+  await context.staticAssetsReady;
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     res.setHeader(name, value);
   }
@@ -135,8 +167,14 @@ async function handleRequest(req, res, context) {
   if (url.pathname.startsWith('/api/')) {
     return handleApi(req, res, url, context);
   }
-  if ((req.method === 'GET' || req.method === 'HEAD') && STATIC_FILES.has(url.pathname)) {
-    return sendStatic(req, res, STATIC_FILES.get(url.pathname));
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    const bundled = resolveStaticFile(url.pathname, context.staticAssetsState);
+    if (bundled) {
+      return sendStatic(req, res, bundled.relativePath, { cache: bundled.cache });
+    }
+    if (STATIC_FILES.has(url.pathname)) {
+      return sendStatic(req, res, STATIC_FILES.get(url.pathname));
+    }
   }
   return sendJson(res, 404, { error: 'Not found.' });
 }
@@ -206,6 +244,15 @@ async function handleApi(req, res, url, context) {
       return sendJson(res, 401, { error: 'Invalid or missing username or password.' });
     }
     return sendJson(res, 200, { ok: true });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/static-assets') {
+    return handleStaticAssetsGet(res, context, person);
+  }
+  if (req.method === 'PUT' && url.pathname === '/api/static-assets') {
+    if (!person.owner) {
+      return sendJson(res, 403, { error: OWNER_ONLY });
+    }
+    return handleStaticAssetsPut(req, res, context);
   }
   const logId = /^\/api\/logs\/([0-9a-f-]{36})$/.exec(url.pathname);
   if (req.method === 'GET' && logId) {
@@ -1020,7 +1067,96 @@ function sendJson(res, status, body, { close = false } = {}) {
   }
 }
 
-async function sendStatic(req, res, relativePath) {
+async function handleStaticAssetsGet(res, context, person) {
+  const fingerprint = await sourceFingerprint(context.projectRoot);
+  const { mode, manifest } = context.staticAssetsState;
+  const stale = mode === 'release' && isManifestStale(manifest, fingerprint);
+  return sendJson(res, 200, {
+    mode,
+    stale,
+    bundling: Boolean(context.bundlePromise),
+    builtAt: manifest?.builtAt ?? null,
+    canManage: person.owner,
+  });
+}
+
+// The change may already be waiting on I/O. Publish the lock before returning so the
+// next request observes it. A development switch and a release build share one lock.
+function trackStaticAssetsChange(context, operation) {
+  let tracked;
+  tracked = operation.finally(() => {
+    if (context.bundlePromise === tracked) {
+      context.bundlePromise = null;
+    }
+  });
+  context.bundlePromise = tracked;
+  return tracked;
+}
+
+async function switchStaticAssetsToDev(context) {
+  await writeStaticAssetsState(context.workdir, { mode: 'dev', manifest: null });
+  await context.reloadStaticAssets();
+}
+
+async function handleStaticAssetsPut(req, res, context) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    const status = error.status ?? 400;
+    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  }
+  const mode = body?.mode === 'release' ? 'release' : body?.mode === 'dev' ? 'dev' : null;
+  if (!mode) {
+    return sendJson(res, 400, { error: 'Request body must include "mode" as "dev" or "release".' });
+  }
+  if (context.bundlePromise) {
+    return sendJson(res, 409, { error: BUNDLE_IN_PROGRESS });
+  }
+  if (mode === 'dev') {
+    await trackStaticAssetsChange(context, switchStaticAssetsToDev(context));
+    return sendJson(res, 200, { mode: 'dev', stale: false, bundling: false, builtAt: null });
+  }
+  const bundlePromise = trackStaticAssetsChange(
+    context,
+    bundleStaticAssets({
+      projectRoot: context.projectRoot,
+      bunBin: context.bunBin,
+      logger: context.logger,
+      afterPublish: async (manifest) => {
+        const previous = context.staticAssetsState;
+        await writeStaticAssetsState(context.workdir, { mode: 'release', manifest });
+        try {
+          await context.reloadStaticAssets();
+        } catch (error) {
+          await writeStaticAssetsState(context.workdir, {
+            mode: previous.mode,
+            manifest: previous.manifest,
+          }).catch((revertError) => {
+            context.logger.error(`[boffin] could not restore static assets state: ${revertError.message}`);
+          });
+          throw error;
+        }
+      },
+    }),
+  );
+  try {
+    const manifest = await bundlePromise;
+    return sendJson(res, 200, {
+      mode: 'release',
+      stale: false,
+      bundling: false,
+      builtAt: manifest.builtAt,
+    });
+  } catch (error) {
+    if (error instanceof BundleError) {
+      return sendJson(res, 500, { error: error.message });
+    }
+    throw error;
+  }
+}
+
+async function sendStatic(req, res, relativePath, { cache = 'no-cache' } = {}) {
   const file = path.join(PROJECT_ROOT, relativePath);
   let body;
   try {
@@ -1031,10 +1167,11 @@ async function sendStatic(req, res, relativePath) {
     }
     throw error;
   }
+  const cacheControl = cache === 'immutable' ? 'private, max-age=31536000, immutable' : 'no-cache';
   res.writeHead(200, {
     'Content-Type': CONTENT_TYPES.get(path.extname(file)) ?? 'application/octet-stream',
     'Content-Length': body.length,
-    'Cache-Control': 'no-cache',
+    'Cache-Control': cacheControl,
   });
   res.end(req.method === 'HEAD' ? undefined : body);
 }
