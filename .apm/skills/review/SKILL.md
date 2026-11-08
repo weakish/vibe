@@ -5,8 +5,10 @@ description: >-
   `review <sha>` / a bare SHA, then fix selected labels (`all`, `y`, `fix b,d`,
   `h`/`help`). Bare `t` amends HEAD when amend is allowed and there is
   work (tree fixes and/or message hygiene). After a tree amend, hand off `t`
-  to another agent; do not wait. They prompt this pane with `t` after their
-  own tree amend until either side has no tree findings.
+  to the other pair member (Cursor CLI Grok 4.6 Medium / Grok Build 4.7
+  256K High); split a Herdr pane and start that agent when missing; do not
+  wait. They prompt this pane with `t` after their own tree amend until
+  either side has no tree findings.
   `review-and-fix` / polish the tip still lands a new follow-up commit
   when there are tree findings.
   Not for PR/issue creation or history rewrite (except bare `t` /
@@ -266,11 +268,22 @@ Report the new `HEAD` hash when done (note it replaced the reviewed tip). Then, 
 
 Bare `t` only. Two agents take turns on the **same tip** until **either** side has **no tree findings**. Message hygiene does not keep the loop alive. After a tree amend, **handoff and end the turn** — do not wait for the other agent, poll `HEAD`, or poll their status.
 
+The pair is always:
+
+| Side | Herdr `--kind` | Args after `--` on `agent start` |
+|------|----------------|----------------------------------|
+| Cursor CLI, Grok 4.6 Medium | `cursor` | `--model cursor-grok-4.6-medium --trust --yolo` |
+| Grok Build, Grok 4.7 256K High | `grok` | `--model grok-4.7 --reasoning-effort high --yolo` |
+
+`grok-4.7` already uses a 256K context window; do not add a separate window flag. Grok’s `--yolo` is an unlisted alias of `--always-approve`. This pane must be one of those two kinds (`herdr pane current --current` → `.result.pane.agent`). The **other** is the complementary kind. If this pane is neither `cursor` nor `grok`, stop after this pass and say so (do not spawn a pair).
+
 After **this** agent’s tree amend:
 
-1. Identify the **other agent**. When `HERDR_ENV=1`, use [herdr](../../../.agents/skills/herdr/SKILL.md) and prefer a sibling pane in this tab. If not inside Herdr, or there is no other agent, stop after this pass and say so.
-2. If they are already busy on this SHA, do not double-prompt; **end the turn**.
-3. If they are idle, start them with a bare-`t` pass on this tip (`herdr agent prompt <target> t` — do **not** pass `--wait`). Then **end the turn**.
+1. Require `HERDR_ENV=1`. If unset or not `1`, stop after this pass and say you are not inside Herdr (do not spawn). Follow [herdr](../../../.agents/skills/herdr/SKILL.md) for CLI, IDs, split geometry, `--cwd`, and `--no-focus`. If a Herdr command fails, stop and report the error (do not claim handoff).
+2. Find the **other** agent in **this tab**, same cwd: `herdr agent list`, then keep entries whose `tab_id` is `$HERDR_TAB_ID`, whose `cwd` matches this pane’s `cwd`, and whose `agent` equals the complementary `--kind` (`cursor` or `grok`). That `agent` field is the same one as `herdr pane current --current` → `.result.pane.agent`. Ignore `agent_session.kind` (it is `id`, not the agent kind). Drop this pane’s `pane_id`. If several remain, keep one `idle` entry, otherwise the first. Reuse that entry’s pane.
+3. If none: split a sibling pane with `herdr pane split --current --cwd "$PWD" --no-focus` and `--direction right` or `down` per the herdr layout rule (wide → right, tall → down). Then `herdr agent start <name> --kind <other-kind> --pane <new-pane-id> -- <start-args>`. Prefer names `review-cursor` / `review-grok` when free; otherwise a unique `[a-z][a-z0-9_-]{0,31}` name. Do not close panes you did not create.
+4. If they are already `working`, do not double-prompt; **end the turn**.
+5. If they are idle (or just started), `herdr agent prompt <pane_id> t` using the reused entry’s `pane_id` or, after a spawn, the new pane’s `pane_id` from `agent start` (`name` may be absent). Do **not** pass `--wait`. Then **end the turn**.
 
 The next pass on this pane is a later `t` (from them after their tree amend, or from the user). If they have no tree findings, they stop in their pane and do not prompt you. Do not stay `working` to observe that.
 
@@ -289,4 +302,4 @@ Otherwise keep the new-commit path and say why amend was skipped.
 - Summarize what changed (brief)
 - Hashes:
   - New-commit path: reviewed commit → fix commit (or “clean, no fix commit”)
-  - Bare `t` / amend: reviewed tip → new `HEAD` after each amend (or “clean, no amend”). Ping-pong: say whether this pass handed off `t`, skipped handoff (already busy / no other agent / not in Herdr), or stopped for no tree findings here. Do not claim the other side’s result unless they already reported it in this pane.
+  - Bare `t` / amend: reviewed tip → new `HEAD` after each amend (or “clean, no amend”). Ping-pong: say whether this pass handed off `t` (reused sibling / spawned pane), skipped handoff (already busy / not in Herdr / this pane is not `cursor` or `grok`), or stopped for no tree findings here. Do not claim the other side’s result unless they already reported it in this pane.
