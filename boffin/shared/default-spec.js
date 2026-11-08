@@ -91,6 +91,7 @@ The language choice is remembered in the browser. A browser language tag selects
 - Indonesia uses the red-over-white flag of Indonesia. An empty chat shows As-salamu alaykum.
 - தமிழ் uses the green Pudukkottai standard. An empty chat shows வணக்கம்.
 - 粵語 uses the Hong Kong flag of 1876 to 1955: a blue ensign with the harbor badge of the Peak, a square-rigged ship, a junk, and the waterfront. The tags zh-HK and zh-Hant-HK select it. An empty chat shows 願上帝賜福畀你, spoken Cantonese for Ruth 2:4.
+- 中文 uses the national-flag draft 复字第3号 from the 1949 National Flag Pattern Reference Materials: a red field, one yellow star in the canton, and a yellow bar. The tags zh-CN, zh-Hans, zh-Hans-CN, and zh-SG select it. An empty chat shows 全世界无产阶级和被压迫的民族联合起来.
 - Pe̍h-ōe-jī is labeled with that romanization and uses the Hearts-in-Harmony flag. The tags nan, nan-TW, and zh-min-nan select it. An empty chat shows Goān Iâ-hô-hoa sù-hok lí, Ruth 2:4 in the vernacular Bible.
 
 Theme is Light, Dark, or System. System follows the device. Light stays light even when the device is dark. The choice is remembered in the browser.

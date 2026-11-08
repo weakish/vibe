@@ -57,6 +57,20 @@ test('Malay uses the Federated Malay States flag', () => {
   assert.doesNotMatch(markup, /#0032a0/i);
 });
 
+test('中文 uses the 1949 national-flag draft 复字第3号', () => {
+  const markup = flagMarkup('zh-Hans');
+  assert.match(markup, /#de2910/i);
+  assert.match(markup, /#ffde00/i);
+  assert.match(markup, /<rect[^>]*width="30"[^>]*height="3"/);
+  assert.equal((markup.match(/<polygon/g) ?? []).length, 1);
+  const points = markup.match(/points="([^"]+)"/)[1];
+  const ys = points.split(/[\s,]+/).filter((_, index) => index % 2 === 1).map(Number);
+  assert.equal(ys.length, 10);
+  assert.ok(Math.min(...ys) >= 0);
+  assert.ok(Math.max(...ys) < 8.5);
+  assert.doesNotMatch(markup, /#012169/i);
+});
+
 test('Cantonese uses the 1876–1955 Hong Kong flag', () => {
   const markup = flagMarkup('yue');
   assert.match(markup, /#012169/i);
