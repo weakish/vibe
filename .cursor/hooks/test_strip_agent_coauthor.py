@@ -686,15 +686,14 @@ class HookConfigTests(unittest.TestCase):
         self.assertEqual(config["hooks"]["preToolUse"][0]["timeout"], 180)
         self.assertEqual(config["hooks"]["postToolUse"][0]["timeout"], 180)
 
-    def test_git_commits_skill_documents_hook_test_command(self) -> None:
-        skill = (
+    def test_contributing_documents_hook_test_command(self) -> None:
+        contributing = (
             REPO_ROOT
-            / ".agents"
-            / "skills"
-            / "git-commits"
-            / "SKILL.md"
+            / ".apm"
+            / "instructions"
+            / "01-contributing.instructions.md"
         )
-        text = skill.read_text(encoding="utf-8")
+        text = contributing.read_text(encoding="utf-8")
         self.assertIn(
             "python3 -B .cursor/hooks/test_strip_agent_coauthor.py",
             text,

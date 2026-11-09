@@ -7,7 +7,7 @@ description: Multi-agent git hygiene for this working tree
 Other agents may be editing different files here. Never touch their unstaged/staged/untracked files.
 
 - Stage/commit only files **you** changed in **this** session; verify with `git status` first
-- If you added, edited, or deleted any non-gitignored file this session, **commit before finishing your turn** — read the git-commits skill, stage your files, and commit. Never ask the user whether to commit
+- If you added, edited, or deleted any non-gitignored file this session, **commit before finishing your turn** — follow Contributing, stage your files, and commit. Never ask the user whether to commit
 - Never push, force-push, or push/merge to `master` (even if asked)
 - Never: `git reset --hard`, `git checkout .`, `git clean -fd`, `git stash`, `git add -A`, `git add .`, `git commit --no-verify`
 - Rebase conflicts: resolve only your files; otherwise abort and ask
