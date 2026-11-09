@@ -55,7 +55,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:cd93570a85d07b7f25246881616cb13caab50c67fa52275498354442afd07ec8
+  content_hash: sha256:4e50db7f53e8e1d4efe2a7a92583676c6291c144847a842fc46a0be313a49304
 - kind: project-relative
   target: cursor
   value: .cursor/rules/08-git.mdc
@@ -79,5 +79,5 @@ local_deployed_file_hashes:
   .cursor/rules/04-code-quality.mdc: sha256:4362e0e46d2d4d26424d73a45497066f61ac7be21bf4985a76614281c11aa655
   .cursor/rules/05-commands.mdc: sha256:8c9ce00b03ca100d42856b9fd693586ff2382e6297d42f5b15cd8757f121b8d1
   .cursor/rules/06-skills.mdc: sha256:40f8d6f24a52995d33a0fd96c8e280fda3e5d36f9accf80794859e8785b12ca2
-  .cursor/rules/07-herdr.mdc: sha256:cd93570a85d07b7f25246881616cb13caab50c67fa52275498354442afd07ec8
+  .cursor/rules/07-herdr.mdc: sha256:4e50db7f53e8e1d4efe2a7a92583676c6291c144847a842fc46a0be313a49304
   .cursor/rules/08-git.mdc: sha256:722582fbd400b9a3fdb13f3aa7467048283483a632869f0889d0c3dfeab5d891
