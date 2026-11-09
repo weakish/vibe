@@ -4,6 +4,15 @@ dependencies: []
 deployments:
 - kind: project-relative
   target: cursor
+  value: .cursor/rules/01-contributing.mdc
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:63972aca7b60872c31e3b863b76091566343b889fc5d798dacc5605a4893ae73
+- kind: project-relative
+  target: cursor
   value: .cursor/rules/02-style.mdc
   runtime: null
   scope: project
@@ -19,7 +28,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:4a7979a2568f9509297e2b035bd3984c952dab9d6a5dc12a077439028ac6b9c2
+  content_hash: sha256:4362e0e46d2d4d26424d73a45497066f61ac7be21bf4985a76614281c11aa655
 - kind: project-relative
   target: cursor
   value: .cursor/rules/05-commands.mdc
@@ -28,7 +37,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:390aedfa90427723035aa9047a02b0d8a9ec4deab605e1cb1a77e37a635f5dc7
+  content_hash: sha256:8c9ce00b03ca100d42856b9fd693586ff2382e6297d42f5b15cd8757f121b8d1
 - kind: project-relative
   target: cursor
   value: .cursor/rules/06-skills.mdc
@@ -55,8 +64,9 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:735517ad82c2fa34816dbe563ed3677f1d320290311b556d65cb190ce39848e8
+  content_hash: sha256:722582fbd400b9a3fdb13f3aa7467048283483a632869f0889d0c3dfeab5d891
 local_deployed_files:
+- .cursor/rules/01-contributing.mdc
 - .cursor/rules/02-style.mdc
 - .cursor/rules/04-code-quality.mdc
 - .cursor/rules/05-commands.mdc
@@ -64,9 +74,10 @@ local_deployed_files:
 - .cursor/rules/07-herdr.mdc
 - .cursor/rules/08-git.mdc
 local_deployed_file_hashes:
+  .cursor/rules/01-contributing.mdc: sha256:63972aca7b60872c31e3b863b76091566343b889fc5d798dacc5605a4893ae73
   .cursor/rules/02-style.mdc: sha256:abcc7f071fba033dde6d0eed3f7d1993f0c071bcbdaec6a3e06357b45bf583bf
-  .cursor/rules/04-code-quality.mdc: sha256:4a7979a2568f9509297e2b035bd3984c952dab9d6a5dc12a077439028ac6b9c2
-  .cursor/rules/05-commands.mdc: sha256:390aedfa90427723035aa9047a02b0d8a9ec4deab605e1cb1a77e37a635f5dc7
+  .cursor/rules/04-code-quality.mdc: sha256:4362e0e46d2d4d26424d73a45497066f61ac7be21bf4985a76614281c11aa655
+  .cursor/rules/05-commands.mdc: sha256:8c9ce00b03ca100d42856b9fd693586ff2382e6297d42f5b15cd8757f121b8d1
   .cursor/rules/06-skills.mdc: sha256:40f8d6f24a52995d33a0fd96c8e280fda3e5d36f9accf80794859e8785b12ca2
   .cursor/rules/07-herdr.mdc: sha256:cd93570a85d07b7f25246881616cb13caab50c67fa52275498354442afd07ec8
-  .cursor/rules/08-git.mdc: sha256:735517ad82c2fa34816dbe563ed3677f1d320290311b556d65cb190ce39848e8
+  .cursor/rules/08-git.mdc: sha256:722582fbd400b9a3fdb13f3aa7467048283483a632869f0889d0c3dfeab5d891

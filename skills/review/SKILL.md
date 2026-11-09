@@ -17,8 +17,8 @@ description: >-
 
 # Review one commit; fix after selection
 
-Read [git-commits](../git-commits/SKILL.md) before any commit this skill creates
-(or amends).
+Read the Contributing section of `AGENTS.md` and [git-commits](../git-commits/SKILL.md) before any
+commit this skill creates (or amends).
 
 ## Triggers
 
@@ -83,7 +83,7 @@ Look for:
 - Incorrect behavior, edge cases, broken failure propagation (silent fallbacks, swallowed errors)
 - Intentional behavior removed or “cleaned up” without asking (aliases, redirects, platform workarounds, commented skips)
 - Style drift: duplication, parallel defaults, comments that restate the code, vague names
-- Commit message / trailers vs [git-commits](../git-commits/SKILL.md) (wrong gitmoji, agent `Co-authored-by`, missing `Assisted-by` when the diff was agent-helped) — message hygiene
+- Commit message / trailers vs the Contributing section of `AGENTS.md` and [git-commits](../git-commits/SKILL.md) (wrong gitmoji, agent `Co-authored-by`, missing `Assisted-by` when the diff was agent-helped) — message hygiene
 
 Report tree nits too, not only blockers. Mark case encodes the agent’s recommendation (see below).
 
@@ -235,10 +235,10 @@ If a guard fails, stop after the report, say why — do not edit the tree and do
 
 **Index (multi-agent):** Check `git status` before amend. Leave other agents’ staged/unstaged/untracked paths untouched. Do not `git add -A` / `git add .`. For new untracked paths this pass created, `git add -- <those-paths>` first (pathspec only). Fold this pass with the `--only` forms below — never a plain `git commit --amend` that commits the whole index (that would pick up unrelated staged paths).
 
-**Message on amend** (read [git-commits](../git-commits/SKILL.md)):
+**Message on amend** (read the Contributing section of `AGENTS.md` and [git-commits](../git-commits/SKILL.md)):
 
 - Keep the tip’s **story** (same feature/fix subject intent) — do **not** retitle to “review follow-up”
-- Apply every reported hygiene finding: wrong/missing gitmoji, subject/body shape, trailer order, strip agent `Co-authored-by`, fix `Reported-by` / `Suggested-by` per git-commits
+- Apply every reported hygiene finding: wrong/missing gitmoji, subject/body shape, trailer order, strip agent `Co-authored-by`, fix `Reported-by` / `Suggested-by` per AGENTS.md Contributing and git-commits
 - `Assisted-by` (do **not** copy a line from an unrelated commit in `git log`):
   - **Hygiene-only** (message rewrite, same tree): keep the tip’s existing `Assisted-by` line(s). Do **not** replace with this session’s model; do **not** add this session if absent (see [message-only rewrite](../git-commits/SKILL.md#message-only-rewrite)).
   - **This session landed tree fixes:** union this session’s `AGENT_NAME:MODEL_VERSION` with the tip’s existing `Assisted-by` lines (one line per pair; dedupe exact duplicates). Do **not** drop the original model.
