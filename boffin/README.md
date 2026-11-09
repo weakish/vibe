@@ -16,7 +16,7 @@ flowchart LR
 
 - The server (`src/index.js`, `src/server.js`) serves the web UI, authenticates users with passkeys, and streams agent replies to the browser.
 - Each chat message runs the Cursor Agent CLI in the configured working directory with the configured model (`src/agent.js`, `src/conversation.js`). Conversation state is persisted to a JSON state file in the working directory.
-- In production, Boffin binds to loopback only and a reverse proxy (Caddy) is the sole public entry point: it terminates TLS, which passkeys require, and overwrites `X-Forwarded-For` so per-client rate limiting works behind the proxy (see `src/attempt-limit.js`).
+- In production, Boffin binds to loopback only and a reverse proxy (Caddy) is the sole public entry point: it terminates TLS, which passkeys require, compresses responses, and overwrites `X-Forwarded-For` so per-client rate limiting works behind the proxy (see `src/attempt-limit.js`). Boffin itself sends raw bytes and a strong ETag of those bytes so the proxy can compress without breaking 304s.
 
 ## Requirements
 

@@ -28,6 +28,11 @@ import {
   writeStaticAssetsState,
 } from './static-assets.js';
 import {
+  entityTag,
+  httpDate,
+  isNotModified,
+} from './http-encode.js';
+import {
   creationOptions,
   passkeyOrigin,
   randomChallenge,
@@ -1052,21 +1057,11 @@ function httpError(status, message) {
 }
 
 function sendJson(res, status, body, { close = false } = {}) {
-  const payload = JSON.stringify(body);
-  const headers = {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(payload),
-    'Cache-Control': 'no-store',
-  };
-  if (close) {
-    headers.Connection = 'close';
-  }
-  res.writeHead(status, headers);
-  if (close) {
-    res.end(payload, () => res.destroy());
-  } else {
-    res.end(payload);
-  }
+  sendBytes(res.req, res, status, JSON.stringify(body), {
+    contentType: 'application/json; charset=utf-8',
+    cacheControl: 'no-store',
+    close,
+  });
 }
 
 async function handleStaticAssetsGet(res, context, person) {
@@ -1160,20 +1155,64 @@ async function handleStaticAssetsPut(req, res, context) {
 
 async function sendStatic(req, res, relativePath, { cache = 'no-cache' } = {}) {
   const file = path.join(PROJECT_ROOT, relativePath);
+  let handle;
   let body;
+  let lastModified;
   try {
-    body = await fs.readFile(file);
+    handle = await fs.open(file, 'r');
+    const stat = await handle.stat();
+    body = await handle.readFile();
+    lastModified = stat.mtime;
   } catch (error) {
     if (error.code === 'ENOENT') {
       return sendJson(res, 404, { error: 'Not found.' });
     }
     throw error;
+  } finally {
+    await handle?.close();
   }
-  const cacheControl = cache === 'immutable' ? 'private, max-age=31536000, immutable' : 'no-cache';
-  res.writeHead(200, {
-    'Content-Type': CONTENT_TYPES.get(path.extname(file)) ?? 'application/octet-stream',
-    'Content-Length': body.length,
-    'Cache-Control': cacheControl,
+  sendBytes(req, res, 200, body, {
+    contentType: CONTENT_TYPES.get(path.extname(file)) ?? 'application/octet-stream',
+    cacheControl: cache === 'immutable' ? 'private, max-age=31536000, immutable' : 'no-cache',
+    lastModified,
+    validators: true,
   });
-  res.end(req.method === 'HEAD' ? undefined : body);
+}
+
+function sendBytes(req, res, status, body, { contentType, cacheControl, lastModified = null, validators = false, close = false }) {
+  const bytes = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  const etag = validators ? entityTag(bytes) : null;
+  if (etag && req && isNotModified(req, etag, lastModified)) {
+    const headers = {
+      ETag: etag,
+      'Cache-Control': cacheControl,
+    };
+    if (lastModified) {
+      headers['Last-Modified'] = httpDate(lastModified);
+    }
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  const headers = {
+    'Content-Type': contentType,
+    'Content-Length': bytes.length,
+    'Cache-Control': cacheControl,
+  };
+  if (etag) {
+    headers.ETag = etag;
+    if (lastModified) {
+      headers['Last-Modified'] = httpDate(lastModified);
+    }
+  }
+  if (close) {
+    headers.Connection = 'close';
+  }
+  res.writeHead(status, headers);
+  const payload = req?.method === 'HEAD' ? undefined : bytes;
+  if (close) {
+    res.end(payload, () => res.destroy());
+  } else {
+    res.end(payload);
+  }
 }

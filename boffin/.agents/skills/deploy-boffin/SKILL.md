@@ -266,11 +266,14 @@ Replace `/etc/caddy/Caddyfile` (back it up first with `sudo cp -a`, and get the 
 
 ```caddyfile
 <hostname> {
+    encode zstd gzip
     reverse_proxy 127.0.0.1:8080 {
         header_up X-Forwarded-For {remote_host}
     }
 }
 ```
+
+`encode zstd gzip` compresses at the edge. Debian 13 ships Caddy 2.6.2, and a bare `encode` enables no algorithms, so name them. Left to right is the preference when the client sends no q-factor: zstd, then gzip. Only responses longer than 512 bytes are compressed, and only the default types (`text/*`, `application/json*`, `application/javascript*`, `image/svg+xml*`, and a few XML feeds). HTML, CSS, JavaScript, and large JSON qualify. The manifest is not a default type, `public/icon.svg` is under 512 bytes, and the NDJSON chat stream and images are not compressed. Caddy 2.6 leaves the ETag unchanged, so Boffin's strong tag of the raw bytes still 304s. Do not compress in Node, and do not suffix that ETag. A newer Caddy appends the coding and strips that suffix from `If-None-Match`; a suffix added here would miss.
 
 The `header_up` line **replaces** the header with the real TCP peer, so a client cannot inject its own value; Boffin only trusts it because the connection comes from loopback. This is also what makes passkeys possible: WebAuthn requires HTTPS on a stable hostname, and the origin/RP ID is derived from the request `Origin` (see `src/webauthn.js`), so `<hostname>` must be the final hostname.
 
@@ -287,6 +290,7 @@ Do not hand over until all of these pass:
 
 - [ ] SSH: `ssh <github-username>@<hostname>` works in a fresh connection.
 - [ ] Web: `curl -I https://<hostname>/api/session` returns **401** over a valid certificate (`/` returning 200 is expected).
+- [ ] Compression: `curl -sI -H 'Accept-Encoding: gzip' https://<hostname>/app.js` includes `content-encoding: gzip` or `zstd` and an ETag. `curl -sI http://127.0.0.1:8080/app.js` includes an ETag and no `content-encoding`.
 - [ ] Service: `systemctl is-enabled boffin caddy` both report enabled; `journalctl -u boffin` is clean; `systemctl show -p User boffin` confirms the service runs as `boffin`.
 - [ ] **Operator enrolls the owner passkey immediately:** open `https://<hostname>`, sign in with username `boffin` and the generated password, create the owner passkey. Then confirm a fresh browser session signs in with the passkey and the password is now refused ("The password is no longer used").
 - [ ] Agent: the operator sends a trivial chat message (e.g. "say hi") and gets a streamed reply — this exercises Caddy streaming, the systemd service, and the `boffin`-user agent login in one shot.

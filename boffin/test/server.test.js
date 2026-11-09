@@ -9,12 +9,17 @@ import { Conversation } from '../src/conversation.js';
 import { runAgent } from '../src/agent.js';
 import { DEFAULT_SPEC, MAX_SPEC_CHARS } from '../shared/default-spec.js';
 import { PASSKEY_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_LIMIT } from '../src/attempt-limit.js';
+import { entityTag, httpDate } from '../src/http-encode.js';
 import { MAX_BODY_BYTES, MAX_MESSAGE_CHARS, createServer } from '../src/server.js';
 
 const FAKE_AGENT = fileURLToPath(new URL('../fixtures/fake-agent.js', import.meta.url));
 const USER = 'tester';
 const PASS = 'test-password-1234';
 const quietLogger = { log() {}, error() {} };
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 function basicHeader(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
@@ -77,14 +82,25 @@ function api(baseUrl, route, { method = 'GET', body, credentials = { username: U
 
 // Sends the path exactly as written, because fetch() normalises dot segments first.
 function rawStatus(baseUrl, requestPath) {
+  return rawRequest(baseUrl, requestPath).then((response) => response.status);
+}
+
+function rawRequest(baseUrl, requestPath, { method = 'GET', headers = {}, body } = {}) {
   const { hostname, port } = new URL(baseUrl);
   return new Promise((resolve, reject) => {
-    const request = http.request({ hostname, port, path: requestPath, method: 'GET' }, (response) => {
-      response.resume();
-      response.on('end', () => resolve(response.statusCode));
+    const request = http.request({ hostname, port, path: requestPath, method, headers }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        resolve({
+          status: response.statusCode,
+          headers: response.headers,
+          body: Buffer.concat(chunks),
+        });
+      });
     });
     request.on('error', reject);
-    request.end();
+    request.end(body);
   });
 }
 
@@ -433,6 +449,121 @@ test('answers HEAD for assets without sending a body', async (t) => {
   assert.equal(await response.text(), '');
 });
 
+test('revalidates static files with ETag and Last-Modified', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const file = new URL('../public/app.js', import.meta.url);
+  const body = fs.readFileSync(file);
+  const mtime = fs.statSync(file).mtime;
+  const etag = entityTag(body);
+
+  const fresh = await rawRequest(app.baseUrl, '/app.js', { headers: { 'accept-encoding': 'gzip, deflate, br' } });
+  assert.equal(fresh.status, 200);
+  assert.equal(fresh.headers.etag, etag);
+  assert.equal(fresh.headers['last-modified'], httpDate(mtime));
+  assert.equal(fresh.headers['cache-control'], 'no-cache');
+  assert.equal(fresh.headers['content-encoding'], undefined);
+  assert.equal(fresh.headers.vary, undefined);
+  assert.equal(Number(fresh.headers['content-length']), body.length);
+  assert.equal(fresh.body.equals(body), true);
+
+  const matched = await rawRequest(app.baseUrl, '/app.js', {
+    headers: { 'accept-encoding': 'gzip', 'if-none-match': etag },
+  });
+  assert.equal(matched.status, 304);
+  assert.equal(matched.headers.etag, etag);
+  assert.equal(matched.headers['cache-control'], 'no-cache');
+  assert.equal(matched.headers['content-encoding'], undefined);
+  assert.equal(matched.headers['content-length'], undefined);
+  assert.equal(matched.body.length, 0);
+
+  const stale = await rawRequest(app.baseUrl, '/app.js', {
+    headers: { 'if-none-match': '"deadbeef"' },
+  });
+  assert.equal(stale.status, 200);
+  assert.equal(stale.body.equals(body), true);
+
+  const unmodified = await rawRequest(app.baseUrl, '/app.js', {
+    headers: { 'if-modified-since': httpDate(mtime) },
+  });
+  assert.equal(unmodified.status, 304);
+
+  const older = await rawRequest(app.baseUrl, '/app.js', {
+    headers: {
+      'if-modified-since': httpDate(new Date(mtime.getTime() - 2000)),
+    },
+  });
+  assert.equal(older.status, 200);
+
+  const head = await rawRequest(app.baseUrl, '/app.js', {
+    method: 'HEAD',
+    headers: { 'accept-encoding': 'gzip' },
+  });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.etag, etag);
+  assert.equal(head.headers['content-encoding'], undefined);
+  assert.equal(Number(head.headers['content-length']), body.length);
+  assert.equal(head.body.length, 0);
+
+  const headMatched = await rawRequest(app.baseUrl, '/app.js', {
+    method: 'HEAD',
+    headers: { 'if-none-match': etag },
+  });
+  assert.equal(headMatched.status, 304);
+  assert.equal(headMatched.headers.etag, etag);
+  assert.equal(headMatched.headers['last-modified'], httpDate(mtime));
+  assert.equal(headMatched.body.length, 0);
+
+  const spec = await rawRequest(app.baseUrl, '/api/spec', {
+    headers: {
+      authorization: basicHeader(USER, PASS),
+      'accept-encoding': 'gzip, br',
+    },
+  });
+  assert.equal(spec.status, 200);
+  assert.equal(spec.headers['content-encoding'], undefined);
+  assert.equal(spec.headers['cache-control'], 'no-store');
+  assert.equal(spec.headers.etag, undefined);
+  assert.equal(JSON.parse(spec.body.toString('utf8')).text, DEFAULT_SPEC);
+});
+
+test('does not compress media or streamed replies', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const { ops } = await sendMessage(app.baseUrl, 'look', [
+    { name: 'shot.png', data: PNG.toString('base64') },
+  ]);
+  const media = await rawRequest(app.baseUrl, `/api/media/${ops[0].item.attachments[0].id}`, {
+    headers: {
+      authorization: basicHeader(USER, PASS),
+      'accept-encoding': 'gzip, br',
+    },
+  });
+  assert.equal(media.status, 200);
+  assert.equal(media.headers['content-encoding'], undefined);
+  assert.equal(media.body.equals(PNG), true);
+
+  const stream = await rawRequest(app.baseUrl, '/api/messages', {
+    method: 'POST',
+    headers: {
+      authorization: basicHeader(USER, PASS),
+      'content-type': 'application/json',
+      'accept-encoding': 'gzip, br',
+    },
+    body: JSON.stringify({ text: 'hello again' }),
+  });
+  assert.equal(stream.status, 200);
+  assert.equal(stream.headers['content-type'], 'application/x-ndjson; charset=utf-8');
+  assert.equal(stream.headers['content-encoding'], undefined);
+  const lines = stream.body
+    .toString('utf8')
+    .split('\n')
+    .filter((line) => line.trim());
+  assert.equal(JSON.parse(lines[0]).item.text, 'hello again');
+});
+
 test('serves only the allowlisted files', async (t) => {
   const app = await startServer();
   t.after(() => app.close());
@@ -453,11 +584,6 @@ test('serves only the allowlisted files', async (t) => {
   }
   assert.equal((await api(app.baseUrl, '/app.js', { method: 'POST', credentials: null })).status, 404);
 });
-
-const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-);
 
 test('accepts attached files and serves image previews only to a signed-in client', async (t) => {
   const app = await startServer();
