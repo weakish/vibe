@@ -208,7 +208,7 @@ async function listSourceFiles(projectRoot) {
   for (const file of sharedJs) {
     paths.add(file);
   }
-  for (const name of ['styles.css', 'index.html', 'spec.html', 'theme-init.js']) {
+  for (const name of ['styles.css', 'index.html', 'spec.html', 'app-shell.html', 'demo-shell.html', 'theme-init.js']) {
     paths.add(path.join(projectRoot, 'public', name));
   }
   return [...paths].sort();

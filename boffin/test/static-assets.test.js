@@ -40,6 +40,8 @@ test('source fingerprint changes when a public file changes', async () => {
   fs.writeFileSync(path.join(root, 'public', 'styles.css'), 'body{}');
   fs.writeFileSync(path.join(root, 'public', 'index.html'), '<html></html>');
   fs.writeFileSync(path.join(root, 'public', 'spec.html'), '<html></html>');
+  fs.writeFileSync(path.join(root, 'public', 'app-shell.html'), '<div id="app"></div>');
+  fs.writeFileSync(path.join(root, 'public', 'demo-shell.html'), '<div id="demo-settings"></div>');
   fs.writeFileSync(path.join(root, 'public', 'theme-init.js'), '');
   const before = await sourceFingerprint(root);
   await new Promise((resolve) => setTimeout(resolve, 5));

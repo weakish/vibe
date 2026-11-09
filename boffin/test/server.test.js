@@ -351,33 +351,43 @@ test('serves the web app without requiring credentials', async (t) => {
   assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
   assert.match(response.headers.get('content-security-policy'), /img-src 'self' data: blob:/);
   const html = await response.text();
-  assert.match(html, /<div class="app" id="app" inert>/);
+  assert.doesNotMatch(html, /id="app"/);
+  assert.doesNotMatch(html, /id="new-chat"/);
+  assert.doesNotMatch(html, /id="demo-input"/);
   assert.match(html, /<div class="landing" id="landing">/);
   assert.match(html, /id="landing-signin" disabled/);
   assert.match(html, /id="landing-demo"/);
-  assert.match(html, /id="demo-input"/);
-  assert.doesNotMatch(html, /id="demo-input"[^>]*disabled/);
-  assert.match(html, /id="demo-send" disabled/);
-  assert.match(html, /id="demo-members"/);
+  assert.match(html, /id="demo-play"/);
+  assert.match(html, /id="landing-demo"[^>]*>\s*<button type="button" class="demo-play"/);
   assert.match(html, /id="previous-people"/);
-  assert.match(html, /<button type="button" class="menu-action" id="demo-passkeys">/);
-  assert.match(html, /id="demo-passkeys-dialog"[^>]*aria-describedby="demo-passkeys-body"/);
-  assert.match(html, /id="demo-passkeys-body"/);
-  assert.doesNotMatch(html, /id="demo-attach"[^>]*disabled/);
-  assert.match(html, /id="demo-attach-dialog"[^>]*aria-describedby="demo-attach-body"/);
-  assert.match(html, /id="demo-invite-dialog"[^>]*aria-describedby="demo-invite-body"/);
-  assert.match(html, /id="passkey-label"/);
   assert.match(html, /id="passkey-warning-dialog"[^>]*aria-describedby="passkey-warning-text"/);
   assert.match(html, /id="passkey-warning-continue"/);
-  assert.match(html, /<button type="button" class="menu-action" id="log-out">/);
-  assert.match(html, /id="demo-log-out-dialog"[^>]*aria-describedby="demo-log-out-body"/);
-  assert.match(html, /<button type="button" class="menu-action" id="demo-spec">/);
-  assert.match(html, /id="demo-spec-edit" hidden/);
-  assert.match(html, /id="demo-spec-view" hidden/);
-  assert.doesNotMatch(html, /id="demo-spec" href="\/spec"/);
   assert.doesNotMatch(html, /id="subtitle"/);
   assert.doesNotMatch(html, /id="demo-subtitle"/);
   assert.doesNotMatch(html, /landing-features/);
+
+  const appShell = await (await api(app.baseUrl, '/app-shell.html', { credentials: null })).text();
+  assert.match(appShell, /<div class="app" id="app" inert>/);
+  assert.match(appShell, /<button type="button" class="menu-action" id="log-out">/);
+  assert.match(appShell, /id="passkey-label"/);
+  assert.match(appShell, /id="new-chat"/);
+
+  const demoShell = await (await api(app.baseUrl, '/demo-shell.html', { credentials: null })).text();
+  assert.match(demoShell, /id="demo-input"/);
+  assert.doesNotMatch(demoShell, /id="demo-input"[^>]*disabled/);
+  assert.match(demoShell, /id="demo-send" disabled/);
+  assert.match(demoShell, /id="demo-members"/);
+  assert.match(demoShell, /<button type="button" class="menu-action" id="demo-passkeys">/);
+  assert.match(demoShell, /id="demo-passkeys-dialog"[^>]*aria-describedby="demo-passkeys-body"/);
+  assert.match(demoShell, /id="demo-passkeys-body"/);
+  assert.doesNotMatch(demoShell, /id="demo-attach"[^>]*disabled/);
+  assert.match(demoShell, /id="demo-attach-dialog"[^>]*aria-describedby="demo-attach-body"/);
+  assert.match(demoShell, /id="demo-invite-dialog"[^>]*aria-describedby="demo-invite-body"/);
+  assert.match(demoShell, /id="demo-log-out-dialog"[^>]*aria-describedby="demo-log-out-body"/);
+  assert.match(demoShell, /<button type="button" class="menu-action" id="demo-spec">/);
+  assert.match(demoShell, /id="demo-spec-edit" hidden/);
+  assert.match(demoShell, /id="demo-spec-view" hidden/);
+  assert.doesNotMatch(demoShell, /id="demo-spec" href="\/spec"/);
 });
 
 test('serves front-end assets with the right content types', async (t) => {
@@ -397,6 +407,8 @@ test('serves front-end assets with the right content types', async (t) => {
     ['/shared/transcript.js', /^text\/javascript/],
     ['/shared/export.js', /^text\/javascript/],
     ['/shared/limits.js', /^text\/javascript/],
+    ['/app-shell.html', /^text\/html/],
+    ['/demo-shell.html', /^text\/html/],
     ['/styles.css', /^text\/css/],
     ['/manifest.webmanifest', /^application\/manifest\+json/],
     ['/icon.svg', /^image\/svg\+xml/],

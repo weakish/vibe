@@ -52,6 +52,8 @@ const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const STATIC_FILES = new Map([
   ['/', 'public/index.html'],
   ['/index.html', 'public/index.html'],
+  ['/app-shell.html', 'public/app-shell.html'],
+  ['/demo-shell.html', 'public/demo-shell.html'],
   ['/app.js', 'public/app.js'],
   ['/markdown.js', 'public/markdown.js'],
   ['/stream.js', 'public/stream.js'],

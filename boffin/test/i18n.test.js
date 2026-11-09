@@ -67,6 +67,7 @@ test('landing demo states what is particular about Boffin', () => {
   assert.equal(MESSAGES.en.landingSignIn, 'Start');
   assert.equal(t('en', 'landingInvite', { name: 'Ada' }), 'Ada invited you to use Boffin, click here to accept it.');
   assert.match(MESSAGES.en.landingTagline, /shoot itself in the foot/);
+  assert.equal(MESSAGES.en.demoPlay, 'Play demo');
   assert.match(MESSAGES.en.demoAsk, /Export/);
   assert.match(MESSAGES.en.demoAsk, /Settings/);
   assert.match(MESSAGES.en.demoBack, /icon/i);

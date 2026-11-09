@@ -76,6 +76,10 @@ const el = {
   passkeysClose: document.getElementById('passkeys-close'),
   logOut: document.getElementById('log-out'),
   peopleLine: document.getElementById('people-line'),
+  usageLine: document.getElementById('usage-line'),
+  usageField: document.getElementById('usage-field'),
+  usageLabel: document.getElementById('usage-label'),
+  usageStatus: document.getElementById('usage-status'),
   peopleDialog: document.getElementById('people-dialog'),
   peopleTitle: document.getElementById('people-title'),
   peopleMembers: document.getElementById('people-members'),
@@ -114,6 +118,7 @@ const el = {
   send: document.getElementById('send'),
   landing: document.getElementById('landing'),
   landingDemo: document.getElementById('landing-demo'),
+  demoPlay: document.getElementById('demo-play'),
   landingSettings: document.getElementById('landing-settings'),
   landingSettingsPanel: document.getElementById('landing-settings-panel'),
   landingStatus: document.getElementById('landing-status'),
@@ -183,6 +188,12 @@ const el = {
   newChatDialog: document.getElementById('new-chat-dialog'),
   newChatTitle: document.getElementById('new-chat-title'),
   newChatBody: document.getElementById('new-chat-body'),
+  newChatAgentField: document.getElementById('new-chat-agent-field'),
+  newChatAgentLabel: document.getElementById('new-chat-agent-label'),
+  newChatAgent: document.getElementById('new-chat-agent'),
+  newChatModelField: document.getElementById('new-chat-model-field'),
+  newChatModelLabel: document.getElementById('new-chat-model-label'),
+  newChatModel: document.getElementById('new-chat-model'),
   newChatExport: document.getElementById('new-chat-export'),
   newChatClear: document.getElementById('new-chat-clear'),
   newChatCancel: document.getElementById('new-chat-cancel'),
@@ -206,7 +217,11 @@ let mediaEpoch = 0;
 const state = {
   items: [],
   nodes: new Map(),
+  agent: '',
   model: '',
+  agents: [],
+  draftAgent: '',
+  draftModel: '',
   you: null,
   canManage: false,
   people: [],
@@ -246,6 +261,10 @@ let staticAssetsRefresh = null;
 let staticAssetsGeneration = 0;
 // False until the server has confirmed the mode, so the picker never shows a guess.
 let staticAssetsLoaded = false;
+let grokUsage = null;
+let grokUsageLoaded = false;
+let grokUsageRefresh = null;
+let grokUsageGeneration = 0;
 let theme = readStoredTheme();
 let size = readStoredSize();
 let demoLocale = locale;
@@ -259,6 +278,12 @@ let demoSpecEditRun = 0;
 let demoPeople = DEMO_MEMBERS.map((person) => ({ ...person }));
 let demoAlumni = DEMO_ALUMNI.map((person) => ({ ...person }));
 let peopleDialogDemo = false;
+let demoMounted = false;
+let demoShellPromise = null;
+let demoEventsBound = false;
+let appMounted = false;
+let appShellPromise = null;
+let appEventsBound = false;
 let demoUserTurns = [];
 let demoPlayRun = 0;
 let demoScriptShown = 0;
@@ -508,67 +533,34 @@ function syncLocalePicker(group, selected = locale) {
 function applyChrome() {
   document.documentElement.lang = locale;
   document.documentElement.dir = localeDir(locale);
-  el.settings.setAttribute('aria-label', msg('settings'));
   el.landingSettings.setAttribute('aria-label', msg('settings'));
-  el.themeLabel.textContent = msg('theme');
   el.landingThemeLabel.textContent = msg('theme');
-  el.sizeLabel.textContent = msg('size');
   el.landingSizeLabel.textContent = msg('size');
   applyTheme();
   applySize();
-  syncThemePicker(el.theme);
   syncThemePicker(el.landingTheme);
-  syncSizePicker(el.size);
   syncSizePicker(el.landingSize);
-  el.localeLabel.textContent = msg('language');
   el.landingLocaleLabel.textContent = msg('language');
-  el.staticAssetsLabel.textContent = msg('staticAssets');
-  syncLocalePicker(el.locale);
   syncLocalePicker(el.landingLocale);
-  syncStaticAssetsPicker();
-  paintStaticAssetsStatus();
   el.landingTagline.textContent = msg('landingTagline');
   el.landingSignIn.textContent = msg('landingSignIn');
+  if (el.demoPlay?.isConnected) {
+    el.demoPlay.setAttribute('aria-label', msg('demoPlay'));
+  }
   applyLandingGate();
   el.loginInviteOnly.textContent = msg('inviteOnly');
-  el.exportLog.textContent = msg('exportLog');
   el.invite.textContent = msg('invite');
-  el.people.textContent = msg('people');
-  el.passkeys.textContent = msg('passkeys');
-  el.passkeysTitle.textContent = msg('passkeys');
-  el.passkeyAdd.textContent = msg('addPasskey');
-  el.passkeyLabel.placeholder = msg('passkeyLabel');
-  el.passkeyLabel.setAttribute('aria-label', msg('passkeyLabel'));
-  el.passkeysClose.textContent = msg('cancel');
-  el.logOut.textContent = msg('logOut');
-  el.specLink.textContent = msg('spec');
-  el.newChat.textContent = msg('newChat');
   el.loginJoin.textContent = msg('joinAction');
   el.loginClose.textContent = msg('cancel');
   el.peopleTitle.textContent = msg('people');
   el.previousTitle.textContent = msg('previousPeople');
   el.pendingTitle.textContent = msg('pendingInvites');
   el.peopleClose.textContent = msg('cancel');
-  el.conversationListTitle.textContent = msg('conversationList');
-  el.emptyTitle.textContent = msg('emptyGreeting');
-  el.typing.setAttribute('aria-label', msg('typing'));
-  el.input.placeholder = msg('messagePlaceholder');
-  el.input.setAttribute('aria-label', msg('messageAria'));
-  el.attach.setAttribute('aria-label', msg('attach'));
-  renderPending();
   el.loginUsername.placeholder = msg('username');
   el.loginUsername.setAttribute('aria-label', msg('username'));
-  for (const when of el.passkeyEntries.querySelectorAll('.passkey-when')) {
-    when.textContent = when.dataset.time ? msg('passkeyAddedAt', { time: when.dataset.time }) : '';
-  }
   el.loginPassword.placeholder = msg('password');
   el.loginSubmit.textContent = msg('unlock');
   applyLoginMode();
-  el.newChatTitle.textContent = msg('newChat');
-  el.newChatBody.textContent = msg('confirmNewChat');
-  el.newChatExport.textContent = msg('newChatExport');
-  el.newChatClear.textContent = msg('newChatClear');
-  el.newChatCancel.textContent = msg('cancel');
   el.joinWarningTitle.textContent = msg('joinTitle');
   el.joinWarningText.textContent = msg('joinSameDeviceWarning');
   el.joinWarningContinue.textContent = msg('continueAction');
@@ -580,6 +572,51 @@ function applyChrome() {
   el.loginError.textContent = renderLoginError();
   applyStatus();
   applyPeopleStatus();
+  if (!appMounted) {
+    return;
+  }
+  el.settings.setAttribute('aria-label', msg('settings'));
+  el.themeLabel.textContent = msg('theme');
+  el.sizeLabel.textContent = msg('size');
+  syncThemePicker(el.theme);
+  syncSizePicker(el.size);
+  el.localeLabel.textContent = msg('language');
+  el.usageLabel.textContent = msg('usage');
+  paintUsage();
+  el.staticAssetsLabel.textContent = msg('staticAssets');
+  syncLocalePicker(el.locale);
+  syncStaticAssetsPicker();
+  paintStaticAssetsStatus();
+  el.exportLog.textContent = msg('exportLog');
+  el.people.textContent = msg('people');
+  el.passkeys.textContent = msg('passkeys');
+  el.passkeysTitle.textContent = msg('passkeys');
+  el.passkeyAdd.textContent = msg('addPasskey');
+  el.passkeyLabel.placeholder = msg('passkeyLabel');
+  el.passkeyLabel.setAttribute('aria-label', msg('passkeyLabel'));
+  el.passkeysClose.textContent = msg('cancel');
+  el.logOut.textContent = msg('logOut');
+  el.specLink.textContent = msg('spec');
+  el.newChat.textContent = msg('newChat');
+  el.conversationListTitle.textContent = msg('conversationList');
+  el.emptyTitle.textContent = msg('emptyGreeting');
+  el.typing.setAttribute('aria-label', msg('typing'));
+  el.input.placeholder = msg('messagePlaceholder');
+  el.input.setAttribute('aria-label', msg('messageAria'));
+  el.attach.setAttribute('aria-label', msg('attach'));
+  renderPending();
+  for (const when of el.passkeyEntries.querySelectorAll('.passkey-when')) {
+    when.textContent = when.dataset.time ? msg('passkeyAddedAt', { time: when.dataset.time }) : '';
+  }
+  el.newChatTitle.textContent = msg('newChat');
+  el.newChatBody.textContent = msg('confirmNewChat');
+  el.newChatAgentLabel.textContent = msg('agentLabel');
+  el.newChatModelLabel.textContent = msg('modelLabel');
+  syncAgentPicker();
+  syncModelPicker();
+  el.newChatExport.textContent = msg('newChatExport');
+  el.newChatClear.textContent = msg('newChatClear');
+  el.newChatCancel.textContent = msg('cancel');
   updateComposer();
 }
 
@@ -598,6 +635,9 @@ function fillMarked(element, template) {
 }
 
 function applyDemoChrome() {
+  if (!demoMounted) {
+    return;
+  }
   el.landingDemo.lang = demoLocale;
   el.landingDemo.dir = localeDir(demoLocale);
   if (demoTheme === 'system') {
@@ -886,6 +926,9 @@ function fillStaticAssetsPicker() {
 }
 
 function syncStaticAssetsPicker() {
+  if (!el.staticAssets) {
+    return;
+  }
   for (const option of el.staticAssets.querySelectorAll('.theme-option')) {
     const id = option.dataset.staticAssets;
     option.textContent = msg(STATIC_ASSET_LABELS[id]);
@@ -897,6 +940,9 @@ function syncStaticAssetsPicker() {
 }
 
 function paintStaticAssetsStatus() {
+  if (!el.staticAssetsStatus) {
+    return;
+  }
   if (!state.canManage || !staticAssetsLoaded) {
     el.staticAssetsStatus.hidden = true;
     return;
@@ -913,6 +959,89 @@ function paintStaticAssetsStatus() {
   el.staticAssetsStatus.hidden = !text;
 }
 
+function resetGrokUsage() {
+  grokUsageGeneration += 1;
+  grokUsageRefresh = null;
+  grokUsage = null;
+  grokUsageLoaded = false;
+  paintUsage();
+}
+
+function requestGrokUsage({ fresh = false } = {}) {
+  if (!sessionToken) {
+    return;
+  }
+  if (fresh) {
+    grokUsageGeneration += 1;
+    grokUsageRefresh = null;
+  }
+  if (grokUsageRefresh) {
+    return;
+  }
+  const generation = grokUsageGeneration;
+  grokUsageRefresh = fetchGrokUsage(generation, fresh).finally(() => {
+    if (grokUsageGeneration === generation) {
+      grokUsageRefresh = null;
+    }
+  });
+  grokUsageRefresh.catch(handleFailure);
+}
+
+async function fetchGrokUsage(generation, fresh) {
+  const response = await api(fresh ? '/api/usage?fresh=1' : '/api/usage');
+  if (generation !== grokUsageGeneration) {
+    response.body?.cancel()?.catch(() => {});
+    return;
+  }
+  if (!response.ok) {
+    throw new RequestError(await readServerError(response), response.status);
+  }
+  const body = await response.json();
+  if (generation !== grokUsageGeneration) {
+    return;
+  }
+  grokUsage = body.grok ?? null;
+  grokUsageLoaded = true;
+  paintUsage();
+}
+
+function usageText(entry) {
+  if (!entry.available) {
+    return msg('grokUsageUnavailable');
+  }
+  const percent = String(Math.round(entry.percent));
+  if (entry.period === 'monthly') {
+    return msg('grokMonthlyQuota', { percent });
+  }
+  return msg('grokWeeklyQuota', { percent });
+}
+
+function paintUsage() {
+  if (!el.usageField) {
+    return;
+  }
+  const show = grokUsageLoaded && grokUsage !== null;
+  el.usageField.hidden = !show;
+  el.usageLine.hidden = !show;
+  if (!show) {
+    el.usageStatus.textContent = '';
+    el.usageLine.textContent = '';
+    el.usageLine.removeAttribute('title');
+    return;
+  }
+  const text = usageText(grokUsage);
+  el.usageStatus.textContent = text;
+  el.usageLine.textContent = text;
+  if (grokUsage.available && grokUsage.resetsAt) {
+    const reset = new Date(grokUsage.resetsAt);
+    if (!Number.isNaN(reset.getTime())) {
+      el.usageLine.title = reset.toLocaleString(locale);
+    }
+  } else {
+    el.usageLine.removeAttribute('title');
+  }
+}
+
 function resetStaticAssets() {
   staticAssetsGeneration += 1;
   staticAssetsRefresh = null;
@@ -921,7 +1050,9 @@ function resetStaticAssets() {
   staticAssetsBundling = false;
   staticAssetsBusy = false;
   staticAssetsLoaded = false;
-  el.staticAssetsField.hidden = true;
+  if (el.staticAssetsField) {
+    el.staticAssetsField.hidden = true;
+  }
   syncStaticAssetsPicker();
   paintStaticAssetsStatus();
 }
@@ -1096,13 +1227,18 @@ function setLandingSettingsOpen(open) {
 }
 
 function setDemoSettingsOpen(open) {
+  if (!el.demoSettingsPanel) {
+    return;
+  }
   el.demoSettingsPanel.hidden = !open;
   el.demoSettings.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 function setSettingsOpen(open) {
-  el.settingsPanel.hidden = !open;
-  el.settings.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (el.settingsPanel) {
+    el.settingsPanel.hidden = !open;
+    el.settings.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
   if (!open) {
     setLandingSettingsOpen(false);
     setDemoSettingsOpen(false);
@@ -1110,7 +1246,7 @@ function setSettingsOpen(open) {
 }
 
 function isSettingsTarget(node) {
-  return Boolean(node) && (el.settings.contains(node) || el.settingsPanel.contains(node));
+  return Boolean(node && el.settings) && (el.settings.contains(node) || el.settingsPanel.contains(node));
 }
 
 function isLandingSettingsTarget(node) {
@@ -1118,7 +1254,7 @@ function isLandingSettingsTarget(node) {
 }
 
 function isDemoSettingsTarget(node) {
-  return Boolean(node) && (el.demoSettings.contains(node) || el.demoSettingsPanel.contains(node));
+  return Boolean(node && el.demoSettings) && (el.demoSettings.contains(node) || el.demoSettingsPanel.contains(node));
 }
 
 function onSettingsClick() {
@@ -1126,29 +1262,30 @@ function onSettingsClick() {
   setSettingsOpen(opening);
   if (opening) {
     requestStaticAssets();
+    requestGrokUsage({ fresh: true });
   }
 }
 
 function onDocumentPointerDown(event) {
-  if (!el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
+  if (el.settingsPanel && !el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
     setSettingsOpen(false);
   }
   if (!el.landingSettingsPanel.hidden && !isLandingSettingsTarget(event.target)) {
     setLandingSettingsOpen(false);
   }
-  if (!el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
+  if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
     setDemoSettingsOpen(false);
   }
 }
 
 function onDocumentFocusIn(event) {
-  if (!el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
+  if (el.settingsPanel && !el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
     setSettingsOpen(false);
   }
   if (!el.landingSettingsPanel.hidden && !isLandingSettingsTarget(event.target)) {
     setLandingSettingsOpen(false);
   }
-  if (!el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
+  if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
     setDemoSettingsOpen(false);
   }
 }
@@ -1162,11 +1299,11 @@ function onDocumentKeyDown(event) {
     setLandingSettingsOpen(false);
     el.landingSettings.focus();
   }
-  if (!el.demoSettingsPanel.hidden) {
+  if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden) {
     setDemoSettingsOpen(false);
     el.demoSettings.focus();
   }
-  if (!el.settingsPanel.hidden) {
+  if (el.settingsPanel && !el.settingsPanel.hidden) {
     setSettingsOpen(false);
     el.settings.focus();
   }
@@ -1209,6 +1346,7 @@ function forgetSession() {
   }
   removeLegacyAccessToken();
   resetStaticAssets();
+  resetGrokUsage();
 }
 
 function removeLegacyAccessToken() {
@@ -1294,6 +1432,7 @@ async function loadSession() {
     storeSession(session.token);
   }
   applySessionIdentity(session);
+  requestGrokUsage();
   if (session.home === 'list') {
     showConversationList(session.conversations ?? []);
     return session;
@@ -1305,7 +1444,9 @@ async function loadSession() {
 function applySessionIdentity(session) {
   state.you = session.you ?? null;
   state.canManage = Boolean(session.canManage);
-  el.staticAssetsField.hidden = !state.canManage;
+  if (el.staticAssetsField) {
+    el.staticAssetsField.hidden = !state.canManage;
+  }
   requestStaticAssets({ ifMissing: true });
 }
 
@@ -1407,7 +1548,370 @@ function stillDemoPlay(run) {
   return run === demoPlayRun;
 }
 
+function parseHtmlFragment(html) {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return template.content;
+}
+
+async function fetchFragment(path) {
+  const response = await fetch(path, { cache: 'no-cache' });
+  if (!response.ok) {
+    throw new RequestError(await readServerError(response), response.status);
+  }
+  return parseHtmlFragment(await response.text());
+}
+
+function ensureAppShell() {
+  if (appMounted) {
+    return Promise.resolve();
+  }
+  if (!appShellPromise) {
+    appShellPromise = loadAppShell().catch((error) => {
+      appShellPromise = null;
+      throw error;
+    });
+  }
+  return appShellPromise;
+}
+
+async function loadAppShell() {
+  if (!document.getElementById('app')) {
+    const fragment = await fetchFragment('/app-shell.html');
+    if (!document.getElementById('app')) {
+      el.landing.before(fragment);
+    }
+  }
+  captureAppElements();
+  if (!appEventsBound) {
+    bindAppEvents();
+    fillStaticAssetsPicker();
+    fillLocalePicker(el.locale);
+    fillThemePicker(el.theme);
+    fillSizePicker(el.size);
+    appEventsBound = true;
+  }
+  // applyChrome paints the app only once this is set, and it clears on failure
+  // so a later sign-in can try the load again.
+  appMounted = true;
+  try {
+    applyChrome();
+  } catch (error) {
+    appMounted = false;
+    throw error;
+  }
+}
+
+function captureAppElements() {
+  el.app = document.getElementById('app');
+  el.status = document.getElementById('status');
+  el.exportLog = document.getElementById('export-log');
+  el.people = document.getElementById('people');
+  el.passkeys = document.getElementById('passkeys');
+  el.passkeysDialog = document.getElementById('passkeys-dialog');
+  el.passkeysTitle = document.getElementById('passkeys-title');
+  el.passkeyEntries = document.getElementById('passkey-entries');
+  el.passkeysStatus = document.getElementById('passkeys-status');
+  el.passkeyAdd = document.getElementById('passkey-add');
+  el.passkeyLabel = document.getElementById('passkey-label');
+  el.passkeysClose = document.getElementById('passkeys-close');
+  el.logOut = document.getElementById('log-out');
+  el.peopleLine = document.getElementById('people-line');
+  el.usageLine = document.getElementById('usage-line');
+  el.usageField = document.getElementById('usage-field');
+  el.usageLabel = document.getElementById('usage-label');
+  el.usageStatus = document.getElementById('usage-status');
+  el.conversationList = document.getElementById('conversation-list');
+  el.conversationListTitle = document.getElementById('conversation-list-title');
+  el.conversationEntries = document.getElementById('conversation-entries');
+  el.specLink = document.getElementById('spec-link');
+  el.newChat = document.getElementById('new-chat');
+  el.settings = document.getElementById('settings');
+  el.settingsPanel = document.getElementById('settings-panel');
+  el.locale = document.getElementById('locale');
+  el.localeLabel = document.getElementById('locale-label');
+  el.staticAssetsField = document.getElementById('static-assets-field');
+  el.staticAssets = document.getElementById('static-assets');
+  el.staticAssetsLabel = document.getElementById('static-assets-label');
+  el.staticAssetsStatus = document.getElementById('static-assets-status');
+  el.theme = document.getElementById('theme');
+  el.themeLabel = document.getElementById('theme-label');
+  el.size = document.getElementById('size');
+  el.sizeLabel = document.getElementById('size-label');
+  el.empty = document.getElementById('empty');
+  el.emptyTitle = document.getElementById('empty-title');
+  el.messages = document.getElementById('messages');
+  el.transcript = document.getElementById('transcript');
+  el.typing = document.getElementById('typing');
+  el.input = document.getElementById('input');
+  el.pending = document.getElementById('pending');
+  el.attach = document.getElementById('attach');
+  el.files = document.getElementById('files');
+  el.send = document.getElementById('send');
+  el.newChatDialog = document.getElementById('new-chat-dialog');
+  el.newChatTitle = document.getElementById('new-chat-title');
+  el.newChatBody = document.getElementById('new-chat-body');
+  el.newChatAgentField = document.getElementById('new-chat-agent-field');
+  el.newChatAgentLabel = document.getElementById('new-chat-agent-label');
+  el.newChatAgent = document.getElementById('new-chat-agent');
+  el.newChatModelField = document.getElementById('new-chat-model-field');
+  el.newChatModelLabel = document.getElementById('new-chat-model-label');
+  el.newChatModel = document.getElementById('new-chat-model');
+  el.newChatExport = document.getElementById('new-chat-export');
+  el.newChatClear = document.getElementById('new-chat-clear');
+  el.newChatCancel = document.getElementById('new-chat-cancel');
+}
+
+function captureDemoElements() {
+  el.demoSettings = document.getElementById('demo-settings');
+  el.demoSettingsPanel = document.getElementById('demo-settings-panel');
+  el.demoTheme = document.getElementById('demo-theme');
+  el.demoThemeLabel = document.getElementById('demo-theme-label');
+  el.demoSize = document.getElementById('demo-size');
+  el.demoSizeLabel = document.getElementById('demo-size-label');
+  el.demoLocale = document.getElementById('demo-locale');
+  el.demoLocaleLabel = document.getElementById('demo-locale-label');
+  el.demoExport = document.getElementById('demo-export');
+  el.demoMembers = document.getElementById('demo-members');
+  el.demoPasskeys = document.getElementById('demo-passkeys');
+  el.demoPasskeysDialog = document.getElementById('demo-passkeys-dialog');
+  el.demoPasskeysTitle = document.getElementById('demo-passkeys-title');
+  el.demoPasskeysBody = document.getElementById('demo-passkeys-body');
+  el.demoPasskeysClose = document.getElementById('demo-passkeys-close');
+  el.demoAttachDialog = document.getElementById('demo-attach-dialog');
+  el.demoAttachTitle = document.getElementById('demo-attach-title');
+  el.demoAttachBody = document.getElementById('demo-attach-body');
+  el.demoAttachClose = document.getElementById('demo-attach-close');
+  el.demoInviteDialog = document.getElementById('demo-invite-dialog');
+  el.demoInviteTitle = document.getElementById('demo-invite-title');
+  el.demoInviteBody = document.getElementById('demo-invite-body');
+  el.demoInviteClose = document.getElementById('demo-invite-close');
+  el.demoLogOut = document.getElementById('demo-log-out');
+  el.demoLogOutDialog = document.getElementById('demo-log-out-dialog');
+  el.demoLogOutTitle = document.getElementById('demo-log-out-title');
+  el.demoLogOutBody = document.getElementById('demo-log-out-body');
+  el.demoLogOutClose = document.getElementById('demo-log-out-close');
+  el.demoSpec = document.getElementById('demo-spec');
+  el.demoSpecBack = document.getElementById('demo-spec-back');
+  el.demoSpecEdit = document.getElementById('demo-spec-edit');
+  el.demoSpecView = document.getElementById('demo-spec-view');
+  el.demoSpecStatus = document.getElementById('demo-spec-status');
+  el.demoSpecRendered = document.getElementById('demo-spec-rendered');
+  el.demoTitle = document.getElementById('demo-title');
+  el.demoPeople = document.getElementById('demo-people');
+  el.demoMessages = document.getElementById('demo-messages');
+  el.demoTranscript = document.getElementById('demo-transcript');
+  el.demoTyping = document.getElementById('demo-typing');
+  el.demoComposer = document.getElementById('demo-composer');
+  el.demoAttach = document.getElementById('demo-attach');
+  el.demoInput = document.getElementById('demo-input');
+  el.demoSend = document.getElementById('demo-send');
+}
+
+function bindDemoEvents() {
+  el.demoSettings.addEventListener('click', () => {
+    const open = el.demoSettingsPanel.hidden;
+    setDemoSettingsOpen(open);
+    if (open) {
+      setLandingSettingsOpen(false);
+    }
+  });
+  el.demoExport.addEventListener('click', () => {
+    exportDemo();
+  });
+  el.demoMembers.addEventListener('click', () => {
+    openDemoPeople();
+  });
+  el.demoPasskeys.addEventListener('click', () => {
+    openDemoSheet(el.demoPasskeysDialog);
+  });
+  el.demoLogOut.addEventListener('click', () => {
+    openDemoSheet(el.demoLogOutDialog);
+  });
+  el.demoAttach.addEventListener('click', () => {
+    openDemoSheet(el.demoAttachDialog);
+  });
+  el.demoInput.addEventListener('input', () => {
+    autoGrow(el.demoInput);
+    updateDemoComposer();
+  });
+  el.demoInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing || coarsePointer.matches) {
+      return;
+    }
+    event.preventDefault();
+    sendDemoMessage();
+  });
+  el.demoSend.addEventListener('click', () => {
+    sendDemoMessage();
+  });
+  el.demoPasskeysClose.addEventListener('click', () => el.demoPasskeysDialog.close());
+  el.demoAttachClose.addEventListener('click', () => el.demoAttachDialog.close());
+  el.demoInviteClose.addEventListener('click', () => el.demoInviteDialog.close());
+  el.demoLogOutClose.addEventListener('click', () => el.demoLogOutDialog.close());
+  el.demoSpec.addEventListener('click', () => {
+    openDemoSpec();
+  });
+  el.demoSpecEdit.addEventListener('click', () => {
+    editDemoSpec();
+  });
+  el.demoSpecBack.addEventListener('click', () => {
+    closeDemoSpec();
+  });
+  el.demoLocale.addEventListener('click', onDemoLocaleClick);
+  el.demoLocale.addEventListener('keydown', onDemoLocaleKey);
+  el.demoTheme.addEventListener('click', onDemoThemeClick);
+  el.demoSize.addEventListener('click', onDemoSizeClick);
+  el.demoTheme.addEventListener('keydown', onDemoThemeKey);
+  el.demoSize.addEventListener('keydown', onDemoSizeKey);
+}
+
+function bindAppEvents() {
+  el.files.addEventListener('change', () => {
+    // Copy first. The FileList is live, and clearing the input empties it.
+    // iOS also invalidates those File blobs once the input is cleared, so the
+    // bytes are read before that happens.
+    const files = [...el.files.files];
+    void ingestFiles(files);
+  });
+  el.input.addEventListener('paste', (event) => {
+    const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.size > 0);
+    if (files.length === 0) {
+      return;
+    }
+    const text = event.clipboardData?.getData('text/plain') ?? '';
+    event.preventDefault();
+    if (text) {
+      const start = el.input.selectionStart ?? el.input.value.length;
+      const end = el.input.selectionEnd ?? start;
+      el.input.setRangeText(text, start, end, 'end');
+      autoGrow();
+      updateComposer();
+    }
+    void ingestFiles(files);
+  });
+  el.input.addEventListener('input', () => {
+    autoGrow();
+    updateComposer();
+  });
+  el.input.addEventListener('keydown', (event) => {
+    // While a run is active the draft is still editable, so Enter must insert a
+    // newline instead of being swallowed. Phones use the button to send.
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing || coarsePointer.matches || state.busy) {
+      return;
+    }
+    event.preventDefault();
+    sendMessage();
+  });
+  el.send.addEventListener('click', () => {
+    if (state.busy) {
+      stopRun();
+    } else {
+      sendMessage();
+    }
+  });
+  el.exportLog.addEventListener('click', () => {
+    setSettingsOpen(false);
+    exportLog();
+  });
+  el.settings.addEventListener('click', onSettingsClick);
+  el.newChat.addEventListener('click', newChat);
+  el.newChatDialog.addEventListener('click', onNewChatDialogClick);
+  el.newChatDialog.addEventListener('cancel', onNewChatDialogCancel);
+  el.newChatAgent.addEventListener('click', onAgentPickerClick);
+  el.newChatModel.addEventListener('click', onModelPickerClick);
+  el.newChatAgent.addEventListener('keydown', (event) => {
+    onPickerKey(event, state.draftAgent, (option) => option.dataset.agent, (option) => {
+      if (option.dataset.agent !== state.draftAgent) {
+        state.draftAgent = option.dataset.agent;
+        state.draftModel = defaultModelFor(state.draftAgent);
+        syncAgentPicker();
+        fillModelPicker();
+      }
+    });
+  });
+  el.newChatModel.addEventListener('keydown', (event) => {
+    onPickerKey(event, state.draftModel, (option) => option.dataset.model, (option) => {
+      state.draftModel = option.dataset.model;
+      syncModelPicker();
+    });
+  });
+  el.people.addEventListener('click', openPeople);
+  el.passkeys.addEventListener('click', () => {
+    openPasskeys().catch(handleFailure);
+  });
+  el.passkeyAdd.addEventListener('click', () => {
+    addPasskey().catch(handlePasskeysDialogFailure);
+  });
+  el.passkeyLabel.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    event.preventDefault();
+    addPasskey().catch(handlePasskeysDialogFailure);
+  });
+  el.passkeysClose.addEventListener('click', () => el.passkeysDialog.close());
+  el.logOut.addEventListener('click', () => {
+    logOut().catch(handleFailure);
+  });
+  el.staticAssets.addEventListener('click', onStaticAssetsClick);
+  el.staticAssets.addEventListener('keydown', onStaticAssetsKey);
+  el.locale.addEventListener('click', onLocaleClick);
+  el.locale.addEventListener('keydown', onLocaleKey);
+  el.theme.addEventListener('click', onThemeClick);
+  el.size.addEventListener('click', onSizeClick);
+  el.theme.addEventListener('keydown', onThemeKey);
+  el.size.addEventListener('keydown', onSizeKey);
+}
+
+async function mountLandingDemo() {
+  if (demoMounted) {
+    return;
+  }
+  if (!demoShellPromise) {
+    demoShellPromise = (async () => {
+      if (!document.getElementById('demo-settings')) {
+        const fragment = await fetchFragment('/demo-shell.html');
+        if (!document.getElementById('demo-settings')) {
+          el.landingDemo.append(fragment);
+        }
+      }
+      el.demoPlay?.remove();
+      el.landingDemo.classList.remove('is-idle');
+      captureDemoElements();
+      if (!demoEventsBound) {
+        fillLocalePicker(el.demoLocale);
+        fillThemePicker(el.demoTheme);
+        fillSizePicker(el.demoSize);
+        bindDemoEvents();
+        demoEventsBound = true;
+      }
+      // applyDemoChrome and startDemoConversation both return until this is set.
+      demoMounted = true;
+      try {
+        applyDemoChrome();
+        startDemoConversation();
+      } catch (error) {
+        demoMounted = false;
+        throw error;
+      }
+      el.landingDemo.focus();
+    })().catch((error) => {
+      demoShellPromise = null;
+      throw error;
+    });
+  }
+  try {
+    await demoShellPromise;
+  } catch (error) {
+    setStatus(() => msg('retrying', { detail: retryDetail(error) }));
+  }
+}
+
 function startDemoConversation() {
+  if (!demoMounted) {
+    return;
+  }
   demoPlayRun += 1;
   const run = demoPlayRun;
   demoScriptShown = 0;
@@ -1529,7 +2033,7 @@ async function exportDemo() {
   el.demoExport.disabled = true;
   setDemoSettingsOpen(false);
   try {
-    await exportConversationLog(appendDemoUserTurns(demoScript()), { model: DEMO_MODEL });
+    await exportConversationLog(appendDemoUserTurns(demoScript()), { agent: 'cursor', model: DEMO_MODEL });
   } catch (error) {
     if (error?.name !== 'AbortError') {
       setStatus(() => error.message || msg('exportFailed'));
@@ -1546,7 +2050,9 @@ function showChat(session) {
   el.messages.hidden = false;
   el.input.closest('.composer').hidden = false;
   applySessionIdentity(session);
+  state.agent = session.agent ?? 'cursor';
   state.model = session.model ?? '';
+  state.agents = Array.isArray(session.agents) ? session.agents : [];
   state.busy = Boolean(session.busy);
   state.items = session.items ?? [];
   state.people = session.people ?? [];
@@ -1851,7 +2357,7 @@ async function newChat() {
   }
   if (action === 'export') {
     try {
-      await exportConversationLog(state.items, { model: state.model });
+      await exportConversationLog(state.items, { agent: state.agent, model: state.model });
     } catch (error) {
       // Cancelling the share sheet must not wipe the chat; that is what "start
       // without exporting" is for.
@@ -1863,7 +2369,10 @@ async function newChat() {
     }
   }
   try {
-    const response = await api('/api/new', { method: 'POST' });
+    const response = await api('/api/new', {
+      method: 'POST',
+      body: { agent: state.draftAgent, model: state.draftModel },
+    });
     if (!response.ok) {
       throw new RequestError(await readServerError(response), response.status);
     }
@@ -1887,7 +2396,110 @@ async function newChat() {
 
 let settleNewChatChoice = null;
 
+const AGENT_LABELS = { cursor: 'agentCursor', grok: 'agentGrok' };
+
+function agentCatalog() {
+  return Array.isArray(state.agents) ? state.agents : [];
+}
+
+function agentEntry(id) {
+  return agentCatalog().find((entry) => entry.id === id) ?? null;
+}
+
+function defaultModelFor(agentId) {
+  return agentEntry(agentId)?.models?.[0]?.id ?? '';
+}
+
+function prepareNewChatPickers() {
+  const catalog = agentCatalog();
+  const fallback = catalog[0]?.id ?? 'cursor';
+  state.draftAgent = agentEntry(state.agent)?.id ?? fallback;
+  const models = agentEntry(state.draftAgent)?.models ?? [];
+  state.draftModel = models.some((entry) => entry.id === state.model) ? state.model : (models[0]?.id ?? '');
+  el.newChatAgentField.hidden = catalog.length < 2;
+  fillAgentPicker();
+  fillModelPicker();
+}
+
+function fillAgentPicker() {
+  el.newChatAgent.replaceChildren();
+  for (const entry of agentCatalog()) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'theme-option';
+    option.role = 'radio';
+    option.dataset.agent = entry.id;
+    option.textContent = msg(AGENT_LABELS[entry.id] ?? 'agentLabel');
+    el.newChatAgent.append(option);
+  }
+  syncAgentPicker();
+}
+
+function syncAgentPicker() {
+  for (const option of el.newChatAgent.querySelectorAll('.theme-option')) {
+    option.textContent = msg(AGENT_LABELS[option.dataset.agent] ?? 'agentLabel');
+    const on = option.dataset.agent === state.draftAgent;
+    option.setAttribute('aria-checked', on ? 'true' : 'false');
+    option.tabIndex = on ? 0 : -1;
+  }
+}
+
+function fillModelPicker() {
+  el.newChatModel.replaceChildren();
+  for (const entry of agentEntry(state.draftAgent)?.models ?? []) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'theme-option';
+    option.role = 'radio';
+    option.dataset.model = entry.id;
+    option.textContent = entry.label || entry.id;
+    el.newChatModel.append(option);
+  }
+  syncModelPicker();
+}
+
+function syncModelPicker() {
+  for (const option of el.newChatModel.querySelectorAll('.theme-option')) {
+    const on = option.dataset.model === state.draftModel;
+    option.setAttribute('aria-checked', on ? 'true' : 'false');
+    option.tabIndex = on ? 0 : -1;
+  }
+}
+
+function onAgentPickerClick(event) {
+  const option = event.target.closest('.theme-option');
+  if (!option || option.dataset.agent === state.draftAgent) {
+    return;
+  }
+  state.draftAgent = option.dataset.agent;
+  state.draftModel = defaultModelFor(state.draftAgent);
+  syncAgentPicker();
+  fillModelPicker();
+}
+
+function onModelPickerClick(event) {
+  const option = event.target.closest('.theme-option');
+  if (!option) {
+    return;
+  }
+  state.draftModel = option.dataset.model;
+  syncModelPicker();
+}
+
+function onPickerKey(event, selected, ids, apply) {
+  if (!RADIO_NAV_KEYS.includes(event.key)) {
+    return;
+  }
+  const options = [...event.currentTarget.querySelectorAll('.theme-option')];
+  const index = options.findIndex((option) => ids(option) === selected);
+  const next = nextRadioIndex(event.key, index < 0 ? 0 : index, options.length, localeDir(locale));
+  event.preventDefault();
+  options[next].focus();
+  apply(options[next]);
+}
+
 function chooseNewChatAction() {
+  prepareNewChatPickers();
   const hasLog = state.items.length > 0;
   el.newChatExport.hidden = !hasLog;
   el.newChatClear.textContent = msg(hasLog ? 'newChatClear' : 'newChat');
@@ -1928,7 +2540,7 @@ async function exportLog() {
   state.exporting = true;
   el.exportLog.disabled = true;
   try {
-    await exportConversationLog(state.items, { model: state.model });
+    await exportConversationLog(state.items, { agent: state.agent, model: state.model });
   } catch (error) {
     if (error?.name !== 'AbortError') {
       setStatus(() => error.message || msg('exportFailed'));
@@ -1939,9 +2551,9 @@ async function exportLog() {
   }
 }
 
-async function exportConversationLog(items, { model }) {
+async function exportConversationLog(items, { agent, model }) {
   const exportedAt = new Date();
-  const text = formatConversationLog(items, { model, exportedAt: exportedAt.toISOString() });
+  const text = formatConversationLog(items, { agent, model, exportedAt: exportedAt.toISOString() });
   const filename = conversationLogFilename(exportedAt);
   const file = new File([text], filename, { type: 'application/json;charset=utf-8' });
   if (typeof navigator.share === 'function') {
@@ -2482,8 +3094,10 @@ function applyPeopleStatus() {
 
 function applyStatus() {
   const message = renderStatus();
-  el.status.textContent = message;
-  el.status.hidden = !message;
+  if (el.status) {
+    el.status.textContent = message;
+    el.status.hidden = !message;
+  }
   el.landingStatus.textContent = message;
   el.landingStatus.hidden = !message;
 }
@@ -2511,7 +3125,7 @@ function applyLandingGate() {
 }
 
 function closeDialog(dialog) {
-  if (dialog.open) {
+  if (dialog?.open) {
     dialog.close();
   }
 }
@@ -2519,7 +3133,9 @@ function closeDialog(dialog) {
 function showLanding() {
   setSettingsOpen(false);
   el.landing.hidden = false;
-  el.app.inert = true;
+  if (el.app) {
+    el.app.inert = true;
+  }
   closeDialog(el.login);
 }
 
@@ -2613,7 +3229,8 @@ async function refreshLoggedOutGate(revokeError) {
   }
 }
 
-function hideGate() {
+async function hideGate() {
+  await ensureAppShell();
   el.landing.hidden = true;
   el.app.inert = false;
   if (el.passkeys) {
@@ -2660,11 +3277,15 @@ async function beginSignIn() {
   el.landingSignIn.disabled = true;
   try {
     await refreshAuthGate();
-    if (!sessionToken) {
-      showLogin('', gateLoginMode());
+    if (sessionToken) {
+      await hideGate();
+      return;
     }
+    // Prefetch only. Sign-in awaits the same load and reports a failure there.
+    void ensureAppShell().catch(() => {});
+    showLogin('', gateLoginMode());
   } finally {
-    if (!sessionToken) {
+    if (!el.landing.hidden) {
       el.landingSignIn.disabled = false;
     }
   }
@@ -2676,9 +3297,13 @@ function showLogin(message = '', mode = lastLoginMode) {
     pendingRegistration = null;
   }
   setSettingsOpen(false);
-  el.passkeys.hidden = true;
+  if (el.passkeys) {
+    el.passkeys.hidden = true;
+  }
   el.landing.hidden = false;
-  el.app.inert = true;
+  if (el.app) {
+    el.app.inert = true;
+  }
   setLoginError(message);
   applyLoginMode();
   if (!el.login.open) {
@@ -2695,7 +3320,7 @@ function showLogin(message = '', mode = lastLoginMode) {
 }
 
 function hideLogin() {
-  hideGate();
+  hideGate().catch(handleFailure);
 }
 
 function onLoginDialogClose() {
@@ -2703,7 +3328,7 @@ function onLoginDialogClose() {
     return;
   }
   clearJoinParam();
-  hideGate();
+  hideGate().catch(handleFailure);
 }
 
 async function onLogin(event) {
@@ -2881,9 +3506,10 @@ async function runPasskeyStep(action) {
       storeSession(session.token);
     }
     clearJoinParam();
-    hideLogin();
+    await hideGate();
     if (session) {
       applySessionIdentity(session);
+      requestGrokUsage();
     }
     if (session?.home === 'list') {
       showConversationList(session.conversations ?? []);
@@ -2921,6 +3547,7 @@ function showLoginFailure(error, unauthorized) {
 async function bootstrap() {
   if (sessionToken) {
     try {
+      await ensureAppShell();
       const session = await loadSession();
       if (!session) {
         return;
@@ -2932,7 +3559,7 @@ async function bootstrap() {
         showLogin('', 'join');
         return;
       }
-      hideGate();
+      await hideGate();
       setStatus('');
       if (session.busy) {
         followUntilIdle();
@@ -3443,57 +4070,9 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-el.files.addEventListener('change', () => {
-  // Copy first. The FileList is live, and clearing the input empties it.
-  // iOS also invalidates those File blobs once the input is cleared, so the
-  // bytes are read before that happens.
-  const files = [...el.files.files];
-  void ingestFiles(files);
-});
-
-el.input.addEventListener('paste', (event) => {
-  const files = [...(event.clipboardData?.files ?? [])].filter((file) => file.size > 0);
-  if (files.length === 0) {
-    return;
-  }
-  event.preventDefault();
-  void ingestFiles(files);
-});
-
-el.input.addEventListener('input', () => {
-  autoGrow();
-  updateComposer();
-});
-
-el.input.addEventListener('keydown', (event) => {
-  // While a run is active the draft is still editable, so Enter must insert a
-  // newline instead of being swallowed. Phones use the button to send.
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || coarsePointer.matches || state.busy) {
-    return;
-  }
-  event.preventDefault();
-  sendMessage();
-});
-
-el.send.addEventListener('click', () => {
-  if (state.busy) {
-    stopRun();
-  } else {
-    sendMessage();
-  }
-});
-
-el.exportLog.addEventListener('click', () => {
-  setSettingsOpen(false);
-  exportLog();
-});
-el.settings.addEventListener('click', onSettingsClick);
 document.addEventListener('pointerdown', onDocumentPointerDown);
 document.addEventListener('focusin', onDocumentFocusIn);
 document.addEventListener('keydown', onDocumentKeyDown);
-el.newChat.addEventListener('click', newChat);
-el.newChatDialog.addEventListener('click', onNewChatDialogClick);
-el.newChatDialog.addEventListener('cancel', onNewChatDialogCancel);
 el.joinWarningContinue.addEventListener('click', () => settleSameDeviceJoin?.(true));
 el.joinWarningCancel.addEventListener('click', () => settleSameDeviceJoin?.(false));
 el.joinWarningDialog.addEventListener('cancel', (event) => {
@@ -3519,55 +4098,6 @@ el.landingSettings.addEventListener('click', () => {
     setDemoSettingsOpen(false);
   }
 });
-el.demoSettings.addEventListener('click', () => {
-  const open = el.demoSettingsPanel.hidden;
-  setDemoSettingsOpen(open);
-  if (open) {
-    setLandingSettingsOpen(false);
-  }
-});
-el.demoExport.addEventListener('click', () => {
-  exportDemo();
-});
-el.demoMembers.addEventListener('click', () => {
-  openDemoPeople();
-});
-el.demoPasskeys.addEventListener('click', () => {
-  openDemoSheet(el.demoPasskeysDialog);
-});
-el.demoLogOut.addEventListener('click', () => {
-  openDemoSheet(el.demoLogOutDialog);
-});
-el.demoAttach.addEventListener('click', () => {
-  openDemoSheet(el.demoAttachDialog);
-});
-el.demoInput.addEventListener('input', () => {
-  autoGrow(el.demoInput);
-  updateDemoComposer();
-});
-el.demoInput.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || coarsePointer.matches) {
-    return;
-  }
-  event.preventDefault();
-  sendDemoMessage();
-});
-el.demoSend.addEventListener('click', () => {
-  sendDemoMessage();
-});
-el.demoPasskeysClose.addEventListener('click', () => el.demoPasskeysDialog.close());
-el.demoAttachClose.addEventListener('click', () => el.demoAttachDialog.close());
-el.demoInviteClose.addEventListener('click', () => el.demoInviteDialog.close());
-el.demoLogOutClose.addEventListener('click', () => el.demoLogOutDialog.close());
-el.demoSpec.addEventListener('click', () => {
-  openDemoSpec();
-});
-el.demoSpecEdit.addEventListener('click', () => {
-  editDemoSpec();
-});
-el.demoSpecBack.addEventListener('click', () => {
-  closeDemoSpec();
-});
 el.landingSignIn.addEventListener('click', () => {
   beginSignIn().catch((error) => {
     setStatus(() => msg('retrying', { detail: retryDetail(error) }));
@@ -3584,50 +4114,18 @@ el.invite.addEventListener('click', () => {
   }
   createInvite().catch(handlePeopleDialogFailure);
 });
-el.people.addEventListener('click', openPeople);
 el.peopleClose.addEventListener('click', () => el.peopleDialog.close());
 el.peopleDialog.addEventListener('close', () => {
   peopleDialogDemo = false;
   paintDialogTheme(el.peopleDialog, null);
   setPeopleStatus('');
 });
-el.passkeys.addEventListener('click', () => {
-  openPasskeys().catch(handleFailure);
-});
-el.passkeyAdd.addEventListener('click', () => {
-  addPasskey().catch(handlePasskeysDialogFailure);
-});
-el.passkeyLabel.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter') {
-    return;
-  }
-  event.preventDefault();
-  addPasskey().catch(handlePasskeysDialogFailure);
-});
-el.passkeysClose.addEventListener('click', () => el.passkeysDialog.close());
-el.logOut.addEventListener('click', () => {
-  logOut().catch(handleFailure);
-});
-el.staticAssets.addEventListener('click', onStaticAssetsClick);
-el.staticAssets.addEventListener('keydown', onStaticAssetsKey);
-el.locale.addEventListener('click', onLocaleClick);
 el.landingLocale.addEventListener('click', onLocaleClick);
-el.demoLocale.addEventListener('click', onDemoLocaleClick);
-el.locale.addEventListener('keydown', onLocaleKey);
 el.landingLocale.addEventListener('keydown', onLocaleKey);
-el.demoLocale.addEventListener('keydown', onDemoLocaleKey);
-el.theme.addEventListener('click', onThemeClick);
 el.landingTheme.addEventListener('click', onThemeClick);
-el.demoTheme.addEventListener('click', onDemoThemeClick);
-el.size.addEventListener('click', onSizeClick);
 el.landingSize.addEventListener('click', onSizeClick);
-el.demoSize.addEventListener('click', onDemoSizeClick);
-el.theme.addEventListener('keydown', onThemeKey);
 el.landingTheme.addEventListener('keydown', onThemeKey);
-el.demoTheme.addEventListener('keydown', onDemoThemeKey);
-el.size.addEventListener('keydown', onSizeKey);
 el.landingSize.addEventListener('keydown', onSizeKey);
-el.demoSize.addEventListener('keydown', onDemoSizeKey);
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (theme === 'system') {
     applyTheme();
@@ -3638,7 +4136,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden || !sessionToken || state.streaming || state.following) {
     return;
   }
-  loadSession()
+  ensureAppShell()
+    .then(() => {
+      if (!state.listing) {
+        requestGrokUsage();
+      }
+      return loadSession();
+    })
     .then((session) => {
       if (session?.busy && !state.listing) {
         followUntilIdle();
@@ -3664,17 +4168,9 @@ if (window.visualViewport) {
   syncAppToVisualViewport();
 }
 
-fillStaticAssetsPicker();
-fillLocalePicker(el.locale);
 fillLocalePicker(el.landingLocale);
-fillLocalePicker(el.demoLocale);
-fillThemePicker(el.theme);
 fillThemePicker(el.landingTheme);
-fillThemePicker(el.demoTheme);
-fillSizePicker(el.size);
 fillSizePicker(el.landingSize);
-fillSizePicker(el.demoSize);
 applyChrome();
-applyDemoChrome();
-startDemoConversation();
+el.demoPlay.addEventListener('click', mountLandingDemo);
 bootstrap();

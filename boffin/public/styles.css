@@ -26,7 +26,7 @@ dialog[data-size] {
 
 :root,
 .landing-demo[data-theme='light'],
-.landing-demo:not([data-theme]),
+.landing-demo:not(.is-idle):not([data-theme]),
 dialog[data-theme='light'] {
   color-scheme: light;
   --bg: #f4f5f7;
@@ -59,7 +59,7 @@ dialog[data-theme='light'] {
    uses the same palette when the device itself is light. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']),
-  .landing-demo:not([data-theme]) {
+  .landing-demo:not(.is-idle):not([data-theme]) {
     color-scheme: dark;
     --bg: #0e1014;
     --surface: #171a20;
@@ -1169,6 +1169,64 @@ html[dir='rtl'] .app .icon-send,
   border-radius: calc(18px * var(--ui-scale));
   background: var(--bg);
   color: var(--fg);
+}
+
+.landing-demo.is-idle {
+  overflow: hidden;
+}
+
+.landing-demo > .demo-play {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.demo-poster-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.demo-play-mark {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: calc(72px * var(--ui-scale));
+  height: calc(72px * var(--ui-scale));
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, #0e1014 42%, transparent);
+  color: #fff;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #fff 22%, transparent);
+}
+
+.demo-play-mark svg {
+  width: calc(28px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  margin-inline-start: calc(3px * var(--ui-scale));
+}
+
+.demo-play:hover .demo-play-mark,
+.demo-play:focus-visible .demo-play-mark {
+  background: color-mix(in srgb, #0e1014 58%, transparent);
+}
+
+.demo-play:focus-visible {
+  outline: none;
+}
+
+.demo-play:focus-visible .demo-play-mark {
+  outline: calc(2px * var(--ui-scale)) solid var(--accent);
+  outline-offset: calc(3px * var(--ui-scale));
 }
 
 .landing-demo > .topbar {
