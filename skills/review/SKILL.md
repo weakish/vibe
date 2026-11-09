@@ -66,12 +66,12 @@ On `r` / bare SHA / `review <sha-or-ref>`, stop after the report — do not fix 
 - Resolve the target from [Triggers](#triggers); default `HEAD` when unset
 - If the user names a subject / “the foo commit”, resolve to that one commit
 - Scope: **that commit only** (`git show <sha>` / `git diff <sha>^!` to see which paths changed), not the whole branch
-- Read every changed file in full before judging the diff; do not rely on hunks or search snippets (see [AGENTS.md](../../../AGENTS.md))
-- Do not expand scope to unrelated dirty files from other agents (see [AGENTS.md](../../../AGENTS.md) multi-agent rules)
+- Read every changed file in full before judging the diff; do not rely on hunks or search snippets (see the current project's AGENTS.md)
+- Do not expand scope to unrelated dirty files from other agents (see the current project's AGENTS.md multi-agent rules)
 
 ## Review
 
-Check the commit against root [AGENTS.md](../../../AGENTS.md).
+Check the commit against the current project's AGENTS.md.
 
 If in a monorepo:
 

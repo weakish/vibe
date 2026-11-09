@@ -1,7 +1,7 @@
 name: vibe
-version: "0.0.0"
+version: "0.1.0"
 description: >-
-  Shared agent skills and always-on instructions.
+  Shared always-on agent instructions.
 author: weakish
 repository: https://github.com/weakish/vibe
 license: 0BSD

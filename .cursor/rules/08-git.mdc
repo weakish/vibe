@@ -1,5 +1,5 @@
 ---
-description: "Multi-agent git hygiene for this working tree"
+description: Multi-agent git hygiene for this working tree
 ---
 
 ## Git (multi-agent cwd)

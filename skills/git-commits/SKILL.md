@@ -9,7 +9,7 @@ description: >-
 
 # Git commits and trailers
 
-Everyday agent rules live in [AGENTS.md](../../../AGENTS.md). **Read this skill before every commit** (AGENTS.md requires it).
+Everyday agent rules live in the current project's AGENTS.md. **Read this skill before every commit** (AGENTS.md requires it).
 
 ## Commit messages
 
@@ -81,7 +81,7 @@ Trailer order after the subject/body:
 Never add `Co-authored-by` (or `Co-Authored-By`) naming an agent or bot, e.g. `Cursor <cursoragent@cursor.com>`.
 Leave legitimate human `Co-authored-by` untouched.
 
-Project Cursor hook [`.cursor/hooks/strip-agent-coauthor.py`](../../../.cursor/hooks/strip-agent-coauthor.py) (`.cursor/hooks.json`, `preToolUse` and `postToolUse`) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`). After changing the hook or its tests, run `python3 -B .cursor/hooks/test_strip_agent_coauthor.py`.
+This repo's Cursor hook `.cursor/hooks/strip-agent-coauthor.py` (`.cursor/hooks.json`, `preToolUse` and `postToolUse`) strips injected Cursor agent `Co-authored-by` trailers (`cursoragent@cursor.com`). After changing the hook or its tests, run `python3 -B .cursor/hooks/test_strip_agent_coauthor.py`.
 
 ### Author
 
