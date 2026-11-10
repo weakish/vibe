@@ -34,6 +34,12 @@ import {
   isNotModified,
 } from './http-encode.js';
 import {
+  THEME_INIT_MARKER,
+  assertProjectThemeInit,
+  inlineScripts,
+  renderThemeInit,
+} from './theme-init.js';
+import {
   creationOptions,
   passkeyOrigin,
   randomChallenge,
@@ -68,7 +74,6 @@ const STATIC_FILES = new Map([
   ['/i18n.js', 'public/i18n.js'],
   ['/flags.js', 'public/flags.js'],
   ['/theme.js', 'public/theme.js'],
-  ['/theme-init.js', 'public/theme-init.js'],
   ['/styles.css', 'public/styles.css'],
   ['/manifest.webmanifest', 'public/manifest.webmanifest'],
   ['/icon.svg', 'public/icon.svg'],
@@ -92,11 +97,27 @@ const CONTENT_TYPES = new Map([
   ['.svg', 'image/svg+xml'],
 ]);
 
+assertProjectThemeInit(PROJECT_ROOT);
+
+function contentSecurityPolicy(html = '') {
+  const hashes = [];
+  const seen = new Set();
+  for (const source of inlineScripts(html)) {
+    const token = `'sha256-${createHash('sha256').update(source).digest('base64')}'`;
+    if (seen.has(token)) {
+      continue;
+    }
+    seen.add(token);
+    hashes.push(token);
+  }
+  const scriptSrc = ['script-src', "'self'", ...hashes].join(' ');
+  return `default-src 'self'; ${scriptSrc}; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+}
+
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy':
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  'Content-Security-Policy': contentSecurityPolicy(),
 };
 
 const CHALLENGE_MS = 5 * 60 * 1000;
@@ -1176,6 +1197,21 @@ async function sendStatic(req, res, relativePath, { cache = 'no-cache' } = {}) {
     throw error;
   } finally {
     await handle?.close();
+  }
+  if (path.extname(file) === '.html') {
+    // Hash the body that is sent. A hash taken at startup from public/*.html
+    // rejects a release copy, or a snippet filled in on this request.
+    let html = body.toString('utf8');
+    if (html.includes(THEME_INIT_MARKER)) {
+      const scriptFile = path.join(PROJECT_ROOT, 'public', 'theme-init.js');
+      const [script, scriptStat] = await Promise.all([fs.readFile(scriptFile, 'utf8'), fs.stat(scriptFile)]);
+      html = renderThemeInit(html, script);
+      body = Buffer.from(html);
+      if (scriptStat.mtime > lastModified) {
+        lastModified = scriptStat.mtime;
+      }
+    }
+    res.setHeader('Content-Security-Policy', contentSecurityPolicy(html));
   }
   sendBytes(req, res, 200, body, {
     contentType: CONTENT_TYPES.get(path.extname(file)) ?? 'application/octet-stream',

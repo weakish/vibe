@@ -1,5 +1,3 @@
-// Runs before the stylesheet so a saved Light or Dark choice is already on
-// the document when the first paint happens. System leaves the attribute unset.
 try {
   var storedTheme = localStorage.getItem('boffin.theme');
   if (storedTheme === 'light' || storedTheme === 'dark') {

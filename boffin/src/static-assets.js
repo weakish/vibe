@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { assertThemeInitPages, renderThemeInit } from './theme-init.js';
 
 const STATE_VERSION = 1;
 const STAGING_DIR = path.join('public', '.bundle-staging');
@@ -208,7 +209,7 @@ async function listSourceFiles(projectRoot) {
   for (const file of sharedJs) {
     paths.add(file);
   }
-  for (const name of ['styles.css', 'index.html', 'spec.html', 'app-shell.html', 'demo-shell.html', 'theme-init.js']) {
+  for (const name of ['styles.css', 'index.html', 'spec.html', 'app-shell.html', 'demo-shell.html']) {
     paths.add(path.join(projectRoot, 'public', name));
   }
   return [...paths].sort();
@@ -278,14 +279,22 @@ async function restoreDirectory(dest, backup) {
 }
 
 async function writeBundledHtml(projectRoot, staging, { appFile, specFile, stylesFile }) {
-  const index = patchHtml(await fs.readFile(path.join(projectRoot, 'public', 'index.html'), 'utf8'), {
+  const themeInit = await fs.readFile(path.join(projectRoot, 'public', 'theme-init.js'), 'utf8');
+  const indexSource = await fs.readFile(path.join(projectRoot, 'public', 'index.html'), 'utf8');
+  const specSource = await fs.readFile(path.join(projectRoot, 'public', 'spec.html'), 'utf8');
+  try {
+    assertThemeInitPages({ 'index.html': indexSource, 'spec.html': specSource }, themeInit);
+  } catch (error) {
+    throw new BundleError(error.message);
+  }
+  const index = renderThemeInit(patchHtml(indexSource, {
     styles: `/dist/${stylesFile}`,
     script: `/dist/${appFile}`,
-  });
-  const spec = patchHtml(await fs.readFile(path.join(projectRoot, 'public', 'spec.html'), 'utf8'), {
+  }), themeInit);
+  const spec = renderThemeInit(patchHtml(specSource, {
     styles: `/dist/${stylesFile}`,
     script: `/dist/${specFile}`,
-  });
+  }), themeInit);
   await fs.writeFile(path.join(staging, 'index.html'), index, 'utf8');
   await fs.writeFile(path.join(staging, 'spec.html'), spec, 'utf8');
 }

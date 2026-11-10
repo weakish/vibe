@@ -40,6 +40,8 @@ test('real bun bundles the public pages and follows the shared imports', { skip 
   assert.match(index, /src="\/dist\/landing-[0-9a-z]+\.js"/);
   assert.doesNotMatch(index, /src="\/landing\.js"/);
   assert.doesNotMatch(index, /src="\/app\.js"/);
+  assert.match(index, /<script>\ntry \{/);
+  assert.doesNotMatch(index, /theme-init\.js/);
 });
 
 test('real bun reports a broken import and leaves no release behind', { skip }, async (t) => {

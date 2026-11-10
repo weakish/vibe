@@ -42,7 +42,6 @@ test('source fingerprint changes when a public file changes', async () => {
   fs.writeFileSync(path.join(root, 'public', 'spec.html'), '<html></html>');
   fs.writeFileSync(path.join(root, 'public', 'app-shell.html'), '<div id="app"></div>');
   fs.writeFileSync(path.join(root, 'public', 'demo-shell.html'), '<div id="demo-settings"></div>');
-  fs.writeFileSync(path.join(root, 'public', 'theme-init.js'), '');
   const before = await sourceFingerprint(root);
   await new Promise((resolve) => setTimeout(resolve, 5));
   fs.writeFileSync(app, 'export const x = 1;\n');
@@ -130,8 +129,12 @@ test('bundles the real public pages with a stand-in bun and points them at the b
   assert.match(index, /src="\/dist\/landing-1a2b3c\.js"/);
   assert.doesNotMatch(index, /src="\/landing\.js"/);
   assert.doesNotMatch(index, /src="\/app\.js"/);
+  assert.match(index, /<script>\ntry \{/);
+  assert.doesNotMatch(index, /<!-- theme-init -->/);
+  assert.doesNotMatch(index, /theme-init\.js/);
   const spec = fs.readFileSync(path.join(root, 'public', 'dist', 'spec.html'), 'utf8');
   assert.match(spec, /src="\/dist\/spec-4d5e6f\.js"/);
+  assert.equal(spec.match(/<script>([^]*?)<\/script>/)[1], index.match(/<script>([^]*?)<\/script>/)[1]);
 });
 
 test('a failed publish puts the previous bundle back', async (t) => {

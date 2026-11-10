@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -364,9 +365,14 @@ test('serves the web app without requiring credentials', async (t) => {
   const response = await api(app.baseUrl, '/', { credentials: null });
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /^text\/html/);
-  assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
+  assert.match(response.headers.get('content-security-policy'), /script-src 'self' 'sha256-/);
   assert.match(response.headers.get('content-security-policy'), /img-src 'self' data: blob:/);
   const html = await response.text();
+  assert.doesNotMatch(html, /theme-init\.js/);
+  assert.match(html, /<script>\s*try \{/);
+  const themeInit = html.match(/<script>([^]*?)<\/script>/)[1];
+  const themeInitHash = `'sha256-${createHash('sha256').update(themeInit).digest('base64')}'`;
+  assert.ok(response.headers.get('content-security-policy').includes(themeInitHash));
   assert.doesNotMatch(html, /id="app"/);
   assert.doesNotMatch(html, /id="new-chat"/);
   assert.doesNotMatch(html, /id="demo-input"/);
@@ -383,6 +389,12 @@ test('serves the web app without requiring credentials', async (t) => {
   assert.doesNotMatch(html, /id="subtitle"/);
   assert.doesNotMatch(html, /id="demo-subtitle"/);
   assert.doesNotMatch(html, /landing-features/);
+
+  const spec = await api(app.baseUrl, '/spec', { credentials: null });
+  const specHtml = await spec.text();
+  assert.doesNotMatch(specHtml, /theme-init\.js/);
+  assert.equal(specHtml.match(/<script>([^]*?)<\/script>/)[1], themeInit);
+  assert.ok(spec.headers.get('content-security-policy').includes(themeInitHash));
 
   const appShell = await (await api(app.baseUrl, '/app-shell.html', { credentials: null })).text();
   assert.match(appShell, /<div class="app" id="app" inert>/);
@@ -431,7 +443,6 @@ test('serves front-end assets with the right content types', async (t) => {
     ['/locales/nan-Latn.js', /^text\/javascript/],
     ['/flags.js', /^text\/javascript/],
     ['/theme.js', /^text\/javascript/],
-    ['/theme-init.js', /^text\/javascript/],
     ['/member-color.js', /^text\/javascript/],
     ['/passkey.js', /^text\/javascript/],
     ['/shared/transcript.js', /^text\/javascript/],
@@ -594,6 +605,7 @@ test('serves only the allowlisted files', async (t) => {
     '/app.js%00.html',
     '/locales/nope.js',
     '/locales/',
+    '/theme-init.js',
   ];
   for (const requestPath of blocked) {
     assert.equal(await rawStatus(app.baseUrl, requestPath), 404, requestPath);
