@@ -415,6 +415,16 @@ test('serves front-end assets with the right content types', async (t) => {
     ['/markdown.js', /^text\/javascript/],
     ['/stream.js', /^text\/javascript/],
     ['/i18n.js', /^text\/javascript/],
+    ['/locales/en.js', /^text\/javascript/],
+    ['/locales/ja.js', /^text\/javascript/],
+    ['/locales/ms.js', /^text\/javascript/],
+    ['/locales/kxd.js', /^text\/javascript/],
+    ['/locales/ms-BN-Arab.js', /^text\/javascript/],
+    ['/locales/id.js', /^text\/javascript/],
+    ['/locales/ta.js', /^text\/javascript/],
+    ['/locales/yue.js', /^text\/javascript/],
+    ['/locales/zh-Hans.js', /^text\/javascript/],
+    ['/locales/nan-Latn.js', /^text\/javascript/],
     ['/flags.js', /^text\/javascript/],
     ['/theme.js', /^text\/javascript/],
     ['/theme-init.js', /^text\/javascript/],
@@ -578,6 +588,8 @@ test('serves only the allowlisted files', async (t) => {
     '/%2e%2e/package.json',
     '/..%2fpackage.json',
     '/app.js%00.html',
+    '/locales/nope.js',
+    '/locales/',
   ];
   for (const requestPath of blocked) {
     assert.equal(await rawStatus(app.baseUrl, requestPath), 404, requestPath);

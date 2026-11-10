@@ -27,6 +27,7 @@ import {
   sourceFingerprint,
   writeStaticAssetsState,
 } from './static-assets.js';
+import { LOCALES } from '../public/i18n.js';
 import {
   entityTag,
   httpDate,
@@ -78,6 +79,9 @@ const STATIC_FILES = new Map([
   ['/passkey.js', 'public/passkey.js'],
   ['/member-color.js', 'public/member-color.js'],
 ]);
+for (const { id } of LOCALES) {
+  STATIC_FILES.set(`/locales/${id}.js`, `public/locales/${id}.js`);
+}
 const CONTENT_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],

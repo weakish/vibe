@@ -1,8 +1,7 @@
 import { applyOp } from '../shared/transcript.js';
 import { conversationLogFilename, formatConversationLog } from '../shared/export.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
-import { flagMarkup } from './flags.js';
-import { LOCALES, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from './i18n.js';
+import { LOCALES, ensureLocale, loadAllLocales, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from './i18n.js';
 import { memberHue } from './member-color.js';
 import { SIZES, THEME_COLORS, THEMES, resolveSize, resolveTheme, resolvedScheme } from './theme.js';
 import { renderMarkdown } from './markdown.js';
@@ -253,6 +252,12 @@ class RequestError extends Error {
 let sessionToken = readSession();
 let joinId = new URLSearchParams(location.search).get('join');
 let locale = readStoredLocale();
+try {
+  await ensureLocale(locale);
+} catch {
+  locale = 'en';
+  await ensureLocale(locale);
+}
 let staticAssetsMode = 'dev';
 let staticAssetsStale = false;
 let staticAssetsBundling = false;
@@ -497,6 +502,12 @@ function onThemeKey(event) {
 }
 
 let flagSerial = 0;
+let flagMarkup = null;
+let localePickersPromise = null;
+let localeCatalogsPromise = null;
+// Each language choice bumps these so a slow catalog cannot apply after a newer one.
+let localeChangeGeneration = 0;
+let demoLocaleChangeGeneration = 0;
 
 function createFlag(localeId) {
   const host = document.createElement('span');
@@ -507,7 +518,44 @@ function createFlag(localeId) {
   return svg;
 }
 
-function fillLocalePicker(group) {
+function paintLocalePickers() {
+  fillLocalePicker(el.landingLocale);
+  if (el.locale) {
+    fillLocalePicker(el.locale);
+  }
+  if (el.demoLocale) {
+    fillLocalePicker(el.demoLocale, demoLocale);
+  }
+}
+
+function ensureLocalePickers() {
+  if (!localePickersPromise) {
+    localePickersPromise = import('./flags.js')
+      .then((module) => {
+        flagMarkup = module.flagMarkup;
+      })
+      .catch((error) => {
+        localePickersPromise = null;
+        throw error;
+      });
+  }
+  if (!localeCatalogsPromise) {
+    localeCatalogsPromise = loadAllLocales().catch((error) => {
+      localeCatalogsPromise = null;
+      throw error;
+    });
+  }
+  // Paint from the flags. A failed catalog prefetch retries on the next open.
+  return Promise.all([
+    localePickersPromise.then(paintLocalePickers),
+    localeCatalogsPromise,
+  ]);
+}
+
+function fillLocalePicker(group, selected = locale) {
+  if (!group || !flagMarkup) {
+    return;
+  }
   group.replaceChildren();
   for (const item of LOCALES) {
     const option = document.createElement('button');
@@ -519,7 +567,7 @@ function fillLocalePicker(group) {
     option.append(createFlag(item.id), document.createTextNode(item.label));
     group.append(option);
   }
-  syncLocalePicker(group);
+  syncLocalePicker(group, selected);
 }
 
 function syncLocalePicker(group, selected = locale) {
@@ -883,9 +931,7 @@ function onDemoLocaleClick(event) {
   if (!option) {
     return;
   }
-  demoLocale = resolveLocale([option.dataset.locale]);
-  applyDemoChrome();
-  startDemoConversation();
+  changeDemoLocale(option.dataset.locale).catch(handleFailure);
 }
 
 function onDemoLocaleKey(event) {
@@ -897,7 +943,17 @@ function onDemoLocaleKey(event) {
   const next = nextRadioIndex(event.key, index, options.length, localeDir(demoLocale));
   event.preventDefault();
   options[next].focus();
-  demoLocale = resolveLocale([options[next].dataset.locale]);
+  changeDemoLocale(options[next].dataset.locale).catch(handleFailure);
+}
+
+async function changeDemoLocale(next) {
+  const id = resolveLocale([next]);
+  const generation = ++demoLocaleChangeGeneration;
+  await ensureLocale(id);
+  if (generation !== demoLocaleChangeGeneration) {
+    return;
+  }
+  demoLocale = id;
   applyDemoChrome();
   startDemoConversation();
 }
@@ -907,7 +963,17 @@ function onLocaleClick(event) {
   if (!option) {
     return;
   }
-  storeLocale(resolveLocale([option.dataset.locale]));
+  changeLocale(option.dataset.locale).catch(handleFailure);
+}
+
+async function changeLocale(next) {
+  const id = resolveLocale([next]);
+  const generation = ++localeChangeGeneration;
+  await ensureLocale(id);
+  if (generation !== localeChangeGeneration) {
+    return;
+  }
+  storeLocale(id);
   applyChrome();
 }
 
@@ -1217,13 +1283,15 @@ function onLocaleKey(event) {
   const next = nextRadioIndex(event.key, index, options.length, localeDir(locale));
   event.preventDefault();
   options[next].focus();
-  storeLocale(resolveLocale([options[next].dataset.locale]));
-  applyChrome();
+  changeLocale(options[next].dataset.locale).catch(handleFailure);
 }
 
 function setLandingSettingsOpen(open) {
   el.landingSettingsPanel.hidden = !open;
   el.landingSettings.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    ensureLocalePickers().catch(handleFailure);
+  }
 }
 
 function setDemoSettingsOpen(open) {
@@ -1232,12 +1300,18 @@ function setDemoSettingsOpen(open) {
   }
   el.demoSettingsPanel.hidden = !open;
   el.demoSettings.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    ensureLocalePickers().catch(handleFailure);
+  }
 }
 
 function setSettingsOpen(open) {
   if (el.settingsPanel) {
     el.settingsPanel.hidden = !open;
     el.settings.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  if (open) {
+    ensureLocalePickers().catch(handleFailure);
   }
   if (!open) {
     setLandingSettingsOpen(false);
@@ -1586,7 +1660,6 @@ async function loadAppShell() {
   if (!appEventsBound) {
     bindAppEvents();
     fillStaticAssetsPicker();
-    fillLocalePicker(el.locale);
     fillThemePicker(el.theme);
     fillSizePicker(el.size);
     appEventsBound = true;
@@ -1880,7 +1953,6 @@ async function mountLandingDemo() {
       el.landingDemo.classList.remove('is-idle');
       captureDemoElements();
       if (!demoEventsBound) {
-        fillLocalePicker(el.demoLocale);
         fillThemePicker(el.demoTheme);
         fillSizePicker(el.demoSize);
         bindDemoEvents();
@@ -4168,7 +4240,6 @@ if (window.visualViewport) {
   syncAppToVisualViewport();
 }
 
-fillLocalePicker(el.landingLocale);
 fillThemePicker(el.landingTheme);
 fillSizePicker(el.landingSize);
 applyChrome();

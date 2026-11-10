@@ -1,4 +1,4 @@
-import { localeDir, resolveLocale, t, translateError } from './i18n.js';
+import { ensureLocale, localeDir, resolveLocale, t, translateError } from './i18n.js';
 import { renderMarkdown } from './markdown.js';
 
 const SESSION_KEY = 'boffin.session';
@@ -17,7 +17,13 @@ const el = {
 };
 
 const sessionToken = readSession();
-const locale = readLocale();
+let locale = readLocale();
+try {
+  await ensureLocale(locale);
+} catch {
+  locale = 'en';
+  await ensureLocale(locale);
+}
 let savedText = '';
 let editing = false;
 

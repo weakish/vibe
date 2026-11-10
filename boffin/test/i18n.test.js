@@ -1,6 +1,11 @@
-import { test } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { LOCALES, MESSAGES, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from '../public/i18n.js';
+import fs from 'node:fs';
+import { LOCALES, MESSAGES, loadAllLocales, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from '../public/i18n.js';
+
+before(async () => {
+  await loadAllLocales();
+});
 
 test('every locale has the same keys as English', () => {
   const expected = Object.keys(MESSAGES.en).sort();
@@ -89,6 +94,28 @@ test('sign-in hint keeps the config key names', () => {
       .map((part) => part.code);
     assert.deepEqual(codes, ['username', 'password'], locale);
   }
+});
+
+test('the runtime module does not embed locale catalogs', () => {
+  const source = fs.readFileSync(new URL('../public/i18n.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /The LORD bless thee/);
+  assert.doesNotMatch(source, /天の御加護/);
+  for (const item of LOCALES) {
+    assert.match(source, new RegExp(`import\\('./locales/${item.id}\\.js'\\)`));
+  }
+});
+
+test('the landing script loads flags only when the language menu is filled', () => {
+  const source = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /import \{ flagMarkup \} from '\.\/flags\.js'/);
+  assert.match(source, /import\('\.\/flags\.js'\)/);
+  assert.match(source, /loadAllLocales\(\)/);
+  assert.doesNotMatch(source, /Promise\.all\(\[import\('\.\/flags\.js'\), loadAllLocales\(\)\]\)/);
+});
+
+test('a non-English catalog load also fetches English', () => {
+  const source = fs.readFileSync(new URL('../public/i18n.js', import.meta.url), 'utf8');
+  assert.match(source, /loadOne\(resolved\), loadOne\('en'\)/);
 });
 
 test('missing interpolation values throw', () => {
