@@ -370,6 +370,8 @@ test('serves the web app without requiring credentials', async (t) => {
   assert.doesNotMatch(html, /id="app"/);
   assert.doesNotMatch(html, /id="new-chat"/);
   assert.doesNotMatch(html, /id="demo-input"/);
+  assert.match(html, /<script type="module" src="\/landing\.js"><\/script>/);
+  assert.doesNotMatch(html, /src="\/app\.js"/);
   assert.match(html, /<div class="landing" id="landing">/);
   assert.match(html, /id="landing-signin" disabled/);
   assert.match(html, /id="landing-demo"/);
@@ -412,6 +414,8 @@ test('serves front-end assets with the right content types', async (t) => {
 
   const expected = [
     ['/app.js', /^text\/javascript/],
+    ['/landing.js', /^text\/javascript/],
+    ['/chrome.js', /^text\/javascript/],
     ['/markdown.js', /^text\/javascript/],
     ['/stream.js', /^text\/javascript/],
     ['/i18n.js', /^text\/javascript/],
@@ -853,5 +857,5 @@ test('falls back to development when the release bundle is missing', async (t) =
   assert.equal((await state.json()).mode, 'dev');
   const page = await fetch(`${app.baseUrl}/`);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /src="\/app\.js"/);
+  assert.match(await page.text(), /src="\/landing\.js"/);
 });

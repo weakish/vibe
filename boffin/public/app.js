@@ -1,31 +1,51 @@
 import { applyOp } from '../shared/transcript.js';
 import { conversationLogFilename, formatConversationLog } from '../shared/export.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
-import { LOCALES, ensureLocale, loadAllLocales, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from './i18n.js';
+import {
+  CREDENTIALS_KEY,
+  LEGACY_TOKEN_KEY,
+  RADIO_NAV_KEYS,
+  SESSION_KEY,
+  applyLandingChrome,
+  applyLandingGate,
+  authGate,
+  clearJoinParam,
+  currentLandingStatus,
+  ensureLocalePickers,
+  fillSizePicker,
+  fillThemePicker,
+  joinId,
+  locale,
+  msg,
+  onLocaleClick,
+  onLocaleKey,
+  onSizeClick,
+  onSizeKey,
+  onThemeClick,
+  onThemeKey,
+  prefersDark,
+  refreshAuthGate,
+  registerLocaleGroup,
+  setAfterLandingSettingsToggle,
+  setLandingSettingsOpen,
+  setLandingStatus,
+  setOnChromeError,
+  setPaintChrome,
+  size,
+  syncLocalePicker,
+  syncSizePicker,
+  syncThemePicker,
+  theme,
+} from './chrome.js';
+import { ensureLocale, localeDir, nextRadioIndex, resolveLocale, splitMarked, t, translateError } from './i18n.js';
 import { memberHue } from './member-color.js';
-import { SIZES, THEME_COLORS, THEMES, resolveSize, resolveTheme, resolvedScheme } from './theme.js';
+import { resolveSize, resolveTheme, resolvedScheme } from './theme.js';
 import { renderMarkdown } from './markdown.js';
 import { createJoinPasskey, createPasskey, getPasskey, JoinDeclinedError, supportsPasskey } from './passkey.js';
 import { readWithStallTimeout } from './stream.js';
 
-const SESSION_KEY = 'boffin.session';
-const CREDENTIALS_KEY = 'boffin.credentials';
-const LOCALE_KEY = 'boffin.locale';
 const STATIC_ASSET_MODES = ['dev', 'release'];
 const STATIC_ASSET_LABELS = { dev: 'staticAssetsDevelopment', release: 'staticAssetsRelease' };
-const RADIO_NAV_KEYS = ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'];
-const THEME_KEY = 'boffin.theme';
-const SIZE_KEY = 'boffin.size';
-const THEME_LABELS = {
-  light: 'themeLight',
-  dark: 'themeDark',
-  system: 'themeSystem',
-};
-const SIZE_LABELS = {
-  default: 'sizeDefault',
-  large: 'sizeLarge',
-};
-const LEGACY_TOKEN_KEY = 'boffin.accessToken';
 const POLL_INTERVAL_MS = 1500;
 const RETRY_INTERVAL_MS = 4000;
 const STREAM_STALL_MS = 45000;
@@ -118,18 +138,8 @@ const el = {
   landing: document.getElementById('landing'),
   landingDemo: document.getElementById('landing-demo'),
   demoPlay: document.getElementById('demo-play'),
-  landingSettings: document.getElementById('landing-settings'),
-  landingSettingsPanel: document.getElementById('landing-settings-panel'),
   landingStatus: document.getElementById('landing-status'),
-  landingTheme: document.getElementById('landing-theme'),
-  landingThemeLabel: document.getElementById('landing-theme-label'),
-  landingSize: document.getElementById('landing-size'),
-  landingSizeLabel: document.getElementById('landing-size-label'),
-  landingLocale: document.getElementById('landing-locale'),
-  landingLocaleLabel: document.getElementById('landing-locale-label'),
-  landingTagline: document.getElementById('landing-tagline'),
   landingSignIn: document.getElementById('landing-signin'),
-  landingInvite: document.getElementById('landing-invite'),
   demoSettings: document.getElementById('demo-settings'),
   demoSettingsPanel: document.getElementById('demo-settings-panel'),
   demoTheme: document.getElementById('demo-theme'),
@@ -250,14 +260,6 @@ class RequestError extends Error {
 }
 
 let sessionToken = readSession();
-let joinId = new URLSearchParams(location.search).get('join');
-let locale = readStoredLocale();
-try {
-  await ensureLocale(locale);
-} catch {
-  locale = 'en';
-  await ensureLocale(locale);
-}
 let staticAssetsMode = 'dev';
 let staticAssetsStale = false;
 let staticAssetsBundling = false;
@@ -270,9 +272,8 @@ let grokUsage = null;
 let grokUsageLoaded = false;
 let grokUsageRefresh = null;
 let grokUsageGeneration = 0;
-let theme = readStoredTheme();
-let size = readStoredSize();
 let demoLocale = locale;
+let demoLocaleChangeGeneration = 0;
 let demoTheme = theme;
 let demoSize = size;
 let demoShowingSpec = false;
@@ -304,298 +305,14 @@ let renderLoginError = () => '';
 let renderPeopleStatus = () => '';
 let peopleStatusError = false;
 let lastLoginMode = 'password';
-let authGate = { started: false, invite: null };
 let pendingRegistration = null;
-
-function msg(key, vars) {
-  return t(locale, key, vars);
-}
 
 function demoMsg(key, vars) {
   return t(demoLocale, key, vars);
 }
 
-function readStoredLocale() {
-  let stored = '';
-  try {
-    stored = localStorage.getItem(LOCALE_KEY) ?? '';
-  } catch {
-    stored = '';
-  }
-  const requested = [stored, ...(navigator.languages ?? []), navigator.language];
-  return resolveLocale(requested);
-}
-
-function storeLocale(next) {
-  locale = next;
-  try {
-    localStorage.setItem(LOCALE_KEY, next);
-  } catch {
-    // Storage can be unavailable; the choice then lasts for this page only.
-  }
-}
-
-function readStoredTheme() {
-  let stored = '';
-  try {
-    stored = localStorage.getItem(THEME_KEY) ?? '';
-  } catch {
-    stored = '';
-  }
-  return resolveTheme(stored);
-}
-
-function storeTheme(next) {
-  theme = resolveTheme(next);
-  try {
-    localStorage.setItem(THEME_KEY, theme);
-  } catch {
-    // Storage can be unavailable; the choice then lasts for this page only.
-  }
-}
-
-function readStoredSize() {
-  let stored = '';
-  try {
-    stored = localStorage.getItem(SIZE_KEY) ?? '';
-  } catch {
-    stored = '';
-  }
-  return resolveSize(stored);
-}
-
-function storeSize(next) {
-  size = resolveSize(next);
-  try {
-    localStorage.setItem(SIZE_KEY, size);
-  } catch {
-    // Storage can be unavailable; the choice then lasts for this page only.
-  }
-}
-
-function applySize() {
-  if (size === 'large') {
-    document.documentElement.dataset.size = 'large';
-    return;
-  }
-  document.documentElement.removeAttribute('data-size');
-}
-
-function prefersDark() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches;
-}
-
-function applyTheme() {
-  if (theme === 'system') {
-    document.documentElement.removeAttribute('data-theme');
-  } else {
-    document.documentElement.dataset.theme = theme;
-  }
-  const scheme = resolvedScheme(theme, prefersDark());
-  const metas = [...document.querySelectorAll('meta[name="theme-color"]')];
-  if (theme === 'system') {
-    const [light, dark] = metas;
-    if (light) {
-      light.media = '(prefers-color-scheme: light)';
-      light.content = THEME_COLORS.light;
-    }
-    if (dark) {
-      dark.media = '(prefers-color-scheme: dark)';
-      dark.content = THEME_COLORS.dark;
-    }
-    return;
-  }
-  for (const meta of metas) {
-    meta.removeAttribute('media');
-    meta.content = THEME_COLORS[scheme];
-  }
-}
-
-function fillThemePicker(group) {
-  group.replaceChildren();
-  for (const id of THEMES) {
-    const option = document.createElement('button');
-    option.type = 'button';
-    option.className = 'theme-option';
-    option.role = 'radio';
-    option.dataset.theme = id;
-    option.textContent = msg(THEME_LABELS[id]);
-    group.append(option);
-  }
-  syncThemePicker(group);
-}
-
-function syncThemePicker(group, selected = theme, translate = msg) {
-  for (const option of group.querySelectorAll('.theme-option')) {
-    option.textContent = translate(THEME_LABELS[option.dataset.theme]);
-    const on = option.dataset.theme === selected;
-    option.setAttribute('aria-checked', on ? 'true' : 'false');
-    option.tabIndex = on ? 0 : -1;
-  }
-}
-
-function onThemeClick(event) {
-  const option = event.target.closest('.theme-option');
-  if (!option) {
-    return;
-  }
-  storeTheme(option.dataset.theme);
-  applyChrome();
-}
-
-function fillSizePicker(group) {
-  group.replaceChildren();
-  for (const id of SIZES) {
-    const option = document.createElement('button');
-    option.type = 'button';
-    option.className = 'theme-option';
-    option.role = 'radio';
-    option.dataset.size = id;
-    option.textContent = msg(SIZE_LABELS[id]);
-    group.append(option);
-  }
-  syncSizePicker(group);
-}
-
-function syncSizePicker(group, selected = size, translate = msg) {
-  for (const option of group.querySelectorAll('.theme-option')) {
-    option.textContent = translate(SIZE_LABELS[option.dataset.size]);
-    const on = option.dataset.size === selected;
-    option.setAttribute('aria-checked', on ? 'true' : 'false');
-    option.tabIndex = on ? 0 : -1;
-  }
-}
-
-function onSizeClick(event) {
-  const option = event.target.closest('.theme-option');
-  if (!option) {
-    return;
-  }
-  storeSize(option.dataset.size);
-  applyChrome();
-}
-
-function onSizeKey(event) {
-  if (!RADIO_NAV_KEYS.includes(event.key)) {
-    return;
-  }
-  const options = [...event.currentTarget.querySelectorAll('.theme-option')];
-  const index = options.findIndex((option) => option.dataset.size === size);
-  const next = nextRadioIndex(event.key, index, options.length, localeDir(locale));
-  event.preventDefault();
-  options[next].focus();
-  storeSize(options[next].dataset.size);
-  applyChrome();
-}
-
-function onThemeKey(event) {
-  if (!RADIO_NAV_KEYS.includes(event.key)) {
-    return;
-  }
-  const options = [...event.currentTarget.querySelectorAll('.theme-option')];
-  const index = options.findIndex((option) => option.dataset.theme === theme);
-  const next = nextRadioIndex(event.key, index, options.length, localeDir(locale));
-  event.preventDefault();
-  options[next].focus();
-  storeTheme(options[next].dataset.theme);
-  applyChrome();
-}
-
-let flagSerial = 0;
-let flagMarkup = null;
-let localePickersPromise = null;
-let localeCatalogsPromise = null;
-// Each language choice bumps these so a slow catalog cannot apply after a newer one.
-let localeChangeGeneration = 0;
-let demoLocaleChangeGeneration = 0;
-
-function createFlag(localeId) {
-  const host = document.createElement('span');
-  host.innerHTML = flagMarkup(localeId).replaceAll('{id}', `flag-${flagSerial++}`);
-  const svg = host.firstElementChild;
-  svg.classList.add('flag');
-  svg.setAttribute('aria-hidden', 'true');
-  return svg;
-}
-
-function paintLocalePickers() {
-  fillLocalePicker(el.landingLocale);
-  if (el.locale) {
-    fillLocalePicker(el.locale);
-  }
-  if (el.demoLocale) {
-    fillLocalePicker(el.demoLocale, demoLocale);
-  }
-}
-
-function ensureLocalePickers() {
-  if (!localePickersPromise) {
-    localePickersPromise = import('./flags.js')
-      .then((module) => {
-        flagMarkup = module.flagMarkup;
-      })
-      .catch((error) => {
-        localePickersPromise = null;
-        throw error;
-      });
-  }
-  if (!localeCatalogsPromise) {
-    localeCatalogsPromise = loadAllLocales().catch((error) => {
-      localeCatalogsPromise = null;
-      throw error;
-    });
-  }
-  // Paint from the flags. A failed catalog prefetch retries on the next open.
-  return Promise.all([
-    localePickersPromise.then(paintLocalePickers),
-    localeCatalogsPromise,
-  ]);
-}
-
-function fillLocalePicker(group, selected = locale) {
-  if (!group || !flagMarkup) {
-    return;
-  }
-  group.replaceChildren();
-  for (const item of LOCALES) {
-    const option = document.createElement('button');
-    option.type = 'button';
-    option.className = 'lang-option';
-    option.role = 'radio';
-    option.dataset.locale = item.id;
-    option.lang = item.id;
-    option.append(createFlag(item.id), document.createTextNode(item.label));
-    group.append(option);
-  }
-  syncLocalePicker(group, selected);
-}
-
-function syncLocalePicker(group, selected = locale) {
-  for (const option of group.querySelectorAll('.lang-option')) {
-    const on = option.dataset.locale === selected;
-    option.setAttribute('aria-checked', on ? 'true' : 'false');
-    option.tabIndex = on ? 0 : -1;
-  }
-}
-
 function applyChrome() {
-  document.documentElement.lang = locale;
-  document.documentElement.dir = localeDir(locale);
-  el.landingSettings.setAttribute('aria-label', msg('settings'));
-  el.landingThemeLabel.textContent = msg('theme');
-  el.landingSizeLabel.textContent = msg('size');
-  applyTheme();
-  applySize();
-  syncThemePicker(el.landingTheme);
-  syncSizePicker(el.landingSize);
-  el.landingLocaleLabel.textContent = msg('language');
-  syncLocalePicker(el.landingLocale);
-  el.landingTagline.textContent = msg('landingTagline');
-  el.landingSignIn.textContent = msg('landingSignIn');
-  if (el.demoPlay?.isConnected) {
-    el.demoPlay.setAttribute('aria-label', msg('demoPlay'));
-  }
-  applyLandingGate();
+  applyLandingChrome();
   el.loginInviteOnly.textContent = msg('inviteOnly');
   el.invite.textContent = msg('invite');
   el.loginJoin.textContent = msg('joinAction');
@@ -958,25 +675,6 @@ async function changeDemoLocale(next) {
   startDemoConversation();
 }
 
-function onLocaleClick(event) {
-  const option = event.target.closest('.lang-option');
-  if (!option) {
-    return;
-  }
-  changeLocale(option.dataset.locale).catch(handleFailure);
-}
-
-async function changeLocale(next) {
-  const id = resolveLocale([next]);
-  const generation = ++localeChangeGeneration;
-  await ensureLocale(id);
-  if (generation !== localeChangeGeneration) {
-    return;
-  }
-  storeLocale(id);
-  applyChrome();
-}
-
 function fillStaticAssetsPicker() {
   el.staticAssets.replaceChildren();
   for (const id of STATIC_ASSET_MODES) {
@@ -1274,26 +972,6 @@ function onStaticAssetsKey(event) {
   setStaticAssetsMode(options[next].dataset.staticAssets).catch(handleFailure);
 }
 
-function onLocaleKey(event) {
-  if (!RADIO_NAV_KEYS.includes(event.key)) {
-    return;
-  }
-  const options = [...event.currentTarget.querySelectorAll('.lang-option')];
-  const index = options.findIndex((option) => option.dataset.locale === locale);
-  const next = nextRadioIndex(event.key, index, options.length, localeDir(locale));
-  event.preventDefault();
-  options[next].focus();
-  changeLocale(options[next].dataset.locale).catch(handleFailure);
-}
-
-function setLandingSettingsOpen(open) {
-  el.landingSettingsPanel.hidden = !open;
-  el.landingSettings.setAttribute('aria-expanded', open ? 'true' : 'false');
-  if (open) {
-    ensureLocalePickers().catch(handleFailure);
-  }
-}
-
 function setDemoSettingsOpen(open) {
   if (!el.demoSettingsPanel) {
     return;
@@ -1323,10 +1001,6 @@ function isSettingsTarget(node) {
   return Boolean(node && el.settings) && (el.settings.contains(node) || el.settingsPanel.contains(node));
 }
 
-function isLandingSettingsTarget(node) {
-  return Boolean(node) && (el.landingSettings.contains(node) || el.landingSettingsPanel.contains(node));
-}
-
 function isDemoSettingsTarget(node) {
   return Boolean(node && el.demoSettings) && (el.demoSettings.contains(node) || el.demoSettingsPanel.contains(node));
 }
@@ -1344,9 +1018,6 @@ function onDocumentPointerDown(event) {
   if (el.settingsPanel && !el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
     setSettingsOpen(false);
   }
-  if (!el.landingSettingsPanel.hidden && !isLandingSettingsTarget(event.target)) {
-    setLandingSettingsOpen(false);
-  }
   if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
     setDemoSettingsOpen(false);
   }
@@ -1355,9 +1026,6 @@ function onDocumentPointerDown(event) {
 function onDocumentFocusIn(event) {
   if (el.settingsPanel && !el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
     setSettingsOpen(false);
-  }
-  if (!el.landingSettingsPanel.hidden && !isLandingSettingsTarget(event.target)) {
-    setLandingSettingsOpen(false);
   }
   if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
     setDemoSettingsOpen(false);
@@ -1368,10 +1036,6 @@ function onDocumentKeyDown(event) {
   // While any dialog is open it handles Escape, so the settings panels are left alone.
   if (event.key !== 'Escape' || document.querySelector('dialog[open]')) {
     return;
-  }
-  if (!el.landingSettingsPanel.hidden) {
-    setLandingSettingsOpen(false);
-    el.landingSettings.focus();
   }
   if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden) {
     setDemoSettingsOpen(false);
@@ -1662,6 +1326,7 @@ async function loadAppShell() {
     fillStaticAssetsPicker();
     fillThemePicker(el.theme);
     fillSizePicker(el.size);
+    registerLocaleGroup(el.locale);
     appEventsBound = true;
   }
   // applyChrome paints the app only once this is set, and it clears on failure
@@ -1955,6 +1620,7 @@ async function mountLandingDemo() {
       if (!demoEventsBound) {
         fillThemePicker(el.demoTheme);
         fillSizePicker(el.demoSize);
+        registerLocaleGroup(el.demoLocale, () => demoLocale);
         bindDemoEvents();
         demoEventsBound = true;
       }
@@ -2877,8 +2543,8 @@ function bytesToBase64(bytes) {
 }
 
 function failureMessage(error) {
-  if (error instanceof RequestError) {
-    return responseStatusText(error.raw, error.status)();
+  if (error instanceof RequestError || typeof error.status === 'number') {
+    return responseStatusText(error.raw || '', error.status)();
   }
   if (error instanceof TypeError) {
     return msg('cannotReachCheck');
@@ -3147,7 +2813,7 @@ function isNearBottom(container = el.messages, slop = NEAR_BOTTOM_PX) {
 }
 
 function setStatus(message) {
-  renderStatus = typeof message === 'function' ? message : () => message;
+  setLandingStatus(typeof message === 'function' ? message : () => message);
   applyStatus();
 }
 
@@ -3165,6 +2831,8 @@ function applyPeopleStatus() {
 }
 
 function applyStatus() {
+  // Landing can set this after the app module loads; paint from that same function.
+  renderStatus = currentLandingStatus();
   const message = renderStatus();
   if (el.status) {
     el.status.textContent = message;
@@ -3184,16 +2852,6 @@ function gateLoginMode() {
     return 'join';
   }
   return authGate.started ? 'username' : 'password';
-}
-
-function applyLandingGate() {
-  const invite = authGate.invite;
-  el.landingSignIn.hidden = Boolean(invite);
-  el.landingSignIn.disabled = false;
-  el.landingInvite.hidden = !invite;
-  if (invite) {
-    el.landingInvite.textContent = msg('landingInvite', { name: invite.ownerName });
-  }
 }
 
 function closeDialog(dialog) {
@@ -3293,7 +2951,7 @@ async function refreshLoggedOutGate(revokeError) {
   if (sessionToken) {
     return;
   }
-  el.landingSignIn.disabled = false;
+  applyLandingGate();
   if (revokeError) {
     setStatus(() => failureMessage(revokeError));
   } else {
@@ -3356,9 +3014,11 @@ async function beginSignIn() {
     // Prefetch only. Sign-in awaits the same load and reports a failure there.
     void ensureAppShell().catch(() => {});
     showLogin('', gateLoginMode());
+  } catch (error) {
+    setStatus(() => msg('retrying', { detail: retryDetail(error) }));
   } finally {
     if (!el.landing.hidden) {
-      el.landingSignIn.disabled = false;
+      applyLandingGate();
     }
   }
 }
@@ -3658,26 +3318,6 @@ async function bootstrap() {
     setStatus(() => msg('inviteUsed'));
   }
   showLanding();
-}
-
-async function refreshAuthGate() {
-  const path = joinId ? `/api/auth/status?join=${encodeURIComponent(joinId)}` : '/api/auth/status';
-  const response = await api(path, { auth: false });
-  if (!response.ok) {
-    throw new RequestError(await readServerError(response), response.status);
-  }
-  authGate = await response.json();
-  applyLandingGate();
-}
-
-function clearJoinParam() {
-  if (!joinId) {
-    return;
-  }
-  joinId = null;
-  const url = new URL(location.href);
-  url.searchParams.delete('join');
-  history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
 let creatingInvite = false;
@@ -4132,8 +3772,8 @@ function retryDetail(error) {
   if (error instanceof TypeError) {
     return msg('cannotReach');
   }
-  if (error instanceof RequestError) {
-    return responseStatusText(error.raw, error.status)();
+  if (error instanceof RequestError || typeof error.status === 'number') {
+    return responseStatusText(error.raw || '', error.status)();
   }
   return translateError(locale, error.message) || msg('somethingWentWrong');
 }
@@ -4163,21 +3803,6 @@ el.loginJoin.addEventListener('click', () => {
 });
 el.loginClose.addEventListener('click', () => closeDialog(el.login));
 el.login.addEventListener('close', onLoginDialogClose);
-el.landingSettings.addEventListener('click', () => {
-  const open = el.landingSettingsPanel.hidden;
-  setLandingSettingsOpen(open);
-  if (open) {
-    setDemoSettingsOpen(false);
-  }
-});
-el.landingSignIn.addEventListener('click', () => {
-  beginSignIn().catch((error) => {
-    setStatus(() => msg('retrying', { detail: retryDetail(error) }));
-  });
-});
-el.landingInvite.addEventListener('click', () => {
-  showLogin('', 'join');
-});
 el.invite.addEventListener('click', () => {
   if (peopleDialogDemo) {
     el.peopleDialog.close();
@@ -4191,17 +3816,6 @@ el.peopleDialog.addEventListener('close', () => {
   peopleDialogDemo = false;
   paintDialogTheme(el.peopleDialog, null);
   setPeopleStatus('');
-});
-el.landingLocale.addEventListener('click', onLocaleClick);
-el.landingLocale.addEventListener('keydown', onLocaleKey);
-el.landingTheme.addEventListener('click', onThemeClick);
-el.landingSize.addEventListener('click', onSizeClick);
-el.landingTheme.addEventListener('keydown', onThemeKey);
-el.landingSize.addEventListener('keydown', onSizeKey);
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  if (theme === 'system') {
-    applyTheme();
-  }
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -4240,8 +3854,9 @@ if (window.visualViewport) {
   syncAppToVisualViewport();
 }
 
-fillThemePicker(el.landingTheme);
-fillSizePicker(el.landingSize);
+setPaintChrome(applyChrome);
+setAfterLandingSettingsToggle(() => setDemoSettingsOpen(false));
+setOnChromeError(handleFailure);
 applyChrome();
-el.demoPlay.addEventListener('click', mountLandingDemo);
-bootstrap();
+
+export { applyChrome, beginSignIn, bootstrap, mountLandingDemo, showLogin };

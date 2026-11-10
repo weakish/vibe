@@ -109,7 +109,7 @@ const WRITE_OUTPUTS = [
   'outdir=""; prev=""',
   'for arg in "$@"; do if [ "$prev" = "--outdir" ]; then outdir="$arg"; fi; prev="$arg"; done',
   'mkdir -p "$outdir"',
-  'echo app > "$outdir/app-1a2b3c.js"',
+  'echo app > "$outdir/landing-1a2b3c.js"',
   'echo spec > "$outdir/spec-4d5e6f.js"',
   'echo styles > "$outdir/styles-7a8b9c.css"',
 ].join('\n');
@@ -119,7 +119,7 @@ test('bundles the real public pages with a stand-in bun and points them at the b
 
   const manifest = await bundleStaticAssets({ projectRoot: root, bunBin: bun });
 
-  assert.equal(manifest.app, '/dist/app-1a2b3c.js');
+  assert.equal(manifest.app, '/dist/landing-1a2b3c.js');
   assert.equal(manifest.spec, '/dist/spec-4d5e6f.js');
   assert.equal(manifest.styles, '/dist/styles-7a8b9c.css');
   assert.equal(manifest.fingerprint, await sourceFingerprint(root));
@@ -127,7 +127,8 @@ test('bundles the real public pages with a stand-in bun and points them at the b
   assert.equal(fs.existsSync(path.join(root, 'public', '.bundle-staging')), false);
   const index = fs.readFileSync(path.join(root, 'public', 'dist', 'index.html'), 'utf8');
   assert.match(index, /href="\/dist\/styles-7a8b9c\.css"/);
-  assert.match(index, /src="\/dist\/app-1a2b3c\.js"/);
+  assert.match(index, /src="\/dist\/landing-1a2b3c\.js"/);
+  assert.doesNotMatch(index, /src="\/landing\.js"/);
   assert.doesNotMatch(index, /src="\/app\.js"/);
   const spec = fs.readFileSync(path.join(root, 'public', 'dist', 'spec.html'), 'utf8');
   assert.match(spec, /src="\/dist\/spec-4d5e6f\.js"/);
@@ -151,7 +152,7 @@ test('a failed publish puts the previous bundle back', async (t) => {
   );
 
   assert.equal(fs.readFileSync(path.join(dist, 'old.txt'), 'utf8'), 'old');
-  assert.equal(fs.existsSync(path.join(dist, 'app-1a2b3c.js')), false);
+  assert.equal(fs.existsSync(path.join(dist, 'landing-1a2b3c.js')), false);
   assert.equal(fs.existsSync(`${dist}.previous`), false);
   assert.equal(fs.existsSync(path.join(root, 'public', '.bundle-staging')), false);
 });
@@ -190,7 +191,7 @@ test('a bun build that exits cleanly is not failed by a stray process holding st
   const { root, bun } = bundleFixture(t, `${WRITE_OUTPUTS}\nsleep 3 &`);
 
   const manifest = await bundleStaticAssets({ projectRoot: root, bunBin: bun, timeoutMs: 1000 });
-  assert.equal(manifest.app, '/dist/app-1a2b3c.js');
+  assert.equal(manifest.app, '/dist/landing-1a2b3c.js');
 });
 
 test('reports a failing bun build with its complete stderr', async (t) => {

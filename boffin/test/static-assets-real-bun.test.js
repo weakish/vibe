@@ -28,7 +28,7 @@ test('real bun bundles the public pages and follows the shared imports', { skip 
 
   const manifest = await bundleStaticAssets({ projectRoot: root, bunBin: BUN });
 
-  assert.match(manifest.app, /^\/dist\/app-[0-9a-z]+\.js$/);
+  assert.match(manifest.app, /^\/dist\/landing-[0-9a-z]+\.js$/);
   assert.match(manifest.spec, /^\/dist\/spec-[0-9a-z]+\.js$/);
   assert.match(manifest.styles, /^\/dist\/styles-[0-9a-z]+\.css$/);
   assert.equal(await bundleIsComplete(root, manifest), true);
@@ -37,7 +37,8 @@ test('real bun bundles the public pages and follows the shared imports', { skip 
   assert.match(app, /boffin-chat-/);
   assert.match(app, /Static assets/);
   const index = fs.readFileSync(path.join(root, 'public', 'dist', 'index.html'), 'utf8');
-  assert.match(index, /src="\/dist\/app-[0-9a-z]+\.js"/);
+  assert.match(index, /src="\/dist\/landing-[0-9a-z]+\.js"/);
+  assert.doesNotMatch(index, /src="\/landing\.js"/);
   assert.doesNotMatch(index, /src="\/app\.js"/);
 });
 

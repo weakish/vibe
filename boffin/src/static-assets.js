@@ -132,14 +132,14 @@ export async function bundleStaticAssets({
   await fs.mkdir(staging, { recursive: true });
 
   const entries = [
-    path.join(projectRoot, 'public', 'app.js'),
+    path.join(projectRoot, 'public', 'landing.js'),
     path.join(projectRoot, 'public', 'spec.js'),
     path.join(projectRoot, 'public', 'styles.css'),
   ];
   await runBunBuild(bunBin, entries, staging, logger, timeoutMs);
 
   const outputs = await fs.readdir(staging);
-  const appFile = outputs.find((name) => /^app-.*\.js$/.test(name));
+  const appFile = outputs.find((name) => /^landing-.*\.js$/.test(name));
   const specFile = outputs.find((name) => /^spec-.*\.js$/.test(name));
   const stylesFile = outputs.find((name) => /^styles-.*\.css$/.test(name));
   if (!appFile || !specFile || !stylesFile) {
@@ -292,7 +292,7 @@ async function writeBundledHtml(projectRoot, staging, { appFile, specFile, style
 
 function patchHtml(source, { styles, script }) {
   const stylesheet = /<link rel="stylesheet" href="\/styles\.css" \/>/;
-  const moduleScript = /<script type="module" src="\/(?:app|spec)\.js"><\/script>/;
+  const moduleScript = /<script type="module" src="\/(?:landing|spec)\.js"><\/script>/;
   if (!stylesheet.test(source) || !moduleScript.test(source)) {
     throw new BundleError('Could not find the stylesheet or module script to bundle.');
   }

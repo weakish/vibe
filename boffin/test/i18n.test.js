@@ -106,11 +106,18 @@ test('the runtime module does not embed locale catalogs', () => {
 });
 
 test('the landing script loads flags only when the language menu is filled', () => {
-  const source = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /import \{ flagMarkup \} from '\.\/flags\.js'/);
-  assert.match(source, /import\('\.\/flags\.js'\)/);
-  assert.match(source, /loadAllLocales\(\)/);
-  assert.doesNotMatch(source, /Promise\.all\(\[import\('\.\/flags\.js'\), loadAllLocales\(\)\]\)/);
+  const chrome = fs.readFileSync(new URL('../public/chrome.js', import.meta.url), 'utf8');
+  const landing = fs.readFileSync(new URL('../public/landing.js', import.meta.url), 'utf8');
+  const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(chrome, /import \{ flagMarkup \} from '\.\/flags\.js'/);
+  assert.match(chrome, /import\('\.\/flags\.js'\)/);
+  assert.match(chrome, /landingEl\.signIn\.disabled = Boolean\(storedSession\(\)\)/);
+  assert.match(chrome, /loadAllLocales\(\)/);
+  assert.doesNotMatch(chrome, /Promise\.all\(\[import\('\.\/flags\.js'\), loadAllLocales\(\)\]\)/);
+  assert.match(landing, /import\('\.\/app\.js'\)/);
+  assert.doesNotMatch(landing, /from '\.\/app\.js'/);
+  assert.doesNotMatch(landing, /markdown|passkey|transcript|stream\.js|export\.js/);
+  assert.doesNotMatch(app, /import \{ flagMarkup \} from '\.\/flags\.js'/);
 });
 
 test('a non-English catalog load also fetches English', () => {

@@ -61,6 +61,8 @@ const STATIC_FILES = new Map([
   ['/app-shell.html', 'public/app-shell.html'],
   ['/demo-shell.html', 'public/demo-shell.html'],
   ['/app.js', 'public/app.js'],
+  ['/landing.js', 'public/landing.js'],
+  ['/chrome.js', 'public/chrome.js'],
   ['/markdown.js', 'public/markdown.js'],
   ['/stream.js', 'public/stream.js'],
   ['/i18n.js', 'public/i18n.js'],
