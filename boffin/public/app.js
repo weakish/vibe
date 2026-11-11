@@ -2716,11 +2716,28 @@ function fillMedia(container, files) {
   container.replaceChildren();
   for (const file of files ?? []) {
     if (file?.id && typeof file.mime === 'string' && file.mime.startsWith('image/')) {
+      const frame = document.createElement('figure');
+      frame.className = 'shot-frame';
       const img = document.createElement('img');
       img.className = 'shot';
       img.alt = file.name || msg('image');
-      container.append(img);
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'download';
+      link.textContent = msg('download');
+      frame.append(img, link);
+      container.append(frame);
       showMedia(img, file.id);
+      bindDownload(link, file.id, file.name || 'image');
+      continue;
+    }
+    if (file?.id && file?.name) {
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'file-chip';
+      link.textContent = `${file.name} · ${msg('download')}`;
+      container.append(link);
+      bindDownload(link, file.id, file.name);
       continue;
     }
     if (file?.name) {
@@ -2732,11 +2749,36 @@ function fillMedia(container, files) {
   }
 }
 
-function showMedia(img, id) {
+function bindDownload(button, id, name) {
+  button.addEventListener('click', () => {
+    ensureMediaUrl(id)
+      .then((url) => {
+        if (!url) {
+          return;
+        }
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        link.rel = 'noopener';
+        document.body.append(link);
+        link.click();
+        link.remove();
+      })
+      .catch((error) => {
+        if (error instanceof SessionEndedError) {
+          return;
+        }
+        if (error instanceof AuthError) {
+          handleFailure(error);
+        }
+      });
+  });
+}
+
+function ensureMediaUrl(id) {
   const cached = mediaUrls.get(id);
   if (cached) {
-    img.src = cached;
-    return;
+    return Promise.resolve(cached);
   }
   let load = mediaLoads.get(id);
   if (!load) {
@@ -2757,7 +2799,11 @@ function showMedia(img, id) {
       .finally(() => mediaLoads.delete(id));
     mediaLoads.set(id, load);
   }
-  load
+  return load;
+}
+
+function showMedia(img, id) {
+  ensureMediaUrl(id)
     .then((url) => {
       if (url && img.isConnected) {
         img.src = url;

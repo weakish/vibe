@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'Setiap berkas harus {limit} MB atau lebih kecil.',
     image: 'Gambar',
     imageUnavailable: 'Gambar tidak tersedia.',
+    download: 'Unduh',
     attachmentsMustBeList: 'Lampiran harus berupa daftar.',
     attachmentInvalid: 'Lampiran tidak valid.',
     attachmentByteLimit: 'Setiap lampiran dibatasi {limit} byte.',

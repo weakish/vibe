@@ -67,6 +67,7 @@ export default {
     fileTooLarge: '每个文件不得超过 {limit} MB。',
     image: '图片',
     imageUnavailable: '图片不可用。',
+    download: '下载',
     attachmentsMustBeList: '附件必须是列表。',
     attachmentInvalid: '某个附件无效。',
     attachmentByteLimit: '每个附件最多 {limit} 字节。',

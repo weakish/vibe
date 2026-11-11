@@ -358,6 +358,132 @@ test('stores generated image bytes and refuses an image path outside the workspa
   assert.ok(conversation.readMedia(tools[0].images[0].id).bytes.equals(PNG));
 });
 
+test('offers a file the reply names, and a file the run changes, for download', async () => {
+  const { dir, stateFile } = tempStateFile();
+  const uploadDir = path.join(dir, '.boffin', 'uploads');
+  fs.mkdirSync(uploadDir, { recursive: true });
+  const named = path.join(uploadDir, '公司印章管理规定（依法修订稿）.docx');
+  fs.writeFileSync(named, Buffer.from('revised-docx'));
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"password":"no"}');
+
+  const { runAgent } = scriptedRunner([
+    init('chat-file'),
+    reply('修订稿在 `.boffin/uploads/公司印章管理规定（依法修订稿）.docx`。'),
+    done('done'),
+  ]);
+  const conversation = makeConversation(runAgent, stateFile);
+  const changed = path.join(dir, 'notes.txt');
+  const originalRun = conversation.runAgent;
+  conversation.runAgent = (options) => {
+    fs.writeFileSync(changed, 'created during the run');
+    fs.writeFileSync(path.join(dir, 'config.json'), '{"password":"still-no"}');
+    return originalRun(options);
+  };
+  await conversation.start('revise', () => {});
+
+  const assistant = conversation.items.find((item) => item.role === 'assistant');
+  const names = assistant.images.map((file) => file.name).sort();
+  assert.deepEqual(names, ['notes.txt', '公司印章管理规定（依法修订稿）.docx']);
+  const doc = assistant.images.find((file) => file.name.endsWith('.docx'));
+  assert.equal(conversation.readMedia(doc.id).inline, false);
+  assert.equal(conversation.readMedia(doc.id).bytes.toString(), 'revised-docx');
+  assert.equal(JSON.stringify(assistant.images).includes('config.json'), false);
+});
+
+test('does not attach a cited workdir file to an older turn when the process starts', () => {
+  const { dir, stateFile } = tempStateFile();
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'old');
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({
+      version: 1,
+      chatId: 'chat-old',
+      items: [
+        { id: 'u1', role: 'user', text: 'go' },
+        { id: 'a1', role: 'assistant', text: 'see `notes.txt`' },
+      ],
+    }),
+  );
+  const conversation = makeConversation(() => {
+    throw new Error('no run');
+  }, stateFile);
+  const assistant = conversation.items.find((item) => item.role === 'assistant');
+  assert.equal(assistant.images, undefined);
+});
+
+test('keeps a file the run changed when the reply already names eight other files', async () => {
+  const { dir, stateFile } = tempStateFile();
+  const cited = [];
+  for (let index = 1; index <= 8; index += 1) {
+    const file = path.join(dir, `old-${index}.txt`);
+    fs.writeFileSync(file, 'prior');
+    const past = new Date(Date.now() - 500);
+    fs.utimesSync(file, past, past);
+    cited.push(`old-${index}.txt`);
+  }
+  const { runAgent } = scriptedRunner([
+    init('chat-cap'),
+    reply(`see ${cited.map((name) => `\`${name}\``).join(' ')}`),
+    done('done'),
+  ]);
+  const conversation = makeConversation(runAgent, stateFile);
+  const originalRun = conversation.runAgent;
+  conversation.runAgent = (options) => {
+    fs.writeFileSync(path.join(dir, 'notes.txt'), 'created during the run');
+    return originalRun(options);
+  };
+  await conversation.start('revise', () => {});
+
+  const assistant = conversation.items.find((item) => item.role === 'assistant');
+  const names = assistant.images.map((file) => file.name);
+  assert.equal(names.length, 8);
+  assert.equal(names.includes('notes.txt'), true);
+});
+
+test('skips state outside data/, a deleted upload, a stale file, and a second copy of a sanitized name', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-conv-'));
+  const stateFile = path.join(dir, 'state.json');
+  fs.writeFileSync(path.join(dir, 'foo#1.txt'), 'once');
+  const stale = path.join(dir, 'stale.txt');
+  fs.writeFileSync(stale, 'old');
+  const { runAgent } = scriptedRunner([
+    init('chat-private'),
+    reply('see `foo#1.txt` and `state.json`'),
+    done('done'),
+  ]);
+  const conversation = makeConversation(runAgent, stateFile, { workdir: dir });
+  const originalRun = conversation.runAgent;
+  conversation.runAgent = (options) => {
+    const past = new Date(Date.now() - 500);
+    fs.utimesSync(stale, past, past);
+    fs.mkdirSync(path.join(dir, 'media'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'media', 'secret.bin'), 'secret');
+    fs.rmSync(path.join(dir, '.boffin', 'uploads'), { recursive: true, force: true });
+    return originalRun(options);
+  };
+  await conversation.start('go', () => {}, [{ name: 'pic.png', bytes: PNG }]);
+
+  const assistant = conversation.items.find((item) => item.role === 'assistant');
+  assert.deepEqual(
+    assistant.images.map((file) => file.name),
+    ['foo_1.txt'],
+  );
+  assert.equal(
+    conversation.items.some((item) => item.role === 'notice' && /Unexpected server error/.test(item.text ?? '')),
+    false,
+  );
+
+  const again = makeConversation(() => {
+    throw new Error('no run');
+  }, stateFile, { workdir: dir });
+  const reloaded = again.items.find((item) => item.role === 'assistant');
+  assert.deepEqual(
+    reloaded.images.map((file) => file.name),
+    ['foo_1.txt'],
+  );
+});
+
 test('refuses attachments while a run is active, before writing them', async () => {
   const { dir, stateFile } = tempStateFile();
   const { runAgent, runs } = manualRunner();

@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'Muí-chi̍t ê tóng-àn tio̍h {limit} MB í-hā.',
     image: 'Tô͘',
     imageUnavailable: 'Tô͘ bô-hoat-tō͘ hián-sī.',
+    download: 'Hā-chài',
     attachmentsMustBeList: 'Hù-ka tio̍h sī chheng-toaⁿ.',
     attachmentInvalid: 'Ū chi̍t ê hù-ka bô ū-hāu.',
     attachmentByteLimit: 'Muí-chi̍t ê hù-ka siōng-chē {limit} jī-chiat.',

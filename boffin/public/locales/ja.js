@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'ファイルは {limit} MB までです。',
     image: '画像',
     imageUnavailable: '画像を表示できません。',
+    download: 'ダウンロード',
     attachmentsMustBeList: '添付は一覧である必要があります。',
     attachmentInvalid: '添付が正しくありません。',
     attachmentByteLimit: '添付は {limit} バイトまでです。',

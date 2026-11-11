@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { MAX_MEDIA_BYTES, createMediaStore, decodeImageBytes, readWorkspaceImage, safeFileName, sniffImage } from '../src/media.js';
+import {
+  MAX_MEDIA_BYTES,
+  citedPathTokens,
+  createMediaStore,
+  decodeImageBytes,
+  filesChangedSince,
+  readWorkspaceFile,
+  readWorkspaceImage,
+  safeFileName,
+  sniffImage,
+} from '../src/media.js';
 
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -73,4 +83,34 @@ test('refuses a replaced media symlink and a file over the cap', () => {
   fs.truncateSync(huge, MAX_MEDIA_BYTES + 1);
   fs.writeFileSync(`${huge}.json`, JSON.stringify({ name: 'big.png', mime: 'image/png' }));
   assert.equal(store.read(id), null);
+});
+
+test('stores a document for download and will not publish config or a path outside the workspace', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-media-'));
+  const store = createMediaStore(path.join(dir, 'media'));
+  const docx = Buffer.from('PK document');
+  const saved = store.saveFile({ bytes: docx, name: '公司印章管理规定（依法修订稿）.docx' });
+  assert.equal(saved.mime, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const read = store.read(saved.id);
+  assert.equal(read.inline, false);
+  assert.ok(read.bytes.equals(docx));
+  assert.equal(store.save({ bytes: docx, name: 'notes.docx' }), null);
+
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"token":"secret"}');
+  fs.mkdirSync(path.join(dir, '.boffin', 'uploads'), { recursive: true });
+  const upload = path.join(dir, '.boffin', 'uploads', '规定.docx');
+  fs.writeFileSync(upload, docx);
+  assert.equal(readWorkspaceFile(dir, 'config.json'), null);
+  assert.ok(readWorkspaceFile(dir, '.boffin/uploads/规定.docx').bytes.equals(docx));
+  const outside = path.join(os.tmpdir(), `boffin-doc-outside-${process.pid}.docx`);
+  fs.writeFileSync(outside, docx);
+  const link = path.join(dir, 'escape.docx');
+  fs.symlinkSync(outside, link);
+  assert.equal(readWorkspaceFile(dir, link), null);
+
+  const before = Date.now();
+  fs.writeFileSync(path.join(dir, 'made.txt'), 'hello');
+  assert.ok(filesChangedSince(dir, before - 1000).some((full) => full.endsWith(`${path.sep}made.txt`)));
+  assert.equal(filesChangedSince(dir, before).some((full) => full.endsWith('config.json')), false);
+  assert.deepEqual(citedPathTokens('see `.boffin/uploads/规定.docx` please'), ['.boffin/uploads/规定.docx']);
 });

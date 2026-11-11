@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'ستياڤ فاٴيل مستيله {limit} MB اتاو لبيه کچيل.',
     image: 'ايميج',
     imageUnavailable: 'ايميج ايندا ترسديا.',
+    download: 'موات تورون',
     attachmentsMustBeList: 'لمڤيرن مستيله سناراي.',
     attachmentInvalid: 'لمڤيرن ايندا صح.',
     attachmentByteLimit: 'ستياڤ لمڤيرن ترحد کڤد {limit} باٴيت.',

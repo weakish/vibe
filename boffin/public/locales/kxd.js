@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'Satiap pail mastilah {limit} MB atau labih kacil.',
     image: 'Imij',
     imageUnavailable: 'Imij inda tasadia.',
+    download: 'Muat turun',
     attachmentsMustBeList: 'Lampian mastilah sanai.',
     attachmentInvalid: 'Lampian inda sah.',
     attachmentByteLimit: 'Satiap lampian tahad kapada {limit} bait.',

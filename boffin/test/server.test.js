@@ -214,11 +214,13 @@ test('surfaces CLI crashes and error results to the transcript', async (t) => {
   t.after(() => app.close());
 
   const crash = await sendMessage(app.baseUrl, 'CRASH now');
-  assert.equal(crash.ops.at(-1).item.level, 'error');
-  assert.match(crash.ops.at(-1).item.text, /exit code 2\): Error: connection reset/);
+  const crashNotice = crash.ops.find((op) => op.item?.role === 'notice');
+  assert.equal(crashNotice.item.level, 'error');
+  assert.match(crashNotice.item.text, /exit code 2\): Error: connection reset/);
 
   const rejected = await sendMessage(app.baseUrl, 'ERROR please');
-  assert.equal(rejected.ops.at(-1).item.text, 'Model rejected the request.');
+  const rejectedNotice = rejected.ops.find((op) => op.item?.role === 'notice');
+  assert.equal(rejectedNotice.item.text, 'Model rejected the request.');
 });
 
 test('returns 409 while a run is active and can stop it', async (t) => {
@@ -638,6 +640,7 @@ test('accepts attached files and serves image previews only to a signed-in clien
   const media = await api(app.baseUrl, mediaUrl);
   assert.equal(media.status, 200);
   assert.equal(media.headers.get('content-type'), 'image/png');
+  assert.match(media.headers.get('content-disposition'), /^inline;/);
   assert.equal(Buffer.from(await media.arrayBuffer()).equals(PNG), true);
   assert.equal((await api(app.baseUrl, '/api/media/not-a-uuid')).status, 404);
 });

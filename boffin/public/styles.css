@@ -759,12 +759,41 @@ a.menu-action {
   display: none;
 }
 
+.shot-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(4px * var(--ui-scale));
+  max-width: min(100%, 24rem);
+  margin: 0;
+}
+
 .shot {
   display: block;
-  max-width: min(100%, 24rem);
+  max-width: 100%;
   max-height: 20rem;
   border-radius: calc(12px * var(--ui-scale));
   background: var(--surface-2);
+}
+
+.download {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: calc(13px * var(--ui-scale));
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+button.file-chip {
+  margin: 0;
+  border: 0;
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
 }
 
 .file-chip {

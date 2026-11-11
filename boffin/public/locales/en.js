@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'Each file must be {limit} MB or smaller.',
     image: 'Image',
     imageUnavailable: 'Image unavailable.',
+    download: 'Download',
     attachmentsMustBeList: 'Attachments must be a list.',
     attachmentInvalid: 'An attachment is not valid.',
     attachmentByteLimit: 'Each attachment is limited to {limit} bytes.',

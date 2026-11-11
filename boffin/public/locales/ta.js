@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'ஒவ்வொரு கோப்பும் {limit} MB அல்லது அதைவிடச் சிறியதாக இருக்க வேண்டும்.',
     image: 'படம்',
     imageUnavailable: 'படம் கிடைக்கவில்லை.',
+    download: 'பதிவிறக்கம்',
     attachmentsMustBeList: 'இணைப்புகள் ஒரு பட்டியலாக இருக்க வேண்டும்.',
     attachmentInvalid: 'ஒரு இணைப்பு செல்லுபடியாகாது.',
     attachmentByteLimit: 'ஒவ்வொரு இணைப்பும் {limit} பைட்டுகளுக்குள் இருக்க வேண்டும்.',

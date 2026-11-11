@@ -4,9 +4,22 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { applyOp } from '../shared/transcript.js';
 import { buildAgentArgs, runAgent as runAgentProcess } from './agent.js';
 import { createRunState, eventToOps, finishOps } from './events.js';
-import { createMediaStore, decodeImageBytes, readWorkspaceImage, safeFileName, sniffImage } from './media.js';
+import {
+  MAX_PUBLISHED_FILES,
+  citedPathTokens,
+  createMediaStore,
+  decodeImageBytes,
+  filesChangedSince,
+  readWorkspaceFile,
+  readWorkspaceImage,
+  resolveWorkspaceFile,
+  safeFileName,
+  sniffImage,
+} from './media.js';
 
 const STATE_VERSION = 1;
+// A file written as a run starts can get an mtime a few milliseconds before Date.now().
+const OUTPUT_MTIME_LAG_MS = 100;
 const NAME_MAX = 40;
 const COVER_KEY_BYTES = 32;
 
@@ -496,6 +509,8 @@ export class Conversation {
         emitOps(finishOps({ error: null, code: null, signal: null, stderr: '' }, state, { cancelled: true }));
         return;
       }
+      const imagePaths = stored.filter((file) => file.image).map((file) => file.path);
+      const startedAt = Date.now();
       run.handle = this.runAgent({
         bin: this.agentBin,
         args: buildAgentArgs({
@@ -503,7 +518,7 @@ export class Conversation {
           force: this.force,
           resumeId: this.chatId,
           prompt: agentPrompt(text, stored, author),
-          imagePaths: stored.filter((file) => file.image).map((file) => file.path),
+          imagePaths,
         }),
         cwd: this.workdir,
         onEvent: (event) => {
@@ -523,6 +538,7 @@ export class Conversation {
       if (outcome.error || (outcome.code !== 0 && !run.cancelled)) {
         this.logger.error(`[boffin] agent run failed: ${outcome.error?.message ?? `exit ${outcome.code}`}`);
       }
+      this.#publishOutputs(emitOps, startedAt, canonicalPaths(stored));
       emitOps(finishOps(outcome, state, { cancelled: run.cancelled }));
     } catch (error) {
       this.logger.error(`[boffin] agent run crashed: ${error.stack || error}`);
@@ -546,6 +562,123 @@ export class Conversation {
         throw new Error(SAVE_FAILURE_TEXT);
       }
     }
+  }
+
+  // Files this run created or changed, plus files the reply names, become downloads.
+  #publishOutputs(emitOps, startedAt, uploadedPaths) {
+    const saved = this.#collectOutputs(
+      this.#runTexts(),
+      startedAt - OUTPUT_MTIME_LAG_MS,
+      uploadedPaths,
+      this.#outputNames(),
+    );
+    this.#attachOutputs(emitOps, saved);
+  }
+
+  #runTexts() {
+    const texts = [];
+    for (let index = this.items.length - 1; index >= 0; index -= 1) {
+      const item = this.items[index];
+      if (item.role === 'user') {
+        break;
+      }
+      if (item.role === 'assistant' && item.text) {
+        texts.push(item.text);
+      }
+    }
+    return texts.join('\n');
+  }
+
+  #outputNames() {
+    const names = new Set();
+    for (let index = this.items.length - 1; index >= 0; index -= 1) {
+      const item = this.items[index];
+      if (item.role === 'user') {
+        break;
+      }
+      for (const image of item.images ?? []) {
+        if (image?.name) {
+          names.add(image.name);
+        }
+      }
+    }
+    return names;
+  }
+
+  #collectOutputs(text, startedAt, uploadedPaths, existingNames) {
+    const paths = [];
+    const seen = new Set();
+    const add = (full) => {
+      if (!full || seen.has(full) || uploadedPaths.has(full) || this.#isPrivateOutput(full)) {
+        return;
+      }
+      seen.add(full);
+      paths.push(full);
+    };
+    for (const full of filesChangedSince(this.workdir, startedAt)) {
+      add(full);
+    }
+    for (const token of citedPathTokens(text)) {
+      add(resolveWorkspaceFile(this.workdir, token)?.full);
+    }
+    const saved = [];
+    for (const full of paths) {
+      if (saved.length >= MAX_PUBLISHED_FILES) {
+        break;
+      }
+      const file = readWorkspaceFile(this.workdir, full);
+      if (!file) {
+        continue;
+      }
+      const name = safeFileName(path.basename(file.relative));
+      if (existingNames.has(name)) {
+        continue;
+      }
+      const stored = this.media.saveFile({ bytes: file.bytes, name });
+      if (stored) {
+        existingNames.add(stored.name);
+        saved.push(stored);
+      }
+    }
+    return saved;
+  }
+
+  #attachOutputs(emitOps, saved) {
+    if (saved.length === 0) {
+      return;
+    }
+    let target = null;
+    for (let index = this.items.length - 1; index >= 0; index -= 1) {
+      const item = this.items[index];
+      if (item.role === 'user') {
+        break;
+      }
+      if (item.role === 'assistant') {
+        target = item;
+        break;
+      }
+    }
+    if (!target) {
+      emitOps([{ op: 'add', item: { id: randomUUID(), role: 'assistant', text: '', images: saved } }]);
+      return;
+    }
+    const existing = new Set((target.images ?? []).map((image) => image.name));
+    const extra = saved.filter((file) => !existing.has(file.name));
+    if (extra.length === 0) {
+      return;
+    }
+    emitOps([{ op: 'set', id: target.id, patch: { images: [...(target.images ?? []), ...extra] } }]);
+  }
+
+  // state_file is not always under data/. The state file holds passkeys. The media directory is this store's own copies.
+  #isPrivateOutput(full) {
+    const resolved = canonicalPath(full);
+    if (resolved === canonicalPath(this.stateFile) || resolved === canonicalPath(`${this.stateFile}.tmp`)) {
+      return true;
+    }
+    const media = canonicalPath(path.join(path.dirname(this.stateFile), 'media'));
+    const relative = path.relative(media, resolved);
+    return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
   }
 
   #storeUploads(attachments) {
@@ -702,6 +835,29 @@ function assertSupportedState(file, data) {
   if (!Array.isArray(data.items) || data.items.some((item) => !isTranscriptItem(item))) {
     throw new StateError(`State file ${file} has invalid items.`);
   }
+}
+
+function canonicalPath(file) {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    return path.resolve(file);
+  }
+}
+
+function canonicalPaths(files) {
+  const paths = new Set();
+  for (const file of files) {
+    if (typeof file?.path !== 'string' || !file.path) {
+      continue;
+    }
+    try {
+      paths.add(fs.realpathSync(file.path));
+    } catch {
+      // The agent can move or delete an upload before the run ends.
+    }
+  }
+  return paths;
 }
 
 function agentPrompt(text, stored, author) {

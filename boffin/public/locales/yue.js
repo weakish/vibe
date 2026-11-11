@@ -67,6 +67,7 @@ export default {
     fileTooLarge: '每個檔案唔可以大過 {limit} MB。',
     image: '圖片',
     imageUnavailable: '圖片顯示唔到。',
+    download: '下載',
     attachmentsMustBeList: '附件一定要係清單。',
     attachmentInvalid: '有個附件唔正確。',
     attachmentByteLimit: '每個附件最多 {limit} 個位元組。',

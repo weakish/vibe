@@ -67,6 +67,7 @@ export default {
     fileTooLarge: 'Setiap fail mestilah {limit} MB atau lebih kecil.',
     image: 'Imej',
     imageUnavailable: 'Imej tidak tersedia.',
+    download: 'Muat turun',
     attachmentsMustBeList: 'Lampiran mestilah senarai.',
     attachmentInvalid: 'Lampiran tidak sah.',
     attachmentByteLimit: 'Setiap lampiran terhad kepada {limit} bait.',

@@ -3,12 +3,13 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export const MAX_MEDIA_BYTES = 8 * 1024 * 1024;
+export const MAX_PUBLISHED_FILES = 8;
 const MEDIA_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function safeFileName(name) {
   const base = path
     .basename(String(name ?? ''))
-    .replace(/[^\p{L}\p{M}\p{N}._\- ()[\]]+/gu, '_')
+    .replace(/[^\p{L}\p{M}\p{N}._\- ()[\]（）「」【】]+/gu, '_')
     .replace(/^\.+/, '')
     .trim();
   // Slice by character so a name is not cut in the middle of a code point.
@@ -54,11 +55,17 @@ export function createMediaStore(dir) {
       if (!mime || bytes.length > MAX_MEDIA_BYTES) {
         return null;
       }
-      const id = randomUUID();
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, id), bytes, { mode: 0o600 });
-      fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ name: safeFileName(name), mime }), { mode: 0o600 });
-      return { id, name: safeFileName(name), mime };
+      return writeMedia(dir, bytes, name, mime);
+    },
+
+    // A file the agent created or changed. Images stay images. Anything else is
+    // stored for download and is not served as a page the browser would run.
+    saveFile({ bytes, name }) {
+      if (!bytes || bytes.length === 0 || bytes.length > MAX_MEDIA_BYTES) {
+        return null;
+      }
+      const mime = sniffImage(bytes) || downloadMime(name);
+      return writeMedia(dir, bytes, name, mime);
     },
 
     read(id) {
@@ -83,11 +90,15 @@ export function createMediaStore(dir) {
       } catch {
         return null;
       }
-      const mime = sniffImage(bytes);
-      if (!mime || bytes.length > MAX_MEDIA_BYTES) {
+      if (!bytes || bytes.length > MAX_MEDIA_BYTES) {
         return null;
       }
-      return { bytes, mime, name: safeFileName(meta?.name) };
+      const sniffed = sniffImage(bytes);
+      const mime = sniffed || (typeof meta?.mime === 'string' ? meta.mime : '');
+      if (!sniffed && !DOWNLOAD_MIMES.has(mime)) {
+        return null;
+      }
+      return { bytes, mime: sniffed || mime, name: safeFileName(meta?.name), inline: Boolean(sniffed) };
     },
   };
 }
@@ -121,9 +132,62 @@ function readRegularFileSync(file, maxBytes) {
   }
 }
 
+const DOWNLOAD_MIMES = new Set([
+  'application/octet-stream',
+  'application/pdf',
+  'application/zip',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain; charset=utf-8',
+]);
+
+const DOWNLOAD_MIME_BY_EXT = new Map([
+  ['.pdf', 'application/pdf'],
+  ['.zip', 'application/zip'],
+  ['.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  ['.txt', 'text/plain; charset=utf-8'],
+  ['.md', 'text/plain; charset=utf-8'],
+  ['.csv', 'text/plain; charset=utf-8'],
+  ['.json', 'text/plain; charset=utf-8'],
+]);
+
+function downloadMime(name) {
+  return DOWNLOAD_MIME_BY_EXT.get(path.extname(String(name ?? '')).toLowerCase()) ?? 'application/octet-stream';
+}
+
+function writeMedia(dir, bytes, name, mime) {
+  const id = randomUUID();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, id), bytes, { mode: 0o600 });
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ name: safeFileName(name), mime }), { mode: 0o600 });
+  return { id, name: safeFileName(name), mime };
+}
+
 // Reads an image file only when it stays inside workdir after resolving symlinks.
 export function readWorkspaceImage(workdir, filePath) {
-  if (typeof filePath !== 'string' || !filePath) {
+  const file = readWorkspaceFile(workdir, filePath);
+  return file && sniffImage(file.bytes) ? file.bytes : null;
+}
+
+// Reads a regular file inside workdir. A symlink that resolves outside is refused.
+export function readWorkspaceFile(workdir, filePath) {
+  const resolved = resolveWorkspaceFile(workdir, filePath);
+  if (!resolved) {
+    return null;
+  }
+  try {
+    // Cap the read. A stat-then-readFileSync can follow a swapped symlink or a file that grew past the cap.
+    const bytes = readRegularFileSync(resolved.full, MAX_MEDIA_BYTES);
+    if (!bytes?.length) {
+      return null;
+    }
+    return { bytes, full: resolved.full, relative: resolved.relative };
+  } catch {
+    return null;
+  }
+}
+
+export function resolveWorkspaceFile(workdir, filePath) {
+  if (typeof filePath !== 'string' || !filePath || filePath.includes('\0')) {
     return null;
   }
   let root;
@@ -137,17 +201,104 @@ export function readWorkspaceImage(workdir, filePath) {
   if (!isInsideDirectory(root, resolved)) {
     return null;
   }
-  let bytes;
-  try {
-    const stat = fs.statSync(resolved);
-    if (!stat.isFile() || stat.size > MAX_MEDIA_BYTES) {
-      return null;
-    }
-    bytes = fs.readFileSync(resolved);
-  } catch {
+  const relative = path.relative(root, resolved);
+  if (!isPublishableRelative(relative)) {
     return null;
   }
-  return sniffImage(bytes) ? bytes : null;
+  return { full: resolved, relative };
+}
+
+// Sign-in config, conversation state, and VCS metadata are not offered for download.
+export function isPublishableRelative(relative) {
+  if (!relative || relative === 'config.json') {
+    return false;
+  }
+  const parts = relative.split(path.sep);
+  if (parts.includes('.git') || parts.includes('node_modules')) {
+    return false;
+  }
+  if (parts[0] === 'data' || (parts[0] === 'public' && parts[1] === 'dist')) {
+    return false;
+  }
+  if (parts[0] === '.boffin' && parts[1] !== 'uploads') {
+    return false;
+  }
+  return true;
+}
+
+// Paths named in a reply. Backticks win, then any token that looks like a path.
+export function citedPathTokens(text) {
+  if (typeof text !== 'string' || !text) {
+    return [];
+  }
+  const found = [];
+  const push = (raw) => {
+    const value = String(raw)
+      .trim()
+      .replace(/^[('"\[]+/, '')
+      .replace(/[)'",\].:;!?]+$/g, '');
+    if (value.length >= 3) {
+      found.push(value);
+    }
+  };
+  for (const match of text.matchAll(/`([^`\n]+)`/g)) {
+    push(match[1]);
+  }
+  for (const match of text.matchAll(/(?:^|\s)((?:\/|\.\/|\.\.\/)[^\s`"'<>]{2,}|(?:[\w.\-\u0080-\uFFFF]+\/)+[^\s`"'<>]+)/g)) {
+    push(match[1]);
+  }
+  return found;
+}
+
+// Regular files under workdir whose mtime is at or after `sinceMs`.
+export function filesChangedSince(workdir, sinceMs) {
+  let root;
+  try {
+    root = fs.realpathSync(workdir);
+  } catch {
+    return [];
+  }
+  const found = [];
+  walkPublishable(root, root, sinceMs, found);
+  return found;
+}
+
+function walkPublishable(dir, root, sinceMs, found) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
+    const full = path.join(dir, entry.name);
+    const relative = path.relative(root, full);
+    if (entry.isDirectory()) {
+      if (relative === '.boffin') {
+        walkPublishable(path.join(full, 'uploads'), root, sinceMs, found);
+        continue;
+      }
+      if (!isPublishableRelative(relative) && relative !== '') {
+        continue;
+      }
+      walkPublishable(full, root, sinceMs, found);
+      continue;
+    }
+    if (!entry.isFile() || !isPublishableRelative(relative)) {
+      continue;
+    }
+    try {
+      const stat = fs.statSync(full);
+      if (stat.isFile() && stat.size > 0 && stat.size <= MAX_MEDIA_BYTES && stat.mtimeMs >= sinceMs) {
+        found.push(full);
+      }
+    } catch {
+      // A file that disappears mid-walk is simply not offered.
+    }
+  }
 }
 
 // `path.relative` of a file named `..hidden` starts with `..` and is still inside root.

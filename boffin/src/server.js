@@ -500,14 +500,15 @@ function sendMedia(res, conversation, id) {
     'Content-Type': file.mime,
     'Content-Length': file.bytes.length,
     'Cache-Control': 'private, max-age=31536000, immutable',
-    'Content-Disposition': `inline; filename="${asciiFileName(file.name)}"`,
+    'Content-Disposition': contentDisposition(file.name, file.inline),
   });
   res.end(file.bytes);
 }
 
-function asciiFileName(name) {
-  const ascii = String(name).replace(/[^\w.\- ]+/g, '_').slice(0, 80);
-  return ascii || 'image';
+function contentDisposition(name, inline) {
+  const ascii = String(name).replace(/[^\w.\- ]+/g, '_').slice(0, 80) || 'download';
+  const star = encodeURIComponent(name).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${star}`;
 }
 
 function handleReset(res, conversation) {
