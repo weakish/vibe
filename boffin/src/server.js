@@ -3,7 +3,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { conversationLogFilename, formatConversationLog } from '../shared/export.js';
+import {
+  buildConversationEpub,
+  conversationEpubFilename,
+  conversationLogFilename,
+  conversationMarkdownFilename,
+  formatConversationLog,
+  formatConversationLogMarkdown,
+} from '../shared/export.js';
 import { MAX_SPEC_CHARS, DEFAULT_SPEC } from '../shared/default-spec.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { AttachmentError, parseAttachments } from './attachments.js';
@@ -30,6 +37,7 @@ import {
   writeStaticAssetsState,
 } from './static-assets.js';
 import { LOCALES } from '../public/i18n.js';
+import { renderMarkdown } from '../public/markdown.js';
 import {
   entityTag,
   httpDate,
@@ -84,6 +92,11 @@ const STATIC_FILES = new Map([
   ['/spec.js', 'public/spec.js'],
   ['/shared/transcript.js', 'shared/transcript.js'],
   ['/shared/export.js', 'shared/export.js'],
+  ['/shared/log-items.js', 'shared/log-items.js'],
+  ['/shared/export-markdown.js', 'shared/export-markdown.js'],
+  ['/shared/export-html.js', 'shared/export-html.js'],
+  ['/shared/export-epub.js', 'shared/export-epub.js'],
+  ['/shared/zip-store.js', 'shared/zip-store.js'],
   ['/shared/limits.js', 'shared/limits.js'],
   ['/passkey.js', 'public/passkey.js'],
   ['/member-color.js', 'public/member-color.js'],
@@ -313,11 +326,11 @@ async function handleApi(req, res, url, context) {
   }
   const logId = /^\/api\/logs\/([0-9a-f-]{36})$/.exec(url.pathname);
   if (req.method === 'GET' && logId) {
-    return sendKeptLog(res, context, person, logId[1]);
+    return sendKeptLog(res, context, person, logId[1], url.searchParams.get('format'));
   }
   const mediaId = /^\/api\/media\/([0-9a-f-]{36})$/.exec(url.pathname);
   if (req.method === 'GET' && mediaId) {
-    if (!canEnter(person, conversation)) {
+    if (!conversation.canReadMedia(person.personId, mediaId[1], person.owner)) {
       return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
     }
     return sendMedia(res, conversation, mediaId[1]);
@@ -929,7 +942,7 @@ function sendSession(res, context, person, openActive) {
   return sendJson(res, 200, sessionPayload(context, person, !list, null));
 }
 
-function sendKeptLog(res, context, person, recordId) {
+function sendKeptLog(res, context, person, recordId, format) {
   if (person.owner) {
     return sendJson(res, 404, { error: 'Not found.' });
   }
@@ -937,12 +950,42 @@ function sendKeptLog(res, context, person, recordId) {
   if (!record) {
     return sendJson(res, 404, { error: 'Not found.' });
   }
-  const text = formatConversationLog(record.items, {
-    agent: record.agent,
-    model: record.model,
-    exportedAt: record.at,
-  });
-  return sendJson(res, 200, { filename: conversationLogFilename(new Date(record.at)), text });
+  const exportedAt = record.at;
+  const meta = { agent: record.agent, model: record.model, exportedAt };
+  const when = new Date(record.at);
+
+  if (format === 'source') {
+    return sendJson(res, 200, { ...meta, items: record.items });
+  }
+
+  if (format === 'markdown' || format === 'md') {
+    const text = formatConversationLogMarkdown(record.items, meta);
+    return sendJson(res, 200, { filename: conversationMarkdownFilename(when), text });
+  }
+
+  if (format === 'epub') {
+    const { conversation } = context;
+    const bytes = buildConversationEpub(
+      record.items,
+      meta,
+      (id) => {
+        const file = conversation.readMedia(id);
+        return file ? { bytes: file.bytes, mime: file.mime, name: file.name } : null;
+      },
+      { renderMarkdown },
+    );
+    res.writeHead(200, {
+      'Content-Type': 'application/epub+zip',
+      'Content-Length': bytes.length,
+      'Cache-Control': 'private, no-store',
+      'Content-Disposition': contentDisposition(conversationEpubFilename(when), false),
+    });
+    res.end(Buffer.from(bytes));
+    return;
+  }
+
+  const text = formatConversationLog(record.items, meta);
+  return sendJson(res, 200, { filename: conversationLogFilename(when), text });
 }
 
 function sessionPayload(context, person, listed, token) {

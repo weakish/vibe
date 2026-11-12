@@ -366,6 +366,12 @@ test('an invitation passkey joins, and a removed person exports only the earlier
   assert.equal(kept.items.some((item) => item.author === 'Ada'), true);
   assert.equal(body.text.includes('after'), false);
 
+  const source = await call(app.baseUrl, `/api/logs/${guestAgain.conversations[0].id}?format=source`, { token: guestAgain.token });
+  assert.equal(source.status, 200);
+  const sourceBody = await source.json();
+  assert.equal(sourceBody.items.some((item) => item.role === 'user' && item.text === 'hello' && item.id), true);
+  assert.equal(sourceBody.text, undefined);
+
   const ended = await call(app.baseUrl, '/api/new', { method: 'POST', token: owner.session.token });
   assert.equal(ended.status, 200);
   const ownerAgain = await signIn(app, owner.device);

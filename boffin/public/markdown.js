@@ -61,7 +61,7 @@ function renderBlocks(lines) {
     }
 
     if (RULE.test(line)) {
-      html.push('<hr>');
+      html.push('<hr />');
       index += 1;
       continue;
     }
@@ -99,7 +99,7 @@ function renderBlocks(lines) {
       paragraph.push(lines[index]);
       index += 1;
     }
-    html.push(`<p>${paragraph.map((text) => renderInline(text)).join('<br>')}</p>`);
+    html.push(`<p>${paragraph.map((text) => renderInline(text)).join('<br />')}</p>`);
   }
 
   return html.join('');

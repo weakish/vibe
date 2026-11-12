@@ -1,5 +1,15 @@
 import { applyOp } from '../shared/transcript.js';
-import { conversationLogFilename, formatConversationLog } from '../shared/export.js';
+import {
+  buildConversationEpub,
+  buildPrintHtmlDocument,
+  conversationEpubFilename,
+  conversationLogFilename,
+  conversationMarkdownFilename,
+  conversationPrintFilename,
+  formatConversationLog,
+  formatConversationLogMarkdown,
+  mediaIdsInItems,
+} from '../shared/export.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import {
   CREDENTIALS_KEY,
@@ -82,7 +92,14 @@ const coarsePointer = window.matchMedia('(pointer: coarse)');
 const el = {
   app: document.getElementById('app'),
   status: document.getElementById('status'),
-  exportLog: document.getElementById('export-log'),
+  exportLabel: document.getElementById('export-label'),
+  exportJson: document.getElementById('export-json'),
+  exportMarkdown: document.getElementById('export-markdown'),
+  exportEpub: document.getElementById('export-epub'),
+  exportPrint: document.getElementById('export-print'),
+  exportDialog: document.getElementById('export-dialog'),
+  exportDialogTitle: document.getElementById('export-dialog-title'),
+  exportDialogCancel: document.getElementById('export-dialog-cancel'),
   invite: document.getElementById('invite'),
   people: document.getElementById('people'),
   passkeys: document.getElementById('passkeys'),
@@ -225,6 +242,7 @@ const pending = [];
 const mediaUrls = new Map();
 const mediaLoads = new Map();
 let mediaEpoch = 0;
+let pendingKeptLogId = null;
 
 const state = {
   items: [],
@@ -361,7 +379,27 @@ function applyChrome() {
   syncLocalePicker(el.locale);
   syncStaticAssetsPicker();
   paintStaticAssetsStatus();
-  el.exportLog.textContent = msg('exportLog');
+  el.exportLabel.textContent = msg('exportLog');
+  el.exportJson.textContent = msg('exportJson');
+  el.exportMarkdown.textContent = msg('exportMarkdown');
+  el.exportEpub.textContent = msg('exportEpub');
+  el.exportPrint.textContent = msg('exportPrint');
+  if (el.exportDialogTitle) {
+    el.exportDialogTitle.textContent = msg('exportEndedTitle');
+  }
+  for (const button of el.exportDialog?.querySelectorAll('[data-export-format]') ?? []) {
+    const format = button.dataset.exportFormat;
+    if (format === 'json') {
+      button.textContent = msg('exportJson');
+    } else if (format === 'markdown') {
+      button.textContent = msg('exportMarkdown');
+    } else if (format === 'epub') {
+      button.textContent = msg('exportEpub');
+    } else if (format === 'print') {
+      button.textContent = msg('exportPrint');
+    }
+  }
+  el.exportDialogCancel.textContent = msg('cancel');
   el.people.textContent = msg('people');
   el.passkeys.textContent = msg('passkeys');
   el.passkeysTitle.textContent = msg('passkeys');
@@ -1441,7 +1479,14 @@ async function loadAppShell() {
 function captureAppElements() {
   el.app = document.getElementById('app');
   el.status = document.getElementById('status');
-  el.exportLog = document.getElementById('export-log');
+  el.exportLabel = document.getElementById('export-label');
+  el.exportJson = document.getElementById('export-json');
+  el.exportMarkdown = document.getElementById('export-markdown');
+  el.exportEpub = document.getElementById('export-epub');
+  el.exportPrint = document.getElementById('export-print');
+  el.exportDialog = document.getElementById('export-dialog');
+  el.exportDialogTitle = document.getElementById('export-dialog-title');
+  el.exportDialogCancel = document.getElementById('export-dialog-cancel');
   el.people = document.getElementById('people');
   el.passkeys = document.getElementById('passkeys');
   el.passkeysDialog = document.getElementById('passkeys-dialog');
@@ -1649,9 +1694,27 @@ function bindAppEvents() {
       sendMessage();
     }
   });
-  el.exportLog.addEventListener('click', () => {
-    setSettingsOpen(false);
-    exportLog();
+  for (const [id, format] of [
+    ['exportJson', 'json'],
+    ['exportMarkdown', 'markdown'],
+    ['exportEpub', 'epub'],
+    ['exportPrint', 'print'],
+  ]) {
+    el[id]?.addEventListener('click', () => {
+      setSettingsOpen(false);
+      const printWindow = format === 'print' ? openPrintWindow() : null;
+      void exportActiveConversation(format, printWindow);
+    });
+  }
+  el.exportDialog?.addEventListener('click', onExportDialogClick);
+  el.exportDialog?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    pendingKeptLogId = null;
+    el.exportDialog.close();
+  });
+  el.exportDialogCancel?.addEventListener('click', () => {
+    pendingKeptLogId = null;
+    el.exportDialog.close();
   });
   el.settings.addEventListener('click', onSettingsClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
@@ -1934,12 +1997,11 @@ function showConversationList(conversations) {
 
 async function openConversation(conversation) {
   if (!conversation.active) {
-    const response = await api(`/api/logs/${conversation.id}`);
-    if (!response.ok) {
-      throw new RequestError(await readServerError(response), response.status);
+    pendingKeptLogId = conversation.id;
+    if (el.exportDialogTitle) {
+      el.exportDialogTitle.textContent = msg('exportEndedTitle');
     }
-    const body = await response.json();
-    downloadTextFile(body.filename, body.text);
+    el.exportDialog?.showModal();
     return;
   }
   const response = await api('/api/session?open=active');
@@ -2378,31 +2440,260 @@ function onNewChatDialogCancel(event) {
   settleNewChatChoice?.('cancel');
 }
 
-async function exportLog() {
+function exportLabels() {
+  return {
+    user: msg('exportRoleUser'),
+    assistant: msg('exportRoleAssistant'),
+    tool: msg('exportRoleTool'),
+    notice: msg('exportRoleNotice'),
+    attachments: msg('exportAttachments'),
+    images: msg('exportImages'),
+    fileOmitted: msg('exportFileOmitted'),
+  };
+}
+
+function exportMeta({ agent, model, exportedAt = new Date() }) {
+  const stamp = exportedAt instanceof Date ? exportedAt.toISOString() : exportedAt;
+  return { agent, model, exportedAt: stamp };
+}
+
+async function exportActiveConversation(format, printWindow) {
   if (state.items.length === 0 || state.exporting) {
+    closePrintWindow(printWindow);
+    return;
+  }
+  await runExport(format, state.items, { agent: state.agent, model: state.model }, printWindow);
+}
+
+function onExportDialogClick(event) {
+  const button = event.target.closest('[data-export-format]');
+  if (!button || !pendingKeptLogId) {
+    return;
+  }
+  const logId = pendingKeptLogId;
+  const format = button.dataset.exportFormat;
+  pendingKeptLogId = null;
+  el.exportDialog?.close();
+  const printWindow = format === 'print' ? openPrintWindow() : null;
+  void exportKeptConversation(logId, format, printWindow);
+}
+
+async function exportKeptConversation(logId, format, printWindow) {
+  if (state.exporting) {
+    closePrintWindow(printWindow);
     return;
   }
   state.exporting = true;
-  el.exportLog.disabled = true;
   try {
-    await exportConversationLog(state.items, { agent: state.agent, model: state.model });
+    if (format === 'json') {
+      const response = await api(`/api/logs/${logId}`);
+      if (!response.ok) {
+        throw new RequestError(await readServerError(response), response.status);
+      }
+      const body = await response.json();
+      await shareOrDownloadText(body.filename, body.text, 'application/json;charset=utf-8');
+      return;
+    }
+    const response = await api(`/api/logs/${logId}?format=source`);
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const body = await response.json();
+    const labels = exportLabels();
+    const meta = exportMeta({ agent: body.agent, model: body.model, exportedAt: body.exportedAt });
+    if (format === 'print') {
+      await exportPrintView(body.items, meta, labels, printWindow);
+      return;
+    }
+    const when = body.exportedAt ? new Date(body.exportedAt) : new Date();
+    if (format === 'markdown') {
+      const text = formatConversationLogMarkdown(body.items, meta, labels);
+      await shareOrDownloadText(conversationMarkdownFilename(when), text, 'text/markdown;charset=utf-8');
+      return;
+    }
+    if (format === 'epub') {
+      const bytes = await buildConversationEpubAsync(body.items, meta, labels);
+      await shareOrDownloadBytes(conversationEpubFilename(when), bytes, 'application/epub+zip');
+    }
   } catch (error) {
+    closePrintWindow(printWindow);
     if (error?.name !== 'AbortError') {
       setStatus(() => error.message || msg('exportFailed'));
     }
   } finally {
     state.exporting = false;
-    el.exportLog.disabled = state.items.length === 0;
+    setExportButtonsDisabled(state.items.length === 0);
+  }
+}
+
+async function runExport(format, items, { agent, model, exportedAt }, printWindow) {
+  state.exporting = true;
+  setExportButtonsDisabled(true);
+  try {
+    const when = exportedAt ? new Date(exportedAt) : new Date();
+    const meta = exportMeta({ agent, model, exportedAt: when });
+    const labels = exportLabels();
+    if (format === 'json') {
+      const text = formatConversationLog(items, meta);
+      await shareOrDownloadText(conversationLogFilename(when), text, 'application/json;charset=utf-8');
+      return;
+    }
+    if (format === 'markdown') {
+      const text = formatConversationLogMarkdown(items, meta, labels);
+      await shareOrDownloadText(conversationMarkdownFilename(when), text, 'text/markdown;charset=utf-8');
+      return;
+    }
+    if (format === 'epub') {
+      const bytes = await buildConversationEpubAsync(items, meta, labels);
+      await shareOrDownloadBytes(conversationEpubFilename(when), bytes, 'application/epub+zip');
+      return;
+    }
+    if (format === 'print') {
+      await exportPrintView(items, meta, labels, printWindow);
+      return;
+    }
+  } catch (error) {
+    closePrintWindow(printWindow);
+    if (error?.name !== 'AbortError') {
+      setStatus(() => error.message || msg('exportFailed'));
+    }
+  } finally {
+    state.exporting = false;
+    setExportButtonsDisabled(state.items.length === 0);
   }
 }
 
 async function exportConversationLog(items, { agent, model }) {
-  const exportedAt = new Date();
-  const text = formatConversationLog(items, { agent, model, exportedAt: exportedAt.toISOString() });
-  const filename = conversationLogFilename(exportedAt);
-  const file = new File([text], filename, { type: 'application/json;charset=utf-8' });
+  await runExport('json', items, { agent, model });
+}
+
+async function buildConversationEpubAsync(items, meta, labels) {
+  const cache = new Map();
+  for (const id of mediaIdsInItems(items)) {
+    const response = await api(`/api/media/${id}`);
+    if (!response.ok) {
+      continue;
+    }
+    const blob = await response.blob();
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const name = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'image';
+    cache.set(id, { bytes, mime: blob.type, name });
+  }
+  return buildConversationEpub(items, meta, (mediaId) => cache.get(mediaId) ?? null, {
+    renderMarkdown,
+    labels,
+  });
+}
+
+async function buildImageHrefs(items) {
+  const map = new Map();
+  const seen = new Set();
+  for (const item of items) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    for (const list of [item.attachments, item.images]) {
+      if (!Array.isArray(list)) {
+        continue;
+      }
+      for (const file of list) {
+        if (!file?.id || !file?.name) {
+          continue;
+        }
+        const key = `${file.id}:${file.name}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        try {
+          const response = await api(`/api/media/${file.id}`);
+          if (!response.ok) {
+            continue;
+          }
+          const blob = await response.blob();
+          if (!blob.type.startsWith('image/')) {
+            continue;
+          }
+          map.set(key, await blobToDataUrl(blob));
+        } catch (error) {
+          if (error instanceof SessionEndedError || error instanceof AuthError) {
+            throw error;
+          }
+        }
+      }
+    }
+  }
+  return map;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function openPrintWindow() {
+  const view = window.open('', '_blank');
+  if (!view) {
+    return null;
+  }
+  try {
+    view.opener = null;
+  } catch {
+    // The blank document is same-origin. Ignore a browser that refuses.
+  }
+  return view;
+}
+
+function closePrintWindow(view) {
+  if (view && !view.closed) {
+    view.close();
+  }
+}
+
+async function exportPrintView(items, meta, labels, printWindow) {
+  const imageHrefs = await buildImageHrefs(items);
+  const html = buildPrintHtmlDocument(items, meta, {
+    renderMarkdown,
+    imageHrefs,
+    labels,
+    printHint: msg('exportPrintHint'),
+  });
+  const when = meta.exportedAt ? new Date(meta.exportedAt) : new Date();
+  if (!printWindow || printWindow.closed) {
+    await shareOrDownloadText(conversationPrintFilename(when), html, 'text/html;charset=utf-8');
+    setStatus(() => msg('exportPrintBlocked'));
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  try {
+    printWindow.opener = null;
+  } catch {
+    // The written document is still ours.
+  }
+  let printed = false;
+  const trigger = () => {
+    if (printed || printWindow.closed) {
+      return;
+    }
+    printed = true;
+    printWindow.focus();
+    printWindow.print();
+  };
+  printWindow.addEventListener('load', trigger, { once: true });
+  if (printWindow.document.readyState === 'complete') {
+    trigger();
+  }
+}
+
+async function shareOrDownloadText(filename, text, mime) {
+  const file = new File([text], filename, { type: mime });
   if (typeof navigator.share === 'function') {
-    // iOS Save to Files writes title as a second .txt whose body is that string.
     const payload = navigator.canShare?.({ files: [file] }) ? { files: [file] } : { title: filename, text };
     if (!navigator.canShare || navigator.canShare(payload)) {
       try {
@@ -2415,11 +2706,26 @@ async function exportConversationLog(items, { agent, model }) {
       }
     }
   }
-  downloadTextFile(filename, text);
+  downloadTextFile(filename, text, mime);
 }
 
-function downloadTextFile(filename, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
+async function shareOrDownloadBytes(filename, bytes, mime) {
+  const file = new File([bytes], filename, { type: mime });
+  if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw error;
+      }
+    }
+  }
+  downloadBytesFile(filename, bytes, mime);
+}
+
+function downloadTextFile(filename, text, mime = 'application/json;charset=utf-8') {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
@@ -2428,6 +2734,26 @@ function downloadTextFile(filename, text) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadBytesFile(filename, bytes, mime) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function setExportButtonsDisabled(disabled) {
+  for (const node of [el.exportJson, el.exportMarkdown, el.exportEpub, el.exportPrint]) {
+    if (node) {
+      node.disabled = disabled;
+    }
+  }
 }
 
 function restoreDraft(text, files = []) {
@@ -2709,7 +3035,7 @@ function render() {
   reconcileTranscript(el.transcript, state.nodes, state.items);
 
   el.empty.hidden = state.items.length > 0;
-  el.exportLog.disabled = state.items.length === 0 || state.exporting;
+  setExportButtonsDisabled(state.items.length === 0 || state.exporting);
   if (stick) {
     el.messages.scrollTop = el.messages.scrollHeight;
   }

@@ -18,7 +18,7 @@ test('strips NUL characters so placeholders cannot be spoofed', () => {
 });
 
 test('renders paragraphs and soft line breaks', () => {
-  assert.equal(renderMarkdown('one\ntwo\n\nthree'), '<p>one<br>two</p><p>three</p>');
+  assert.equal(renderMarkdown('one\ntwo\n\nthree'), '<p>one<br />two</p><p>three</p>');
 });
 
 test('renders emphasis, strikethrough, and inline code', () => {
@@ -47,8 +47,8 @@ test('keeps an unterminated fence open until the end of the input', () => {
 test('renders headings, rules, quotes, and lists', () => {
   assert.equal(renderMarkdown('# Title'), '<h3>Title</h3>');
   assert.equal(renderMarkdown('### Deep ###'), '<h5>Deep</h5>');
-  assert.equal(renderMarkdown('---'), '<hr>');
-  assert.equal(renderMarkdown('> quoted\n> more'), '<blockquote><p>quoted<br>more</p></blockquote>');
+  assert.equal(renderMarkdown('---'), '<hr />');
+  assert.equal(renderMarkdown('> quoted\n> more'), '<blockquote><p>quoted<br />more</p></blockquote>');
   assert.equal(
     renderMarkdown('- one\n- two\n\n1. first\n2. second'),
     '<ul><li>one</li><li>two</li></ul><ol><li>first</li><li>second</li></ol>',

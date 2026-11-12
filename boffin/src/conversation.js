@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { itemsReferenceMediaId } from '../shared/log-items.js';
 import { applyOp } from '../shared/transcript.js';
 import { runAgent as runAgentProcess } from './agent.js';
 import {
@@ -149,6 +150,18 @@ export class Conversation {
 
   readMedia(id) {
     return this.media.read(id);
+  }
+
+  canReadMedia(personId, mediaId, isOwner = false) {
+    if (isOwner || this.isMember(personId)) {
+      return Boolean(this.readMedia(mediaId));
+    }
+    for (const record of this.kept) {
+      if (record.personIds.includes(personId) && itemsReferenceMediaId(record.items, mediaId)) {
+        return Boolean(this.readMedia(mediaId));
+      }
+    }
+    return false;
   }
 
   // Starts one agent run. `emit` receives each transcript operation as it is applied.

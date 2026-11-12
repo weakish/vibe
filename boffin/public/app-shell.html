@@ -52,7 +52,13 @@
                 <div class="theme-picker" id="static-assets" role="radiogroup" aria-labelledby="static-assets-label"></div>
                 <p class="status" id="static-assets-status" role="status" hidden></p>
               </div>
-              <button type="button" class="menu-action" id="export-log" disabled>Export</button>
+              <div class="menu-field" id="export-field">
+                <span id="export-label">Export</span>
+                <button type="button" class="menu-action" id="export-json" disabled>JSON</button>
+                <button type="button" class="menu-action" id="export-markdown" disabled>Markdown</button>
+                <button type="button" class="menu-action" id="export-epub" disabled>EPUB</button>
+                <button type="button" class="menu-action" id="export-print" disabled>Print / PDF</button>
+              </div>
               <button type="button" class="menu-action" id="people" hidden>Members</button>
               <button type="button" class="menu-action" id="passkeys" hidden>Passkeys</button>
               <button type="button" class="menu-action" id="log-out">Log out</button>
@@ -142,6 +148,19 @@
         <p class="status-line" id="passkeys-status" role="status"></p>
         <button type="button" class="primary-button" id="passkey-add">Add passkey</button>
         <button type="button" class="ghost-button" id="passkeys-close">Cancel</button>
+      </div>
+    </dialog>
+
+    <dialog class="sheet" id="export-dialog" aria-labelledby="export-dialog-title">
+      <div class="login-card">
+        <h2 id="export-dialog-title">Export conversation</h2>
+        <div class="sheet-actions">
+          <button type="button" class="menu-action" data-export-format="json">JSON</button>
+          <button type="button" class="menu-action" data-export-format="markdown">Markdown</button>
+          <button type="button" class="menu-action" data-export-format="epub">EPUB</button>
+          <button type="button" class="menu-action" data-export-format="print">Print / PDF</button>
+          <button type="button" class="ghost-button" id="export-dialog-cancel">Cancel</button>
+        </div>
       </div>
     </dialog>
 
