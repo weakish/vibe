@@ -3,7 +3,6 @@
         <div class="title-block">
           <h1 class="title">Boffin</h1>
           <p class="people" id="people-line" hidden></p>
-          <p class="usage" id="usage-line" hidden></p>
         </div>
         <div class="topbar-actions">
           <div class="settings-host">
@@ -45,8 +44,8 @@
                 <div class="lang-picker" id="locale" role="radiogroup" aria-labelledby="locale-label" aria-orientation="vertical"></div>
               </div>
               <div class="menu-field" id="usage-field" hidden>
-                <span id="usage-label">Usage</span>
-                <p class="usage-value" id="usage-status" role="status"></p>
+                <p class="status" id="usage-refresh-status" role="status" hidden></p>
+                <button type="button" class="menu-action" id="usage-refresh" hidden>Refresh</button>
               </div>
               <div class="menu-field" id="static-assets-field" hidden>
                 <span id="static-assets-label">Static assets</span>
@@ -61,6 +60,20 @@
             </div>
           </div>
           <button type="button" class="pill-button" id="new-chat">New chat</button>
+        </div>
+        <div class="usage" id="usage-line" hidden>
+          <div
+            class="usage-bar"
+            id="usage-bar"
+            role="meter"
+            tabindex="0"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-label="Usage"
+          >
+            <span class="usage-bar-fill" id="usage-bar-fill"></span>
+          </div>
+          <p class="usage-tip" id="usage-tip" aria-hidden="true"></p>
         </div>
       </header>
 

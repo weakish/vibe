@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok ميڠݢوان {percent}%',
     grokMonthlyQuota: 'Grok بولنن {percent}%',
     grokUsageUnavailable: 'ڤڠݢوناءن Grok ايندا تساديا.',
+    grokUsageRefresh: 'موات سمولا',
+    grokUsageRefreshing: 'تهاڤ موات سمولا…',
+    grokUsageRefreshFailed: 'تيدق داڤت موات سمولا ڤڠݢوناءن Grok.',
     inviteOnly: 'ڤد فاس اين، Boffin هاڽ ملليوي جمڤتن.',
   };

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { buildCursorArgs } from './backends.js';
 
 const STDERR_LIMIT = 8 * 1024;
 export const KILL_GRACE_MS = 5000;
@@ -8,26 +9,7 @@ export const KILL_GRACE_MS = 5000;
 // `--image` is a hidden CLI flag. It is repeatable and must come before `--`,
 // because everything after the separator is the prompt.
 export function buildAgentArgs({ model, force, resumeId, prompt, imagePaths = [] }) {
-  const args = [
-    '--print',
-    '--output-format',
-    'stream-json',
-    '--stream-partial-output',
-    '--trust',
-    '--model',
-    model,
-  ];
-  if (force) {
-    args.push('--force');
-  }
-  if (resumeId) {
-    args.push('--resume', resumeId);
-  }
-  for (const imagePath of imagePaths) {
-    args.push('--image', imagePath);
-  }
-  args.push('--', prompt);
-  return args;
+  return buildCursorArgs({ spec: { cli: model }, force, resumeId, prompt, imagePaths });
 }
 
 // Spawns the CLI without a shell and invokes onEvent for each parsed NDJSON line.

@@ -96,9 +96,12 @@ const el = {
   logOut: document.getElementById('log-out'),
   peopleLine: document.getElementById('people-line'),
   usageLine: document.getElementById('usage-line'),
+  usageBar: document.getElementById('usage-bar'),
+  usageFill: document.getElementById('usage-bar-fill'),
+  usageTip: document.getElementById('usage-tip'),
   usageField: document.getElementById('usage-field'),
-  usageLabel: document.getElementById('usage-label'),
-  usageStatus: document.getElementById('usage-status'),
+  usageRefreshStatus: document.getElementById('usage-refresh-status'),
+  usageRefresh: document.getElementById('usage-refresh'),
   peopleDialog: document.getElementById('people-dialog'),
   peopleTitle: document.getElementById('people-title'),
   peopleMembers: document.getElementById('people-members'),
@@ -272,6 +275,7 @@ let grokUsage = null;
 let grokUsageLoaded = false;
 let grokUsageRefresh = null;
 let grokUsageGeneration = 0;
+let grokUsageFetchInFlight = false;
 let demoLocale = locale;
 let demoLocaleChangeGeneration = 0;
 let demoTheme = theme;
@@ -346,7 +350,12 @@ function applyChrome() {
   syncThemePicker(el.theme);
   syncSizePicker(el.size);
   el.localeLabel.textContent = msg('language');
-  el.usageLabel.textContent = msg('usage');
+  if (el.usageBar) {
+    el.usageBar.setAttribute('aria-label', msg('usage'));
+  }
+  if (el.usageRefresh) {
+    el.usageRefresh.textContent = msg('grokUsageRefresh');
+  }
   paintUsage();
   el.staticAssetsLabel.textContent = msg('staticAssets');
   syncLocalePicker(el.locale);
@@ -728,11 +737,17 @@ function resetGrokUsage() {
   grokUsageRefresh = null;
   grokUsage = null;
   grokUsageLoaded = false;
+  grokUsageFetchInFlight = false;
   paintUsage();
 }
 
 function requestGrokUsage({ fresh = false } = {}) {
   if (!sessionToken) {
+    return;
+  }
+  // A refresh owns the quota line until it finishes. Opening Settings (a
+  // fresh poll) must not drop that result for a cached GET.
+  if (grokUsageFetchInFlight) {
     return;
   }
   if (fresh) {
@@ -743,12 +758,13 @@ function requestGrokUsage({ fresh = false } = {}) {
     return;
   }
   const generation = grokUsageGeneration;
-  grokUsageRefresh = fetchGrokUsage(generation, fresh).finally(() => {
-    if (grokUsageGeneration === generation) {
+  const request = fetchGrokUsage(generation, fresh).finally(() => {
+    if (grokUsageRefresh === request) {
       grokUsageRefresh = null;
     }
   });
-  grokUsageRefresh.catch(handleFailure);
+  grokUsageRefresh = request;
+  request.catch(handleFailure);
 }
 
 async function fetchGrokUsage(generation, fresh) {
@@ -773,37 +789,119 @@ function usageText(entry) {
   if (!entry.available) {
     return msg('grokUsageUnavailable');
   }
-  const percent = String(Math.round(entry.percent));
-  if (entry.period === 'monthly') {
-    return msg('grokMonthlyQuota', { percent });
+  const percent = Number(entry.percent);
+  if (!Number.isFinite(percent)) {
+    return msg('grokUsageUnavailable');
   }
-  return msg('grokWeeklyQuota', { percent });
+  const rounded = String(Math.round(percent));
+  if (entry.period === 'monthly') {
+    return msg('grokMonthlyQuota', { percent: rounded });
+  }
+  return msg('grokWeeklyQuota', { percent: rounded });
+}
+
+function usageTip(entry) {
+  const text = usageText(entry);
+  if (!entry.available || !entry.resetsAt) {
+    return text;
+  }
+  const reset = new Date(entry.resetsAt);
+  if (Number.isNaN(reset.getTime())) {
+    return text;
+  }
+  return `${text}\n${reset.toLocaleString(locale)}`;
+}
+
+function setUsageRefreshStatus(text) {
+  if (!el.usageRefreshStatus) {
+    return;
+  }
+  el.usageRefreshStatus.textContent = text;
+  el.usageRefreshStatus.hidden = !text;
 }
 
 function paintUsage() {
-  if (!el.usageField) {
+  if (!el.usageField || !el.usageLine || !el.usageBar || !el.usageFill || !el.usageTip) {
     return;
   }
   const show = grokUsageLoaded && grokUsage !== null;
   el.usageField.hidden = !show;
   el.usageLine.hidden = !show;
+  if (el.usageRefresh) {
+    el.usageRefresh.hidden = !show;
+    el.usageRefresh.disabled = grokUsageFetchInFlight;
+  }
   if (!show) {
-    el.usageStatus.textContent = '';
-    el.usageLine.textContent = '';
-    el.usageLine.removeAttribute('title');
+    el.usageTip.textContent = '';
+    el.usageFill.style.width = '0';
+    el.usageBar.removeAttribute('aria-valuenow');
+    el.usageBar.removeAttribute('aria-valuetext');
+    setUsageRefreshStatus('');
     return;
   }
-  const text = usageText(grokUsage);
-  el.usageStatus.textContent = text;
-  el.usageLine.textContent = text;
-  if (grokUsage.available && grokUsage.resetsAt) {
-    const reset = new Date(grokUsage.resetsAt);
-    if (!Number.isNaN(reset.getTime())) {
-      el.usageLine.title = reset.toLocaleString(locale);
-    }
-  } else {
-    el.usageLine.removeAttribute('title');
+  const tip = usageTip(grokUsage);
+  el.usageTip.textContent = tip;
+  el.usageBar.setAttribute('aria-valuetext', tip.replaceAll('\n', ', '));
+  el.usageBar.setAttribute('aria-valuemin', '0');
+  if (grokUsage.available && Number.isFinite(Number(grokUsage.percent))) {
+    const percent = Number(grokUsage.percent);
+    const rounded = Math.max(0, Math.round(percent));
+    el.usageFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    el.usageBar.setAttribute('aria-valuemax', String(Math.max(100, rounded)));
+    el.usageBar.setAttribute('aria-valuenow', String(rounded));
+    return;
   }
+  el.usageFill.style.width = '0';
+  el.usageBar.setAttribute('aria-valuemax', '100');
+  el.usageBar.setAttribute('aria-valuenow', '0');
+}
+
+async function refreshGrokUsageFromServer() {
+  if (!sessionToken || grokUsageFetchInFlight) {
+    return;
+  }
+  grokUsageFetchInFlight = true;
+  grokUsageGeneration += 1;
+  grokUsageRefresh = null;
+  const generation = grokUsageGeneration;
+  setUsageRefreshStatus(msg('grokUsageRefreshing'));
+  paintUsage();
+  try {
+    const response = await api('/api/usage/refresh', { method: 'POST' });
+    if (generation !== grokUsageGeneration) {
+      response.body?.cancel()?.catch(() => {});
+      return;
+    }
+    if (!response.ok) {
+      const message = await readServerError(response);
+      if (generation !== grokUsageGeneration) {
+        return;
+      }
+      setUsageRefreshStatus(translateError(locale, message) || msg('grokUsageRefreshFailed'));
+      return;
+    }
+    const body = await response.json();
+    if (generation !== grokUsageGeneration) {
+      return;
+    }
+    grokUsage = body.grok ?? null;
+    grokUsageLoaded = true;
+    setUsageRefreshStatus('');
+  } catch (error) {
+    if (generation !== grokUsageGeneration) {
+      return;
+    }
+    setUsageRefreshStatus(failureMessage(error));
+  } finally {
+    if (generation === grokUsageGeneration) {
+      grokUsageFetchInFlight = false;
+      paintUsage();
+    }
+  }
+}
+
+function onUsageRefreshClick() {
+  refreshGrokUsageFromServer().catch(handleFailure);
 }
 
 function resetStaticAssets() {
@@ -1356,9 +1454,12 @@ function captureAppElements() {
   el.logOut = document.getElementById('log-out');
   el.peopleLine = document.getElementById('people-line');
   el.usageLine = document.getElementById('usage-line');
+  el.usageBar = document.getElementById('usage-bar');
+  el.usageFill = document.getElementById('usage-bar-fill');
+  el.usageTip = document.getElementById('usage-tip');
   el.usageField = document.getElementById('usage-field');
-  el.usageLabel = document.getElementById('usage-label');
-  el.usageStatus = document.getElementById('usage-status');
+  el.usageRefreshStatus = document.getElementById('usage-refresh-status');
+  el.usageRefresh = document.getElementById('usage-refresh');
   el.conversationList = document.getElementById('conversation-list');
   el.conversationListTitle = document.getElementById('conversation-list-title');
   el.conversationEntries = document.getElementById('conversation-entries');
@@ -1553,6 +1654,7 @@ function bindAppEvents() {
     exportLog();
   });
   el.settings.addEventListener('click', onSettingsClick);
+  el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
   el.newChat.addEventListener('click', newChat);
   el.newChatDialog.addEventListener('click', onNewChatDialogClick);
   el.newChatDialog.addEventListener('cancel', onNewChatDialogCancel);
@@ -2145,7 +2247,12 @@ function agentEntry(id) {
 }
 
 function defaultModelFor(agentId) {
-  return agentEntry(agentId)?.models?.[0]?.id ?? '';
+  const entry = agentEntry(agentId);
+  const models = entry?.models ?? [];
+  if (entry?.defaultModel && models.some((model) => model.id === entry.defaultModel)) {
+    return entry.defaultModel;
+  }
+  return models[0]?.id ?? '';
 }
 
 function prepareNewChatPickers() {
@@ -2153,7 +2260,7 @@ function prepareNewChatPickers() {
   const fallback = catalog[0]?.id ?? 'cursor';
   state.draftAgent = agentEntry(state.agent)?.id ?? fallback;
   const models = agentEntry(state.draftAgent)?.models ?? [];
-  state.draftModel = models.some((entry) => entry.id === state.model) ? state.model : (models[0]?.id ?? '');
+  state.draftModel = models.some((entry) => entry.id === state.model) ? state.model : defaultModelFor(state.draftAgent);
   el.newChatAgentField.hidden = catalog.length < 2;
   fillAgentPicker();
   fillModelPicker();

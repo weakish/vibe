@@ -1,8 +1,11 @@
 {
   "host": "0.0.0.0",
   "port": 8080,
+  "agents": ["cursor"],
   "model": "composer-2.5",
+  "grok_model": "grok-4.7/high",
   "agent_bin": "agent",
+  "grok_bin": "grok",
   "bun_bin": "bun",
   "force": true,
   "username": "your-username",

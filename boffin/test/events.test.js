@@ -122,7 +122,7 @@ test('finishOps reports cancellation, spawn failures, and crashes without duplic
 
   const spawnFailure = finishOps({ error: new Error('spawn agent ENOENT'), code: null, signal: null, stderr: '' }, createRunState());
   assert.equal(spawnFailure[0].item.level, 'error');
-  assert.match(spawnFailure[0].item.text, /Could not start the Cursor CLI: spawn agent ENOENT/);
+  assert.match(spawnFailure[0].item.text, /Could not start the agent CLI: spawn agent ENOENT/);
 
   const crashed = finishOps(
     { code: 2, signal: null, stderr: 'warming up\n\u001b[31mError: connection reset\u001b[0m\n' },
@@ -191,6 +191,77 @@ test('turns a malformed agent line into one error notice', () => {
   assert.equal(items[0].role, 'notice');
   assert.equal(items[0].level, 'error');
   assert.match(items[0].text, /could not read/);
+});
+
+test('maps Grok streaming-json text and end events', () => {
+  const { items, state } = replay([
+    { type: 'text', data: 'Hel' },
+    { type: 'text', data: 'lo' },
+    { type: 'end', sessionId: 'grok-sess' },
+  ]);
+  assert.equal(state.chatId, 'grok-sess');
+  assert.equal(state.sawResult, true);
+  assert.deepEqual(
+    items.map((item) => [item.role, item.text]),
+    [['assistant', 'Hello']],
+  );
+});
+
+test('maps Grok tool calls and keeps an image from the tool content', () => {
+  const { items } = replay([
+    {
+      type: 'tool_call',
+      toolCallId: 'call_1',
+      title: 'Read',
+      status: 'in_progress',
+      toolName: 'read_file',
+      rawInput: { path: 'src/main.js' },
+    },
+    {
+      type: 'tool_call_update',
+      toolCallId: 'call_1',
+      status: 'completed',
+      content: [{ type: 'image', data: 'abc' }],
+    },
+  ]);
+  assert.equal(items[0].name, 'Read');
+  assert.equal(items[0].summary, 'src/main.js');
+  assert.equal(items[0].status, 'done');
+  assert.deepEqual(items[0].images, [{ name: 'image', data: 'abc', filePath: '' }]);
+});
+
+test('marks a failed Grok tool call as an error', () => {
+  const { items } = replay([
+    { type: 'tool_call', toolCallId: 'call_2', toolName: 'shell', status: 'failed', rawInput: { command: 'nope' } },
+  ]);
+  assert.equal(items[0].name, 'Shell');
+  assert.equal(items[0].summary, 'nope');
+  assert.equal(items[0].status, 'error');
+});
+
+test('reports a Grok stop reason and prefers a user stop over an error event', () => {
+  const limited = replay([
+    { type: 'text', data: 'Hi' },
+    { type: 'end', stopReason: 'max_tokens', sessionId: 's' },
+  ]);
+  assert.equal(limited.state.sawResult, true);
+  assert.equal(limited.items.at(-1).text, 'The agent stopped (max tokens).');
+
+  const failed = createRunState();
+  eventToOps({ type: 'error', message: "Couldn't start session: nope" }, failed);
+  eventToOps({ type: 'end', sessionId: 's' }, failed);
+  assert.equal(failed.sawResult, false);
+  assert.deepEqual(
+    finishOps({ code: 1, signal: null, stderr: 'late' }, failed).map((op) => op.item.text),
+    ["Couldn't start session: nope"],
+  );
+
+  const stopped = createRunState();
+  eventToOps({ type: 'end', stopReason: 'cancelled', sessionId: 's' }, stopped);
+  assert.deepEqual(
+    finishOps({ code: null, signal: 'SIGTERM', stderr: '' }, stopped, { cancelled: true }).map((op) => op.item.text),
+    ['Stopped.'],
+  );
 });
 
 test('ignores unknown event types and malformed shapes', () => {

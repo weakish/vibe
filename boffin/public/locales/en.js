@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok weekly {percent}%',
     grokMonthlyQuota: 'Grok monthly {percent}%',
     grokUsageUnavailable: 'Grok usage is not available.',
+    grokUsageRefresh: 'Refresh',
+    grokUsageRefreshing: 'Refreshing…',
+    grokUsageRefreshFailed: 'Could not refresh Grok usage.',
     inviteOnly: 'At this phase, Boffin is invite-only.',
   };

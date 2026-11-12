@@ -1,8 +1,8 @@
 # Boffin
 
-A mobile-friendly chat web UI for the Cursor Agent CLI (`agent`), bound to a fixed working directory and model. You chat with the agent from your browser; it reads, edits, and commits files in its working directory on the machine Boffin runs on.
+A mobile-friendly chat web UI for the Cursor Agent CLI (`agent`) and/or the Grok CLI (`grok`), bound to a fixed working directory. You chat with the chosen agent from your browser; it reads, edits, and commits files in its working directory on the machine Boffin runs on.
 
-> **Know what you are running.** Boffin spawns `agent --force` (see `src/agent.js`) as the user running the server. The agent can run commands and edit any file that user can touch — including, if the working directory is this repository, Boffin's own source. Run it as a dedicated unprivileged user (production does; see below), on a machine (or directory) you are comfortable letting an agent modify. See [Security model](#security-model).
+> **Know what you are running.** Boffin spawns the CLI with auto-approve on by default (`agent --force` or `grok --always-approve`; see `src/backends.js`) as the user running the server. The agent can run commands and edit any file that user can touch — including, if the working directory is this repository, Boffin's own source. Run it as a dedicated unprivileged user (production does; see below), on a machine (or directory) you are comfortable letting an agent modify. See [Security model](#security-model).
 
 ## How it works
 
@@ -10,22 +10,25 @@ A mobile-friendly chat web UI for the Cursor Agent CLI (`agent`), bound to a fix
 flowchart LR
     Browser["Browser"] -->|"HTTPS"| Proxy["Reverse proxy (production)"]
     Proxy -->|"127.0.0.1:8080 plain HTTP + X-Forwarded-For"| Boffin["Boffin (Node.js, zero dependencies)"]
-    Boffin -->|"spawns agent --force"| Agent["Cursor Agent CLI"]
+    Boffin -->|"spawns agent --force or grok --always-approve"| Agent["Cursor and/or Grok CLI"]
     Agent -->|"edits and commits"| Workdir["Working directory"]
 ```
 
 - The server (`src/index.js`, `src/server.js`) serves the web UI, authenticates users with passkeys, and streams agent replies to the browser.
-- Each chat message runs the Cursor Agent CLI in the configured working directory with the configured model (`src/agent.js`, `src/conversation.js`). Conversation state is persisted to a JSON state file in the working directory.
+- Each chat message runs the chosen CLI in the configured working directory with the chosen first-party model (`src/backends.js`, `src/conversation.js`). Conversation state is persisted to a JSON state file in the working directory. When both CLIs are enabled, the owner picks Cursor or Grok (and a model) when starting a new chat. When Grok is enabled, the header shows that account's quota as a thin bar. The percentage text appears only while the pointer is over the bar. The figure comes from Grok Build's local log (the snapshot it stores when it fetches billing). Current Cursor plans share that pool with Grok, so the same bar is shown even while the active chat is Cursor. Cursor legacy plans do not share it; their usage is a separate Cursor quota and is not shown. Anyone signed in can use **Refresh** in Settings to ask Grok Build to fetch billing again over ACP (`_x.ai/billing` on `grok agent stdio`) and then reread that log. A Cursor-only deployment has no usage display, because Cursor does not write that log. That ACP method is what the official TUI uses for `/usage`; it is not in Grok's public ACP sample, so xAI's terms do not name it. Calling it is still talking to the installed `grok` binary, not scraping grok.com. xAI could change or restrict the method, and the Grok account's terms still apply. Refresh does not drive the TUI: systemd has no terminal, and keystroke automation would only poke the same fetch, more brittle than the RPC.
 - In production, Boffin binds to loopback only and a reverse proxy (Caddy) is the sole public entry point: it terminates TLS, which passkeys require, compresses responses, and overwrites `X-Forwarded-For` so per-client rate limiting works behind the proxy (see `src/attempt-limit.js`). Boffin itself sends raw bytes and a strong ETag of those bytes so the proxy can compress without breaking 304s.
 
 ## Requirements
 
 - **Node.js ≥ 20** (see `engines` in `package.json`). Boffin has no npm dependencies, so there is nothing to install.
-- **Cursor Agent CLI** installed and authenticated for the user that will run Boffin:
+- **Cursor Agent CLI** and/or **Grok CLI** installed and authenticated for the user that will run Boffin:
   ```bash
   curl https://cursor.com/install -fsS | bash   # installs ~/.local/bin/agent
   agent login                                    # or configure an API key per Cursor's docs
   agent status                                   # verify you are signed in
+  curl -fsSL https://x.ai/cli/install.sh | bash # installs grok (also drops an `agent` symlink — keep Cursor's `~/.local/bin/agent`)
+  grok login --device-auth                       # headless/remote; follow the printed URL
+  grok --version
   ```
 - **Git**, if the agent should commit its work in the working directory (recommended).
 - For production: a **Debian 13 (trixie)** server reached by a fully qualified hostname, with an account named after your GitHub username whose SSH public-key access and git identity are already configured, and which has `sudo` (details under [Deploying to production](#deploying-to-production)). Other hosts work for local use, but the deployment skill targets this environment.
@@ -36,7 +39,7 @@ flowchart LR
 git clone <this-repository-url> boffin
 cd boffin
 cp config.example.json config.json
-# Edit config.json: set at least username, password, and model.
+# Edit config.json: set at least username and password.
 node src/index.js "$PWD"
 ```
 
@@ -57,10 +60,13 @@ Notes:
 | --- | --- | --- |
 | `host` | `0.0.0.0` | Interface to bind. Use `127.0.0.1` behind a reverse proxy. |
 | `port` | `8080` | Port to listen on. |
-| `model` | *(required; example uses `composer-2.5`)* | Model passed to `agent --model`. |
+| `agents` | `["cursor"]` | Enabled CLIs: `"cursor"`, `"grok"`, or both. |
+| `model` | *(required; example uses `composer-2.5`)* | Default first-party Cursor model (`composer-2.5`). |
+| `grok_model` | `grok-4.7/high` | Default first-party Grok model (Grok 4.7 High). |
 | `agent_bin` | `agent` | Path to the Cursor Agent CLI. Use an absolute path under systemd or other minimal environments. In production this is `/home/boffin/.local/bin/agent`. |
+| `grok_bin` | `grok` | Path to the Grok CLI. In production this is `/home/boffin/.grok/bin/grok`. Do not put `~/.grok/bin` on `PATH`: that directory also contains `agent`, which would shadow Cursor's CLI. |
 | `bun_bin` | `bun` | Bun executable used when the owner switches static assets to **release** (bundled) mode. |
-| `force` | `true` | Pass `--force` to the agent (auto-approve its actions). |
+| `force` | `true` | Auto-approve: `--force` for Cursor, `--always-approve` for Grok. |
 | `username` | *(required\*)* | Bootstrap username for first passkey enrollment. Must not contain a colon. |
 | `password` | *(required\*)* | Bootstrap password, at least 8 characters. Keep `config.json` at mode `0600`. |
 | `state_file` | `data/state.json` | Conversation/passkey state, resolved relative to the working directory. |
@@ -77,13 +83,13 @@ The deployment assumes an environment that is **already configured** — the ski
 - Your account on the server has the **same name as your GitHub username**, SSH **public-key login to `<github-username>@<hostname>` already works**, a **git identity is already configured** (locally and for that account on the server), and the account has **`sudo`**. Your GitHub username is used **only for SSH** — logging in to administer the server, and git-over-SSH pushes when deploying or upgrading the Boffin source. It is not the account the service runs as.
 - The **firewall is already configured** (on the host and/or at the provider) to permit SSH, 80, and 443. The deployment does not install, enable, or modify any firewall rules.
 
-The production topology is: **Caddy** (public 80/443, automatic Let's Encrypt TLS) → **Boffin** as a systemd service running as a dedicated **`boffin` user**, bound to `127.0.0.1:8080`, with the deployed repository at `/srv/boffin` (owned by `boffin`) as both the service's working directory and the agent's working directory. The Cursor Agent CLI is likewise installed and authenticated as `boffin` (credentials in `/home/boffin`); the deployment skill copies your pre-configured git identity to that account so the agent's commits carry it. The pre-configured firewall is left exactly as it is — the deployment adds no rules, and port 8080 needs none because Boffin is loopback-only behind Caddy. You never SSH in as `boffin` — administration is over your own account plus `sudo -u boffin`.
+The production topology is: **Caddy** (public 80/443, automatic Let's Encrypt TLS) → **Boffin** as a systemd service running as a dedicated **`boffin` user**, bound to `127.0.0.1:8080`, with the deployed repository at `/srv/boffin` (owned by `boffin`) as both the service's working directory and the agent's working directory. The chosen CLI(s) are installed and authenticated as `boffin` (credentials in `/home/boffin`); the deployment skill copies your pre-configured git identity to that account so the agent's commits carry it. The pre-configured firewall is left exactly as it is — the deployment adds no rules, and port 8080 needs none because Boffin is loopback-only behind Caddy. You never SSH in as `boffin` — administration is over your own account plus `sudo -u boffin`.
 
 Code updates are pushed over SSH as your own account into that checked-out repository (`receive.denyCurrentBranch=updateInstead`). The repo stays owned by `boffin:boffin` permanently — there is no `chown` handover — because both accounts are members of the shared **`boffin` group** and the tree is group-writable: setgid directories, `core.sharedRepository=group`, a `UMask=0002` on the service so agent-created files are group-writable, and a post-push `chmod g+w` on the files your push checked out. File ownership inside the tree is a harmless mix of the two users; the group is the permission boundary. The skill spells out the exact setup and the per-update steps.
 
 Full step-by-step deployment — precondition checks, service and proxy setup, verification, updating, rollback, and troubleshooting — is provided as an **agent skill**:
 
-- **[`.agents/skills/deploy-boffin/SKILL.md`](.agents/skills/deploy-boffin/SKILL.md)** — a generic [Agent Skill](https://agentskills.io) (not tied to any one vendor's agent). Point any skills-capable coding agent at it and tell it three things — **your GitHub username (for SSH only), your deployment server hostname, and the Cursor Agent model** — and it will deploy Boffin to your server. Human operators can also follow it as a checklist: every step is a plain shell procedure with its own verification.
+- **[`.agents/skills/deploy-boffin/SKILL.md`](.agents/skills/deploy-boffin/SKILL.md)** — a generic [Agent Skill](https://agentskills.io) (not tied to any one vendor's agent). Point any skills-capable coding agent at it and tell it three things — **your GitHub username (for SSH only), your deployment server hostname, and which agent to install (Cursor, Grok, or both)** — and it will deploy Boffin to your server. It does not ask for a model: Cursor uses Composer 2.5 and Grok uses Grok 4.7 High. Human operators can also follow it as a checklist: every step is a plain shell procedure with its own verification.
 
 Day-to-day operations after deployment (over `ssh <github-username>@<hostname>`):
 

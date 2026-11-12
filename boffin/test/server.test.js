@@ -26,7 +26,7 @@ function basicHeader(username, password) {
   return `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
 }
 
-async function startServer({ username = USER, password = PASS, beforeStart } = {}) {
+async function startServer({ username = USER, password = PASS, beforeStart, conversation: conversationFields, ...serverFields } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-http-'));
   beforeStart?.(dir);
   const logFile = path.join(dir, 'calls.jsonl');
@@ -38,8 +38,9 @@ async function startServer({ username = USER, password = PASS, beforeStart } = {
     stateFile: path.join(dir, 'state', 'state.json'),
     runAgent: (options) => runAgent({ ...options, env: { ...process.env, FAKE_AGENT_LOG: logFile }, logger: quietLogger }),
     logger: quietLogger,
+    ...conversationFields,
   });
-  const server = createServer({ conversation, username, password, logger: quietLogger });
+  const server = createServer({ conversation, username, password, logger: quietLogger, ...serverFields });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
@@ -156,6 +157,8 @@ test('returns the fixed model, project name, and transcript', async (t) => {
   const response = await api(app.baseUrl, '/api/session');
   const session = await response.json();
   assert.equal(session.model, 'composer-2.5');
+  assert.equal(session.agent, 'cursor');
+  assert.equal(session.agents[0].id, 'cursor');
   assert.equal(session.project, path.basename(app.conversation.workdir));
   assert.equal(session.busy, false);
   assert.deepEqual(session.items, []);
@@ -265,6 +268,24 @@ test('clears the transcript and starts a fresh chat on reset', async (t) => {
   await sendMessage(app.baseUrl, 'after reset');
   const calls = app.calls();
   assert.ok(!calls.at(-1).argv.includes('--resume'));
+});
+
+test('lets the owner pick a first-party model when starting a new chat', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const ok = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'cursor', model: 'composer-2.5' },
+  });
+  assert.equal(ok.status, 200);
+
+  const bad = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'grok', model: 'grok-4.7/high' },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error, 'That agent is not available.');
 });
 
 test('returns 500 when a new chat cannot be saved', async (t) => {
@@ -873,4 +894,75 @@ test('falls back to development when the release bundle is missing', async (t) =
   const page = await fetch(`${app.baseUrl}/`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /src="\/landing\.js"/);
+});
+
+test('hides Grok usage when that CLI is not enabled', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  assert.equal((await api(app.baseUrl, '/api/usage', { credentials: null })).status, 401);
+  const response = await api(app.baseUrl, '/api/usage');
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { grok: null });
+});
+
+test('returns the Grok weekly quota percentage', async (t) => {
+  const grok = { available: true, percent: 26, period: 'weekly', resetsAt: '2026-11-15T08:53:12.261+00:00' };
+  let fresh = false;
+  const app = await startServer({
+    conversation: { agents: ['cursor', 'grok'], grokBin: FAKE_AGENT },
+    readGrokUsage: async (options = {}) => {
+      fresh = Boolean(options.fresh);
+      return { grok };
+    },
+  });
+  t.after(() => app.close());
+
+  assert.equal(app.conversation.agent, 'cursor');
+  const response = await api(app.baseUrl, '/api/usage');
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { grok });
+  assert.equal(fresh, false);
+  await api(app.baseUrl, '/api/usage?fresh=1');
+  assert.equal(fresh, true);
+});
+
+test('refreshes Grok usage for signed-in members', async (t) => {
+  const grokHome = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-grok-http-'));
+  const FAKE_GROK_ACP = fileURLToPath(new URL('../fixtures/fake-grok-acp.js', import.meta.url));
+  const { createGrokUsage } = await import('../src/grok-usage.js');
+  const grokUsage = createGrokUsage({
+    grokEnabled: true,
+    grokHome,
+    grokBin: FAKE_GROK_ACP,
+    fetchBilling: (options) =>
+      import('../src/grok-usage.js').then(({ fetchGrokBillingViaAcp }) =>
+        fetchGrokBillingViaAcp({
+          ...options,
+          env: { ...process.env, FAKE_GROK_USAGE_PERCENT: '18' },
+          timeoutMs: 5_000,
+        }),
+      ),
+  });
+  const app = await startServer({
+    conversation: { agents: ['grok'] },
+    grokUsage,
+  });
+  t.after(() => app.close());
+
+  assert.equal(
+    (await api(app.baseUrl, '/api/usage/refresh', { method: 'POST', credentials: null })).status,
+    401,
+  );
+  const response = await api(app.baseUrl, '/api/usage/refresh', { method: 'POST' });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).grok, {
+    available: true,
+    percent: 18,
+    period: 'weekly',
+    resetsAt: '2026-11-15T08:53:12.261+00:00',
+  });
+  const limited = await api(app.baseUrl, '/api/usage/refresh', { method: 'POST' });
+  assert.equal(limited.status, 429);
+  assert.match(await limited.text(), /Too many attempts/);
 });

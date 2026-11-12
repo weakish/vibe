@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok ta̍k-lé-pài {percent}%',
     grokMonthlyQuota: 'Grok ta̍k-goe̍h {percent}%',
     grokUsageUnavailable: 'Bô-hoat-tō͘ tha̍k Grok ê sú-iōng-liōng.',
+    grokUsageRefresh: 'Têng-sin',
+    grokUsageRefreshing: 'Tng-teh têng-sin…',
+    grokUsageRefreshFailed: 'Bô-hoat têng-sin Grok ê sú-iōng-liōng.',
     inviteOnly: 'Tī chit kai-tōaⁿ, Boffin chí-ū ia̍h-chhiáⁿ.',
   };

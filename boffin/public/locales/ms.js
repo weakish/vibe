@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok mingguan {percent}%',
     grokMonthlyQuota: 'Grok bulanan {percent}%',
     grokUsageUnavailable: 'Penggunaan Grok tidak tersedia.',
+    grokUsageRefresh: 'Muat semula',
+    grokUsageRefreshing: 'Memuat semula…',
+    grokUsageRefreshFailed: 'Tidak dapat memuat semula penggunaan Grok.',
     inviteOnly: 'Pada fasa ini, Boffin hanya melalui jemputan.',
   };

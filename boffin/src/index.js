@@ -15,9 +15,12 @@ function main() {
     config = loadConfig(workdir);
     conversation = new Conversation({
       model: config.model,
+      grokModel: config.grokModel,
       workdir: config.workdir,
       agentBin: config.agentBin,
+      grokBin: config.grokBin,
       force: config.force,
+      agents: config.agents,
       stateFile: config.stateFile,
     });
   } catch (error) {
@@ -44,7 +47,8 @@ function main() {
     const displayHost = config.host.includes(':') ? `[${config.host}]` : config.host;
     console.log(`[boffin] listening on http://${displayHost}:${config.port}`);
     console.log(`[boffin] workdir: ${config.workdir}`);
-    console.log(`[boffin] model: ${config.model}`);
+    console.log(`[boffin] agents: ${config.agents.join(', ')}`);
+    console.log(`[boffin] model: ${conversation.model}`);
     if (config.created) {
       console.log(`[boffin] wrote ${config.configFile}`);
     }

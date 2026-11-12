@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok வாராந்திர {percent}%',
     grokMonthlyQuota: 'Grok மாதாந்திர {percent}%',
     grokUsageUnavailable: 'Grok பயன்பாடு கிடைக்கவில்லை.',
+    grokUsageRefresh: 'புதுப்பி',
+    grokUsageRefreshing: 'புதுப்பிக்கிறது…',
+    grokUsageRefreshFailed: 'Grok பயன்பாட்டைப் புதுப்பிக்க முடியவில்லை.',
     inviteOnly: 'இந்தக் கட்டத்தில் Boffin அழைப்பு மட்டுமே.',
   };

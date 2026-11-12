@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BusyError, Conversation, MembershipError, StateError } from '../src/conversation.js';
+import { BusyError, ChoiceError, Conversation, MembershipError, StateError } from '../src/conversation.js';
 
 const quietLogger = { log() {}, error() {} };
 const OK = { error: null, code: 0, signal: null, stderr: '' };
@@ -17,7 +17,7 @@ function tempStateFile() {
   return { dir, stateFile: path.join(dir, 'data', 'state.json') };
 }
 
-function makeConversation(runAgent, stateFile) {
+function makeConversation(runAgent, stateFile, extra = {}) {
   return new Conversation({
     model: 'composer-2.5',
     workdir: path.dirname(path.dirname(stateFile)),
@@ -26,6 +26,7 @@ function makeConversation(runAgent, stateFile) {
     stateFile,
     runAgent,
     logger: quietLogger,
+    ...extra,
   });
 }
 
@@ -593,4 +594,111 @@ test('a name stays taken after its holder leaves and after a new chat', () => {
     (error) => error instanceof MembershipError && error.message === 'That name is already used.',
   );
   assert.equal(conversation.prepareJoin(afterNewChat.id, 'Grace', 'tester'), 'Grace');
+});
+
+test('spawns Grok for a new chat and does not resume a Cursor session id', async () => {
+  const { stateFile } = tempStateFile();
+  const { runAgent, calls } = scriptedRunner([init('cursor-chat'), done('ok')]);
+  const conversation = makeConversation(runAgent, stateFile, { agents: ['cursor', 'grok'] });
+
+  await conversation.start('first', () => {});
+  conversation.reset(new Date().toISOString(), { agent: 'grok', model: 'grok-4.7/high' });
+  await conversation.start('second', () => {});
+
+  assert.equal(calls[0].bin, 'agent');
+  assert.equal(calls[1].bin, 'grok');
+  assert.ok(!calls[1].args.includes('--resume'));
+  assert.equal(calls[1].args[calls[1].args.indexOf('--model') + 1], 'grok-4.7');
+  assert.ok(calls[1].args.includes('--always-approve'));
+  assert.equal(conversation.agent, 'grok');
+  assert.equal(conversation.model, 'grok-4.7/high');
+});
+
+test('persists the chosen agent and model across restarts', async () => {
+  const { stateFile } = tempStateFile();
+  const conversation = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['cursor', 'grok'] });
+  conversation.reset(new Date().toISOString(), { agent: 'grok', model: 'grok-4.7/medium' });
+
+  const restored = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['cursor', 'grok'] });
+  assert.equal(restored.agent, 'grok');
+  assert.equal(restored.model, 'grok-4.7/medium');
+});
+
+test('kept log records the agent that ended, not the new chat', async () => {
+  const { stateFile } = tempStateFile();
+  const { runAgent } = scriptedRunner([init('cursor-chat'), reply('ok'), done('ok')]);
+  const conversation = makeConversation(runAgent, stateFile, { agents: ['cursor', 'grok'] });
+  await conversation.start('hello', () => {});
+  conversation.reset(new Date().toISOString(), { agent: 'grok', model: 'grok-4.7/high' });
+
+  const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.equal(saved.agent, 'grok');
+  assert.equal(saved.model, 'grok-4.7/high');
+  assert.equal(saved.kept[0].agent, 'cursor');
+  assert.equal(saved.kept[0].model, 'composer-2.5');
+});
+
+test('does not resume a legacy Cursor chat id on Grok', () => {
+  const { stateFile } = tempStateFile();
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  fs.writeFileSync(stateFile, JSON.stringify({ version: 1, chatId: 'cursor-1', items: [] }));
+
+  const grokOnly = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['grok'] });
+  assert.equal(grokOnly.agent, 'grok');
+  assert.equal(grokOnly.chatId, null);
+
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({ version: 1, agent: 'grok', model: 'grok-4.7/low', chatId: 'sess-9', items: [] }),
+  );
+  const restored = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['grok'] });
+  assert.equal(restored.chatId, 'sess-9');
+  assert.equal(restored.model, 'grok-4.7/low');
+});
+
+test('treats a kept log without agent or model as a Cursor Composer 2.5 chat', () => {
+  const { stateFile } = tempStateFile();
+  fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+  const recordId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const personId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({
+      version: 1,
+      chatId: null,
+      items: [],
+      agent: 'grok',
+      model: 'grok-4.7/high',
+      identities: [{ id: personId, name: 'Ada' }],
+      kept: [
+        {
+          id: recordId,
+          at: '2026-11-01T00:00:00.000Z',
+          items: [{ id: 'm1', role: 'user', text: 'hello' }],
+          personIds: [personId],
+        },
+      ],
+    }),
+  );
+
+  const conversation = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['cursor', 'grok'] });
+  assert.deepEqual(conversation.logFor(personId, recordId), {
+    at: '2026-11-01T00:00:00.000Z',
+    items: [{ id: 'm1', role: 'user', text: 'hello' }],
+    agent: 'cursor',
+    model: 'composer-2.5',
+  });
+});
+
+test('refuses an agent or model that is not enabled', () => {
+  const { stateFile } = tempStateFile();
+  const conversation = makeConversation(scriptedRunner([]).runAgent, stateFile);
+  assert.throws(
+    () => conversation.reset(new Date().toISOString(), { agent: 'grok' }),
+    (error) => error instanceof ChoiceError && error.message === 'That agent is not available.',
+  );
+  assert.throws(
+    () => conversation.reset(new Date().toISOString(), { agent: 'cursor', model: 'mystery' }),
+    (error) => error instanceof ChoiceError && error.message === 'That model is not available.',
+  );
 });

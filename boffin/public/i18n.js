@@ -132,6 +132,7 @@ const SERVER_ERRORS = new Map([
   ['Bundling failed.', 'bundleFailed'],
   ['Bun was not found on the server.', 'bunNotFound'],
   ['Bundling is already in progress.', 'bundleInProgress'],
+  ['Grok usage refresh failed.', 'grokUsageRefreshFailed'],
   ['That agent is not available.', 'unknownAgent'],
   ['That model is not available.', 'unknownModel'],
 ]);

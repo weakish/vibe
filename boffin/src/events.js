@@ -36,9 +36,17 @@ export function eventToOps(event, state) {
     case 'assistant':
       return onAssistant(event, state);
     case 'tool_call':
-      return onToolCall(event, state);
+      return event.subtype ? onToolCall(event, state) : onGrokTool(event, state);
+    case 'tool_call_update':
+      return onGrokTool(event, state);
     case 'result':
       return onResult(event, state);
+    case 'text':
+      return onGrokText(event, state);
+    case 'end':
+      return onGrokEnd(event, state);
+    case 'error':
+      return onGrokError(event, state);
     case 'boffin_error':
       return [notice('error', 'The agent sent a line the server could not read. Part of the reply may be missing.')];
     default:
@@ -59,7 +67,10 @@ export function finishOps(outcome, state, { cancelled = false } = {}) {
     return [notice('error', 'Unexpected server error. See the server log.')];
   }
   if (outcome.error) {
-    return [notice('error', `Could not start the Cursor CLI: ${outcome.error.message}`)];
+    return [notice('error', `Could not start the agent CLI: ${outcome.error.message}`)];
+  }
+  if (state.agentError) {
+    return [notice('error', state.agentError)];
   }
   if (outcome.code === 0 && !outcome.signal) {
     return [];
@@ -193,6 +204,119 @@ function onToolCall(event, state) {
 
   return [];
 }
+
+function onGrokText(event, state) {
+  const text = firstString(event.data, event.text);
+  if (!text) {
+    return [];
+  }
+  const ops = [];
+  if (!state.segmentId) {
+    state.segmentId = randomUUID();
+    ops.push({ op: 'add', item: { id: state.segmentId, role: 'assistant', text: '' } });
+  }
+  ops.push({ op: 'append', id: state.segmentId, text });
+  state.sawText = true;
+  return ops;
+}
+
+function onGrokEnd(event, state) {
+  const sessionId = firstString(event.sessionId, event.session_id);
+  if (sessionId) {
+    state.chatId = sessionId;
+  }
+  state.segmentId = null;
+  const reason = stopReason(event);
+  if (!reason || reason === 'end_turn' || reason === 'endturn' || reason === 'stop') {
+    if (!state.agentError) {
+      state.sawResult = true;
+    }
+    return [];
+  }
+  // A user stop is finishOps' "Stopped." notice. Any other incomplete end is this run's failure.
+  if (reason === 'cancelled' || reason === 'canceled') {
+    state.agentError = 'The agent stopped (cancelled).';
+    return [];
+  }
+  state.sawResult = true;
+  return [notice('error', `The agent stopped (${STOP_REASON_LABELS[reason] ?? reason.replace(/_/g, ' ')}).`)];
+}
+
+function onGrokError(event, state) {
+  state.agentError = firstString(event.message, event.data) || 'The agent reported an error.';
+  return [];
+}
+
+// Grok streaming-json tool events have no Cursor subtype. `tool_call` starts one;
+// `tool_call_update` patches it. Status words follow the ACP tool-call status.
+function onGrokTool(event, state) {
+  const rawId = event.toolCallId ?? event.tool_call_id;
+  const callId = rawId == null || rawId === '' ? null : String(rawId);
+  const status = grokToolStatus(event.status);
+  const name = firstString(event.title) || (typeof event.toolName === 'string' ? labelFor(event.toolName) : '');
+  const summary = summarize(event.rawInput ?? event.raw_input);
+  const images = grokToolImages(event.content);
+  state.segmentId = null;
+
+  const existingId = callId === null ? undefined : state.tools.get(callId);
+  if (existingId === undefined) {
+    const id = randomUUID();
+    if (callId !== null) {
+      state.tools.set(callId, id);
+    }
+    const item = { id, role: 'tool', name: name || 'Tool', summary, status };
+    if (images.length > 0) {
+      item.images = images;
+    }
+    return [{ op: 'add', item }];
+  }
+
+  const patch = { status };
+  if (name) {
+    patch.name = name;
+  }
+  if (summary) {
+    patch.summary = summary;
+  }
+  if (images.length > 0) {
+    patch.images = images;
+  }
+  if (status !== 'running') {
+    state.tools.delete(callId);
+  }
+  return [{ op: 'set', id: existingId, patch }];
+}
+
+function grokToolStatus(status) {
+  const value = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (value === 'completed' || value === 'done' || value === 'success') {
+    return 'done';
+  }
+  if (value === 'failed' || value === 'error' || value === 'cancelled' || value === 'canceled') {
+    return 'error';
+  }
+  return 'running';
+}
+
+function grokToolImages(content) {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content
+    .filter((part) => part && part.type === 'image' && typeof part.data === 'string' && part.data.trim())
+    .map((part) => ({ name: 'image', data: part.data, filePath: '' }));
+}
+
+function stopReason(event) {
+  const value = event.stopReason ?? event.stop_reason;
+  return typeof value === 'string' ? value.trim().toLowerCase().replace(/[\s-]+/g, '_') : '';
+}
+
+const STOP_REASON_LABELS = {
+  max_tokens: 'max tokens',
+  max_turn_requests: 'max turns',
+  refusal: 'refusal',
+};
 
 function onResult(event, state) {
   state.sawResult = true;

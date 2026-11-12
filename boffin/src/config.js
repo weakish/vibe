@@ -2,12 +2,24 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  CURSOR,
+  DEFAULT_CURSOR_MODEL,
+  DEFAULT_GROK_BIN,
+  DEFAULT_GROK_MODEL,
+  GROK,
+  findModel,
+  parseAgents,
+} from './backends.js';
 
 const KNOWN_KEYS = new Set([
   'host',
   'port',
   'model',
+  'grok_model',
+  'agents',
   'agent_bin',
+  'grok_bin',
   'force',
   'username',
   'password',
@@ -17,7 +29,7 @@ const KNOWN_KEYS = new Set([
 const MIN_PASSWORD_LENGTH = 8;
 const PLACEHOLDER_USERNAME = 'your-username';
 const PLACEHOLDER_PASSWORD_PREFIX = 'replace-with-';
-const DEFAULT_MODEL = 'composer-2.5';
+const DEFAULT_MODEL = DEFAULT_CURSOR_MODEL;
 const DEFAULT_USERNAME = 'boffin';
 export const DEFAULT_BUN_BIN = 'bun';
 
@@ -116,12 +128,24 @@ function materialize(raw, workdir, env) {
     throw new ConfigError('password is still the placeholder from config.example.json. Replace it.');
   }
 
+  const model = requiredString(raw, 'model');
+  const grokModel = optionalString(raw, 'grok_model', DEFAULT_GROK_MODEL);
+  if (!findModel(CURSOR, model)) {
+    throw new ConfigError(`"${model}" is not a first-party Cursor model.`);
+  }
+  if (!findModel(GROK, grokModel)) {
+    throw new ConfigError(`"${grokModel}" is not a first-party Grok model.`);
+  }
+
   return {
     host: optionalString(raw, 'host', '0.0.0.0'),
     port: optionalPort(raw, 'port', 8080),
     workdir,
-    model: requiredString(raw, 'model'),
+    model,
+    grokModel,
+    agents: readAgents(raw),
     agentBin: optionalString(raw, 'agent_bin', 'agent'),
+    grokBin: optionalString(raw, 'grok_bin', DEFAULT_GROK_BIN),
     bunBin: optionalString(raw, 'bun_bin', DEFAULT_BUN_BIN),
     force: optionalBoolean(raw, 'force', true),
     username,
@@ -169,6 +193,17 @@ function requiredSecret(raw, key) {
     throw new ConfigError(`"${key}" must be a non-empty string.`);
   }
   return value;
+}
+
+function readAgents(raw) {
+  if (raw.agents === undefined) {
+    return [CURSOR];
+  }
+  const ids = parseAgents(raw.agents);
+  if (!ids) {
+    throw new ConfigError('"agents" must be a non-empty array of "cursor" and/or "grok".');
+  }
+  return ids;
 }
 
 function optionalString(raw, key, fallback) {

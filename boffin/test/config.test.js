@@ -131,6 +131,22 @@ test('requires a model', () => {
   assert.throws(() => loadConfig(workdir, {}), /"model" must be a non-empty string/);
 });
 
+test('defaults agents to cursor and accepts cursor, grok, or both', () => {
+  const workdir = writeConfig();
+  assert.deepEqual(loadConfig(workdir, {}).agents, ['cursor']);
+  assert.equal(loadConfig(workdir, {}).grokModel, 'grok-4.7/high');
+  assert.equal(loadConfig(workdir, {}).grokBin, 'grok');
+
+  const both = writeConfig({ agents: ['cursor', 'grok'] });
+  assert.deepEqual(loadConfig(both, {}).agents, ['cursor', 'grok']);
+});
+
+test('rejects unknown agents and third-party models', () => {
+  assert.throws(() => loadConfig(writeConfig({ agents: ['both'] }), {}), /"agents" must be/);
+  assert.throws(() => loadConfig(writeConfig({ model: 'gpt-5' }), {}), /first-party Cursor model/);
+  assert.throws(() => loadConfig(writeConfig({ grok_model: 'mystery' }), {}), /first-party Grok model/);
+});
+
 test('rejects usernames that contain a colon', () => {
   const workdir = writeConfig({ username: 'alice:bob' });
   assert.throws(() => loadConfig(workdir, {}), /must not contain a colon/);

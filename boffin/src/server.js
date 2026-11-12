@@ -7,8 +7,10 @@ import { conversationLogFilename, formatConversationLog } from '../shared/export
 import { MAX_SPEC_CHARS, DEFAULT_SPEC } from '../shared/default-spec.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { AttachmentError, parseAttachments } from './attachments.js';
+import { GROK } from './backends.js';
 import { DEFAULT_BUN_BIN } from './config.js';
-import { BusyError, MembershipError, checkedPasskeyLabel } from './conversation.js';
+import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
+import { GROK_USAGE_REFRESH_FAILED, createGrokUsage } from './grok-usage.js';
 import { readSavedSpec, specPathForState, writeSavedSpec } from './spec-store.js';
 import {
   PASSKEY_ATTEMPT_LIMIT,
@@ -144,7 +146,20 @@ const BUNDLE_IN_PROGRESS = 'Bundling is already in progress.';
 // Same text as addMember's refusal, so every language already has it.
 const ALREADY_IN_CONVERSATION = 'That person is already in the conversation.';
 
-export function createServer({ conversation, username, password, bunBin = DEFAULT_BUN_BIN, logger = console }) {
+export function createServer({
+  conversation,
+  username,
+  password,
+  bunBin = DEFAULT_BUN_BIN,
+  logger = console,
+  grokUsage = createGrokUsage({
+    grokEnabled: conversation.backends.ids.includes(GROK),
+    grokBin: conversation.backends.bins[GROK],
+    logger,
+  }),
+  readGrokUsage: readGrokUsageOverride,
+  refreshGrokUsage: refreshGrokUsageOverride,
+} = {}) {
   const expectedUser = digest(username);
   const expectedPassword = digest(password);
   const specFile = specPathForState(conversation.stateFile);
@@ -155,6 +170,8 @@ export function createServer({ conversation, username, password, bunBin = DEFAUL
     expectedPassword,
     bunBin,
     logger,
+    readGrokUsage: readGrokUsageOverride ?? grokUsage.read,
+    refreshGrokUsage: refreshGrokUsageOverride ?? grokUsage.refresh,
     specFile,
     workdir: conversation.workdir,
     projectRoot: PROJECT_ROOT,
@@ -279,6 +296,12 @@ async function handleApi(req, res, url, context) {
     }
     return sendJson(res, 200, { ok: true });
   }
+  if (req.method === 'GET' && url.pathname === '/api/usage') {
+    return handleUsageGet(res, context, url);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/usage/refresh') {
+    return handleUsageRefresh(res, context);
+  }
   if (req.method === 'GET' && url.pathname === '/api/static-assets') {
     return handleStaticAssetsGet(res, context, person);
   }
@@ -315,7 +338,7 @@ async function handleApi(req, res, url, context) {
     if (!person.owner) {
       return sendJson(res, 403, { error: OWNER_ONLY });
     }
-    return handleReset(res, conversation);
+    return handleReset(req, res, conversation);
   }
   if (req.method === 'POST' && url.pathname === '/api/invites') {
     if (!person.owner) {
@@ -511,12 +534,25 @@ function contentDisposition(name, inline) {
   return `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${star}`;
 }
 
-function handleReset(res, conversation) {
+async function handleReset(req, res, conversation) {
+  let body;
   try {
-    conversation.reset();
+    body = await readJsonBody(req);
+  } catch (error) {
+    const status = error.status ?? 400;
+    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  }
+  try {
+    conversation.reset(new Date().toISOString(), {
+      agent: body?.agent,
+      model: body?.model,
+    });
   } catch (error) {
     if (error instanceof BusyError) {
       return sendJson(res, 409, { error: error.message });
+    }
+    if (error instanceof ChoiceError) {
+      return sendJson(res, 400, { error: error.message });
     }
     return sendJson(res, 500, { error: 'Could not start a new chat because the conversation could not be saved.' });
   }
@@ -902,7 +938,8 @@ function sendKeptLog(res, context, person, recordId) {
     return sendJson(res, 404, { error: 'Not found.' });
   }
   const text = formatConversationLog(record.items, {
-    model: context.conversation.model,
+    agent: record.agent,
+    model: record.model,
     exportedAt: record.at,
   });
   return sendJson(res, 200, { filename: conversationLogFilename(new Date(record.at)), text });
@@ -1090,6 +1127,27 @@ function sendJson(res, status, body, { close = false } = {}) {
     cacheControl: 'no-store',
     close,
   });
+}
+
+async function handleUsageGet(res, context, url) {
+  const fresh = url.searchParams.get('fresh') === '1';
+  return sendJson(res, 200, await context.readGrokUsage({ fresh }));
+}
+
+async function handleUsageRefresh(res, context) {
+  try {
+    return sendJson(res, 200, await context.refreshGrokUsage());
+  } catch (error) {
+    if (error.status === 429) {
+      res.setHeader('Retry-After', String(error.retryAfter ?? 60));
+      return sendJson(res, 429, { error: error.message });
+    }
+    if (error.status) {
+      return sendJson(res, error.status, { error: error.message });
+    }
+    context.logger.error(`[boffin] Grok usage refresh failed: ${error.stack || error}`);
+    return sendJson(res, 502, { error: GROK_USAGE_REFRESH_FAILED });
+  }
 }
 
 async function handleStaticAssetsGet(res, context, person) {

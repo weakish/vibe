@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok 週間 {percent}%',
     grokMonthlyQuota: 'Grok 月間 {percent}%',
     grokUsageUnavailable: 'Grok の使用量を取得できません。',
+    grokUsageRefresh: '更新',
+    grokUsageRefreshing: '更新中…',
+    grokUsageRefreshFailed: 'Grok の使用量を更新できませんでした。',
     inviteOnly: 'この段階では、招待された人だけが参加できます。',
   };

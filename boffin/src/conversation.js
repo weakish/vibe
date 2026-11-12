@@ -2,7 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { applyOp } from '../shared/transcript.js';
-import { buildAgentArgs, runAgent as runAgentProcess } from './agent.js';
+import { runAgent as runAgentProcess } from './agent.js';
+import {
+  CURSOR,
+  DEFAULT_CURSOR_MODEL,
+  catalogFor,
+  defaultModelId,
+  findModel,
+  resolveBackends,
+  spawnPlan,
+} from './backends.js';
 import { createRunState, eventToOps, finishOps } from './events.js';
 import {
   MAX_PUBLISHED_FILES,
@@ -36,6 +45,8 @@ const STATE_KEYS = new Set([
   'ownerPasskey',
   'passkeys',
   'coverKey',
+  'agent',
+  'model',
 ]);
 const SAVE_FAILURE_TEXT = 'Could not save this conversation. It will be lost when the server restarts.';
 
@@ -61,15 +72,36 @@ export class MembershipError extends Error {
   }
 }
 
+export class ChoiceError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ChoiceError';
+    this.status = 400;
+  }
+}
+
 // One shared conversation per server: a single transcript bound to a single
-// CLI chat, always run in the configured working directory with the configured model.
+// CLI chat, always run in the configured working directory with the chosen model.
 export class Conversation {
   #run = null;
 
-  constructor({ model, workdir, agentBin, force, stateFile, runAgent = runAgentProcess, logger = console }) {
-    this.model = model;
+  constructor({
+    model,
+    grokModel,
+    workdir,
+    agentBin,
+    grokBin,
+    force,
+    agents,
+    stateFile,
+    runAgent = runAgentProcess,
+    logger = console,
+  }) {
+    this.backends = resolveBackends({ agents, model, grokModel, agentBin, grokBin, force });
+    if (!this.backends) {
+      throw new StateError('The configured agent or model is not available.');
+    }
     this.workdir = workdir;
-    this.agentBin = agentBin;
     this.force = force;
     this.stateFile = stateFile;
     this.runAgent = runAgent;
@@ -77,7 +109,10 @@ export class Conversation {
     this.media = createMediaStore(path.join(path.dirname(stateFile), 'media'));
 
     const saved = loadState(stateFile);
-    this.chatId = saved.chatId;
+    const choice = chooseAgent(saved, this.backends);
+    this.agent = choice.agent;
+    this.model = choice.model;
+    this.chatId = choice.dropChatId ? null : saved.chatId;
     this.items = saved.items;
     this.activeId = saved.activeId;
     this.startedAt = saved.startedAt;
@@ -103,7 +138,9 @@ export class Conversation {
 
   snapshot() {
     return {
+      agent: this.agent,
       model: this.model,
+      agents: catalogFor(this.backends),
       project: path.basename(this.workdir),
       busy: this.busy,
       items: this.items,
@@ -158,12 +195,14 @@ export class Conversation {
     await this.#run?.finished;
   }
 
-  reset(at = new Date().toISOString()) {
+  reset(at = new Date().toISOString(), choice = {}) {
     if (this.busy) {
       throw new BusyError();
     }
+    const ended = { agent: this.agent, model: this.model };
     this.#commit(() => {
-      this.#endActive(at);
+      this.#applyChoice(choice);
+      this.#endActive(at, ended);
     });
   }
 
@@ -224,7 +263,12 @@ export class Conversation {
     if (!record) {
       return null;
     }
-    return { at: record.at, items: record.items };
+    return {
+      at: record.at,
+      items: record.items,
+      agent: typeof record.agent === 'string' && record.agent ? record.agent : CURSOR,
+      model: typeof record.model === 'string' && record.model ? record.model : DEFAULT_CURSOR_MODEL,
+    };
   }
 
   createInvite() {
@@ -290,12 +334,7 @@ export class Conversation {
       throw new MembershipError('That person is not in the conversation.', 404);
     }
     this.#commit(() => {
-      this.kept.push({
-        id: randomUUID(),
-        at,
-        items: structuredClone(this.items),
-        personIds: [personId],
-      });
+      this.#remember(at, [personId]);
       this.members = this.members.filter((id) => id !== personId);
     });
   }
@@ -420,14 +459,9 @@ export class Conversation {
     return trimmed;
   }
 
-  #endActive(at) {
+  #endActive(at, ended = {}) {
     if (this.items.length > 0 || this.members.length > 0) {
-      this.kept.push({
-        id: randomUUID(),
-        at,
-        items: structuredClone(this.items),
-        personIds: [...this.members],
-      });
+      this.#remember(at, [...this.members], ended.agent, ended.model);
     }
     this.items = [];
     this.chatId = null;
@@ -437,8 +471,36 @@ export class Conversation {
     this.startedAt = at;
   }
 
+  #remember(at, personIds, agent = this.agent, model = this.model) {
+    this.kept.push({
+      id: randomUUID(),
+      at,
+      agent,
+      model,
+      items: structuredClone(this.items),
+      personIds,
+    });
+  }
+
+  #applyChoice({ agent, model } = {}) {
+    const nextAgent = agent === undefined || agent === '' || agent === null ? this.backends.ids[0] : agent;
+    if (!this.backends.ids.includes(nextAgent)) {
+      throw new ChoiceError('That agent is not available.');
+    }
+    const nextModel =
+      model === undefined || model === '' || model === null ? defaultModelId(nextAgent, this.backends) : model;
+    if (!findModel(nextAgent, nextModel)) {
+      throw new ChoiceError('That model is not available.');
+    }
+    this.agent = nextAgent;
+    this.model = nextModel;
+  }
+
+  // Copies the arrays membership code mutates in place. items is replaced, not edited, by reset.
   #capture() {
     return {
+      agent: this.agent,
+      model: this.model,
       chatId: this.chatId,
       items: this.items,
       activeId: this.activeId,
@@ -511,15 +573,18 @@ export class Conversation {
       }
       const imagePaths = stored.filter((file) => file.image).map((file) => file.path);
       const startedAt = Date.now();
+      const plan = spawnPlan({
+        agent: this.agent,
+        model: this.model,
+        force: this.force,
+        resumeId: this.chatId,
+        prompt: agentPrompt(text, stored, author),
+        imagePaths: this.agent === CURSOR ? imagePaths : [],
+        cwd: this.workdir,
+      });
       run.handle = this.runAgent({
-        bin: this.agentBin,
-        args: buildAgentArgs({
-          model: this.model,
-          force: this.force,
-          resumeId: this.chatId,
-          prompt: agentPrompt(text, stored, author),
-          imagePaths,
-        }),
+        bin: this.backends.bins[plan.binKey],
+        args: plan.args,
         cwd: this.workdir,
         onEvent: (event) => {
           emitOps(eventToOps(event, state));
@@ -765,6 +830,8 @@ export class Conversation {
       const temp = `${this.stateFile}.tmp`;
       const payload = JSON.stringify({
         version: STATE_VERSION,
+        agent: this.agent,
+        model: this.model,
         chatId: this.chatId,
         items: this.items,
         activeId: this.activeId,
@@ -865,10 +932,31 @@ function agentPrompt(text, stored, author) {
   return author ? `${author}: ${body}` : body;
 }
 
+function chooseAgent(saved, backends) {
+  const fallback = backends.ids[0];
+  const agent = backends.ids.includes(saved.agent) ? saved.agent : fallback;
+  const model = findModel(agent, saved.model) ? saved.model : defaultModelId(agent, backends);
+  // State written before agents were stored is a Cursor chat. Do not pass that id to Grok.
+  const savedAgent = typeof saved.agent === 'string' ? saved.agent : null;
+  return {
+    agent,
+    model,
+    dropChatId: savedAgent === null ? agent !== CURSOR : savedAgent !== agent,
+  };
+}
+
 function readRoster(file, data, { fresh = false } = {}) {
   const activeId = typeof data.activeId === 'string' && data.activeId ? data.activeId : randomUUID();
   const startedAt = typeof data.startedAt === 'string' && data.startedAt ? data.startedAt : new Date().toISOString();
+  if (data.agent !== undefined && typeof data.agent !== 'string') {
+    throw new StateError(`State file ${file} has an invalid agent.`);
+  }
+  if (data.model !== undefined && typeof data.model !== 'string') {
+    throw new StateError(`State file ${file} has an invalid model.`);
+  }
   return {
+    agent: data.agent,
+    model: data.model,
     chatId: data.chatId,
     items: data.items,
     activeId,

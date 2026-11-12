@@ -145,5 +145,8 @@ export default {
     grokWeeklyQuota: 'Grok 每周 {percent}%',
     grokMonthlyQuota: 'Grok 每月 {percent}%',
     grokUsageUnavailable: '无法读取 Grok 用量。',
+    grokUsageRefresh: '刷新',
+    grokUsageRefreshing: '正在刷新…',
+    grokUsageRefreshFailed: '无法刷新 Grok 用量。',
     inviteOnly: '现阶段，Boffin 仅限邀请。',
   };
