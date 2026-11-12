@@ -518,6 +518,78 @@ a.menu-action {
   width: 100%;
 }
 
+.files-sheet .login-card {
+  max-height: min(70dvh, calc(100dvh - calc(80px * var(--ui-scale))));
+  overflow: auto;
+}
+
+.files-section {
+  margin: calc(10px * var(--ui-scale)) 0;
+}
+
+.files-section h3 {
+  margin: 0 0 calc(6px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.files-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--bg);
+}
+
+.files-meta {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: calc(13px * var(--ui-scale));
+  word-break: break-word;
+}
+
+.files-meta span {
+  display: block;
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.files-actions {
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+  flex: none;
+}
+
+.files-actions button {
+  min-height: calc(32px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--surface);
+  color: var(--fg);
+  font-size: calc(12px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.files-empty {
+  margin: calc(4px * var(--ui-scale)) 0 0;
+  color: var(--muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+
 .pill-button {
   flex: 0 1 auto;
   min-width: 0;

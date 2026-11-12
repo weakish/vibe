@@ -103,6 +103,18 @@ const el = {
   exportDialog: document.getElementById('export-dialog'),
   exportDialogTitle: document.getElementById('export-dialog-title'),
   exportDialogCancel: document.getElementById('export-dialog-cancel'),
+  filesMenu: document.getElementById('files-menu'),
+  filesDialog: document.getElementById('files-dialog'),
+  filesTitle: document.getElementById('files-title'),
+  filesStatus: document.getElementById('files-status'),
+  filesConversationHeading: document.getElementById('files-conversation-heading'),
+  filesConversationList: document.getElementById('files-conversation-list'),
+  filesConversationEmpty: document.getElementById('files-conversation-empty'),
+  filesWorkdirSection: document.getElementById('files-workdir-section'),
+  filesWorkdirHeading: document.getElementById('files-workdir-heading'),
+  filesWorkdirList: document.getElementById('files-workdir-list'),
+  filesWorkdirEmpty: document.getElementById('files-workdir-empty'),
+  filesClose: document.getElementById('files-close'),
   invite: document.getElementById('invite'),
   people: document.getElementById('people'),
   passkeys: document.getElementById('passkeys'),
@@ -411,6 +423,17 @@ function applyChrome() {
     }
   }
   el.exportDialogCancel.textContent = msg('cancel');
+  if (el.filesMenu) {
+    el.filesMenu.textContent = msg('files');
+  }
+  if (el.filesTitle) {
+    el.filesTitle.textContent = msg('filesTitle');
+    el.filesConversationHeading.textContent = msg('filesConversation');
+    el.filesWorkdirHeading.textContent = msg('filesWorkdir');
+    el.filesConversationEmpty.textContent = msg('filesEmpty');
+    el.filesWorkdirEmpty.textContent = msg('filesEmpty');
+    el.filesClose.textContent = msg('cancel');
+  }
   el.people.textContent = msg('people');
   el.passkeys.textContent = msg('passkeys');
   el.passkeysTitle.textContent = msg('passkeys');
@@ -1583,6 +1606,18 @@ function captureAppElements() {
   el.exportDialog = document.getElementById('export-dialog');
   el.exportDialogTitle = document.getElementById('export-dialog-title');
   el.exportDialogCancel = document.getElementById('export-dialog-cancel');
+  el.filesMenu = document.getElementById('files-menu');
+  el.filesDialog = document.getElementById('files-dialog');
+  el.filesTitle = document.getElementById('files-title');
+  el.filesStatus = document.getElementById('files-status');
+  el.filesConversationHeading = document.getElementById('files-conversation-heading');
+  el.filesConversationList = document.getElementById('files-conversation-list');
+  el.filesConversationEmpty = document.getElementById('files-conversation-empty');
+  el.filesWorkdirSection = document.getElementById('files-workdir-section');
+  el.filesWorkdirHeading = document.getElementById('files-workdir-heading');
+  el.filesWorkdirList = document.getElementById('files-workdir-list');
+  el.filesWorkdirEmpty = document.getElementById('files-workdir-empty');
+  el.filesClose = document.getElementById('files-close');
   el.people = document.getElementById('people');
   el.passkeys = document.getElementById('passkeys');
   el.passkeysDialog = document.getElementById('passkeys-dialog');
@@ -1821,6 +1856,11 @@ function bindAppEvents() {
     el.exportDialog.close();
   });
   el.language?.addEventListener('click', onLanguageClick);
+  el.filesMenu.addEventListener('click', () => {
+    closeAppChromeMenus();
+    void openFiles();
+  });
+  el.filesClose.addEventListener('click', () => el.filesDialog.close());
   el.settings.addEventListener('click', onSettingsClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
   el.newChat.addEventListener('click', newChat);
@@ -2069,6 +2109,7 @@ function showChat(session) {
   renderPeopleLine();
   el.newChat.hidden = !state.canManage;
   el.people.hidden = !state.canManage;
+  el.filesMenu.hidden = false;
   el.passkeys.hidden = false;
   rebindInviteNames(el.transcript, false);
   scheduleRender();
@@ -2085,6 +2126,7 @@ function showConversationList(conversations) {
   el.peopleLine.hidden = true;
   el.newChat.hidden = true;
   el.people.hidden = true;
+  el.filesMenu.hidden = true;
   el.passkeys.hidden = false;
   el.staticAssetsField.hidden = true;
   el.conversationListTitle.textContent = msg('conversationList');
@@ -4234,6 +4276,150 @@ function paintDialogTheme(dialog, theme, dialogSize) {
     return;
   }
   dialog.removeAttribute('data-size');
+}
+
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return '';
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fileEntryUrl(entry) {
+  if (entry.kind === 'media') {
+    return `/api/media/${entry.id}`;
+  }
+  if (entry.kind === 'stash') {
+    return `/api/files/stash?path=${encodeURIComponent(entry.path)}`;
+  }
+  return `/api/files/workdir?path=${encodeURIComponent(entry.path)}`;
+}
+
+function renderFilesList(container, emptyNode, entries) {
+  container.replaceChildren();
+  if (!entries.length) {
+    emptyNode.hidden = false;
+    return;
+  }
+  emptyNode.hidden = true;
+  for (const entry of entries) {
+    const row = document.createElement('li');
+    row.className = 'files-row';
+    const meta = document.createElement('div');
+    meta.className = 'files-meta';
+    const title = document.createElement('strong');
+    title.textContent = entry.path && entry.kind === 'workdir' ? entry.path : entry.name;
+    const detail = document.createElement('span');
+    detail.textContent = [entry.mime, formatFileSize(entry.size)].filter(Boolean).join(' · ');
+    meta.append(title, detail);
+    const actions = document.createElement('div');
+    actions.className = 'files-actions';
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.textContent = msg('filesView');
+    view.hidden = !entry.inline;
+    view.addEventListener('click', () => {
+      const popup = openPrintWindow();
+      if (!popup) {
+        setFilesStatus(msg('filesOpenFailed'));
+        return;
+      }
+      void transferFileEntry(entry, popup);
+    });
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.textContent = msg('download');
+    download.addEventListener('click', () => {
+      void transferFileEntry(entry);
+    });
+    actions.append(view, download);
+    row.append(meta, actions);
+    container.append(row);
+  }
+}
+
+function setFilesStatus(message) {
+  if (!el.filesStatus) {
+    return;
+  }
+  const text = message || '';
+  el.filesStatus.textContent = text;
+  el.filesStatus.hidden = !text;
+}
+
+async function transferFileEntry(entry, viewWindow) {
+  setFilesStatus('');
+  try {
+    const response = await api(fileEntryUrl(entry));
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    if (viewWindow) {
+      if (viewWindow.closed) {
+        URL.revokeObjectURL(url);
+        setFilesStatus(msg('filesOpenFailed'));
+        return;
+      }
+      viewWindow.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = entry.name || 'download';
+    link.rel = 'noopener';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    closePrintWindow(viewWindow);
+    if (error instanceof SessionEndedError) {
+      return;
+    }
+    if (error instanceof AuthError) {
+      handleFailure(error);
+      return;
+    }
+    setFilesStatus(error.message || msg('filesOpenFailed'));
+  }
+}
+
+async function openFiles() {
+  setFilesStatus('');
+  try {
+    const response = await api('/api/files');
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const body = await response.json();
+    renderFilesList(el.filesConversationList, el.filesConversationEmpty, body.conversation ?? []);
+    const workdir = body.workdir ?? [];
+    if (state.you?.owner) {
+      el.filesWorkdirSection.hidden = false;
+      renderFilesList(el.filesWorkdirList, el.filesWorkdirEmpty, workdir);
+    } else {
+      el.filesWorkdirSection.hidden = true;
+    }
+    el.filesDialog.showModal();
+  } catch (error) {
+    if (error instanceof SessionEndedError) {
+      return;
+    }
+    if (error instanceof AuthError) {
+      handleFailure(error);
+      return;
+    }
+    setStatus(() => error.message || msg('filesOpenFailed'));
+  }
 }
 
 function openPeople() {

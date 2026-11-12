@@ -150,7 +150,7 @@ const DOWNLOAD_MIME_BY_EXT = new Map([
   ['.json', 'text/plain; charset=utf-8'],
 ]);
 
-function downloadMime(name) {
+export function downloadMime(name) {
   return DOWNLOAD_MIME_BY_EXT.get(path.extname(String(name ?? '')).toLowerCase()) ?? 'application/octet-stream';
 }
 
@@ -251,7 +251,8 @@ export function citedPathTokens(text) {
 }
 
 // Regular files under workdir whose mtime is at or after `sinceMs`.
-export function filesChangedSince(workdir, sinceMs) {
+// `limit` stops the walk once that many files are collected.
+export function filesChangedSince(workdir, sinceMs, limit = Number.POSITIVE_INFINITY) {
   let root;
   try {
     root = fs.realpathSync(workdir);
@@ -259,11 +260,14 @@ export function filesChangedSince(workdir, sinceMs) {
     return [];
   }
   const found = [];
-  walkPublishable(root, root, sinceMs, found);
+  walkPublishable(root, root, sinceMs, found, limit);
   return found;
 }
 
-function walkPublishable(dir, root, sinceMs, found) {
+function walkPublishable(dir, root, sinceMs, found, limit) {
+  if (found.length >= limit) {
+    return;
+  }
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -271,6 +275,9 @@ function walkPublishable(dir, root, sinceMs, found) {
     return;
   }
   for (const entry of entries) {
+    if (found.length >= limit) {
+      return;
+    }
     if (entry.isSymbolicLink()) {
       continue;
     }
@@ -278,13 +285,13 @@ function walkPublishable(dir, root, sinceMs, found) {
     const relative = path.relative(root, full);
     if (entry.isDirectory()) {
       if (relative === '.boffin') {
-        walkPublishable(path.join(full, 'uploads'), root, sinceMs, found);
+        walkPublishable(path.join(full, 'uploads'), root, sinceMs, found, limit);
         continue;
       }
       if (!isPublishableRelative(relative) && relative !== '') {
         continue;
       }
-      walkPublishable(full, root, sinceMs, found);
+      walkPublishable(full, root, sinceMs, found, limit);
       continue;
     }
     if (!entry.isFile() || !isPublishableRelative(relative)) {

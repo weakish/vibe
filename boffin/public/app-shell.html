@@ -73,6 +73,7 @@
                 <button type="button" class="menu-action" id="export-epub" disabled>EPUB</button>
                 <button type="button" class="menu-action" id="export-print" disabled>Print / PDF</button>
               </div>
+              <button type="button" class="menu-action" id="files-menu" hidden>Files</button>
               <button type="button" class="menu-action" id="people" hidden>Members</button>
               <button type="button" class="menu-action" id="passkeys" hidden>Passkeys</button>
               <button type="button" class="menu-action" id="log-out">Log out</button>
@@ -194,6 +195,24 @@
           <button type="button" class="menu-action" data-export-format="print">Print / PDF</button>
           <button type="button" class="ghost-button" id="export-dialog-cancel">Cancel</button>
         </div>
+      </div>
+    </dialog>
+
+    <dialog class="sheet files-sheet" id="files-dialog" aria-labelledby="files-title">
+      <div class="login-card">
+        <h2 id="files-title">Files</h2>
+        <p class="status-line" id="files-status" role="status" hidden></p>
+        <div class="files-section" id="files-conversation-section">
+          <h3 id="files-conversation-heading">This conversation</h3>
+          <ul class="files-list" id="files-conversation-list"></ul>
+          <p class="files-empty" id="files-conversation-empty" hidden></p>
+        </div>
+        <div class="files-section" id="files-workdir-section" hidden>
+          <h3 id="files-workdir-heading">Working directory</h3>
+          <ul class="files-list" id="files-workdir-list"></ul>
+          <p class="files-empty" id="files-workdir-empty" hidden></p>
+        </div>
+        <button type="button" class="ghost-button" id="files-close">Close</button>
       </div>
     </dialog>
 

@@ -85,6 +85,8 @@ More than one person may be in the conversation, and a send still starts one age
 
 Assistant text is shown as it streams. Tool calls appear with a name and a short summary. Images the agent creates are stored and shown in the transcript, and each one can be downloaded. A file the agent creates or changes during the run, or names in its reply, is stored and offered for download when it stays inside the workdir and is 8 MB or smaller. Up to 8 such files are offered. Sign-in config, the data directory, git metadata, and dependencies are not offered. A file or image larger than 8 MB (8,388,608 bytes) is not stored or shown, and no notice is given. The first bad line of agent output in a run becomes one error notice. Later bad lines are logged on the server only. Lines after a bad line are still read.
 
+Files in Settings lists every file tied to this conversation: media and images from the transcript, and user attachments kept under \`.boffin/uploads\`. Everyone in the conversation can open the list, view a file when the browser can show it, and download any listed file. Only the owner sees a second list for the working directory: publishable paths up to 8 MB, with the same exclusions as agent downloads. That list is view and download only; the Files page does not create, rename, move, or delete anything in the workdir.
+
 Sign-in secrets are not passed to the agent's environment or arguments. The agent can still read files in the workdir (see BUGS).
 
 # Composer

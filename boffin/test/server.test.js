@@ -966,3 +966,49 @@ test('refreshes Grok usage for signed-in members', async (t) => {
   assert.equal(limited.status, 429);
   assert.match(await limited.text(), /Too many attempts/);
 });
+
+test('lists conversation files and serves workdir reads for the owner only', async (t) => {
+  const app = await startServer({
+    beforeStart(dir) {
+      fs.writeFileSync(path.join(dir, 'listed.txt'), 'workdir bytes');
+    },
+  });
+  t.after(() => app.close());
+
+  const { ops } = await sendMessage(app.baseUrl, 'attach', [
+    { name: 'shot.png', data: PNG.toString('base64') },
+    { name: 'notes.txt', data: Buffer.from('hello stash').toString('base64') },
+  ]);
+  const mediaId = ops[0].item.attachments[0].id;
+
+  const list = await api(app.baseUrl, '/api/files');
+  assert.equal(list.status, 200);
+  const body = await list.json();
+  assert.ok(Array.isArray(body.conversation));
+  assert.ok(body.conversation.some((entry) => entry.kind === 'media' && entry.id === mediaId));
+  const stashEntry = body.conversation.find((entry) => entry.kind === 'stash' && entry.name === 'notes.txt');
+  assert.ok(stashEntry?.path);
+  const stashOk = await api(app.baseUrl, `/api/files/stash?path=${encodeURIComponent(stashEntry.path)}`);
+  assert.equal(stashOk.status, 200);
+  assert.equal(await stashOk.text(), 'hello stash');
+  assert.ok(Array.isArray(body.workdir));
+  assert.ok(body.workdir.some((entry) => entry.path === 'listed.txt'));
+
+  const media = await api(app.baseUrl, `/api/media/${mediaId}`);
+  assert.equal(media.status, 200);
+  assert.equal(media.headers.get('cache-control'), 'private, max-age=31536000, immutable');
+
+  const workdir = await api(app.baseUrl, '/api/files/workdir?path=listed.txt');
+  assert.equal(workdir.status, 200);
+  assert.equal(await workdir.text(), 'workdir bytes');
+  assert.equal(workdir.headers.get('cache-control'), 'private, max-age=60');
+
+  const denied = await api(app.baseUrl, '/api/files/workdir?path=config.json');
+  assert.equal(denied.status, 404);
+
+  const guest = await api(app.baseUrl, '/api/files/workdir?path=listed.txt', { credentials: null });
+  assert.equal(guest.status, 401);
+
+  const stash = await api(app.baseUrl, '/api/files/stash?path=.boffin/uploads/nope.txt');
+  assert.equal(stash.status, 404);
+});

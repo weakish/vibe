@@ -14,6 +14,7 @@ import {
 import { MAX_SPEC_CHARS, DEFAULT_SPEC } from '../shared/default-spec.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { AttachmentError, parseAttachments } from './attachments.js';
+import { listConversationFiles, listWorkdirFiles, readStashFile, readWorkdirFileForOwner } from './file-view.js';
 import { GROK } from './backends.js';
 import { DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
@@ -335,6 +336,24 @@ async function handleApi(req, res, url, context) {
     }
     return sendMedia(res, conversation, mediaId[1]);
   }
+  if (req.method === 'GET' && url.pathname === '/api/files') {
+    return handleFilesList(res, conversation, person);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/files/stash') {
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
+    return sendStashFile(res, conversation, url.searchParams.get('path'));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/files/workdir') {
+    if (!person.owner) {
+      return sendJson(res, 403, { error: OWNER_ONLY });
+    }
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
+    return sendWorkdirFile(res, conversation, url.searchParams.get('path'));
+  }
   if (req.method === 'POST' && url.pathname === '/api/messages') {
     if (!canEnter(person, conversation)) {
       return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
@@ -532,13 +551,44 @@ function sendMedia(res, conversation, id) {
   if (!file) {
     return sendJson(res, 404, { error: 'Not found.' });
   }
+  sendFileBytes(res, file, 'private, max-age=31536000, immutable');
+}
+
+function sendFileBytes(res, file, cacheControl) {
   res.writeHead(200, {
     'Content-Type': file.mime,
     'Content-Length': file.bytes.length,
-    'Cache-Control': 'private, max-age=31536000, immutable',
+    'Cache-Control': cacheControl,
     'Content-Disposition': contentDisposition(file.name, file.inline),
   });
   res.end(file.bytes);
+}
+
+function handleFilesList(res, conversation, person) {
+  if (!canEnter(person, conversation)) {
+    return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+  }
+  const body = { conversation: listConversationFiles(conversation) };
+  if (person.owner) {
+    body.workdir = listWorkdirFiles(conversation.workdir);
+  }
+  return sendJson(res, 200, body);
+}
+
+function sendStashFile(res, conversation, relativePath) {
+  const file = readStashFile(conversation, relativePath);
+  if (!file) {
+    return sendJson(res, 404, { error: 'Not found.' });
+  }
+  sendFileBytes(res, file, 'private, max-age=60');
+}
+
+function sendWorkdirFile(res, conversation, relativePath) {
+  const file = readWorkdirFileForOwner(conversation, relativePath);
+  if (!file) {
+    return sendJson(res, 404, { error: 'Not found.' });
+  }
+  sendFileBytes(res, file, 'private, max-age=60');
 }
 
 function contentDisposition(name, inline) {
