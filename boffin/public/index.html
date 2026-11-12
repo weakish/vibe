@@ -34,7 +34,25 @@
       <div class="landing-page">
         <noscript><p class="status">Boffin needs JavaScript enabled.</p></noscript>
         <div class="landing-toolbar">
-          <div class="settings-host">
+          <div class="menu-host">
+            <button
+              type="button"
+              class="icon-button icon-button-flag"
+              id="landing-language"
+              aria-expanded="false"
+              aria-controls="landing-language-panel"
+              aria-label="Language"
+            >
+              <span class="locale-trigger" id="landing-language-flag" aria-hidden="true"></span>
+            </button>
+            <div class="menu-panel menu-panel-compact" id="landing-language-panel" hidden>
+              <div class="menu-field">
+                <span id="landing-locale-label">Language</span>
+                <div class="lang-picker" id="landing-locale" role="radiogroup" aria-labelledby="landing-locale-label" aria-orientation="vertical"></div>
+              </div>
+            </div>
+          </div>
+          <div class="menu-host">
             <button
               type="button"
               class="icon-button"
@@ -67,10 +85,6 @@
               <div class="menu-field">
                 <span id="landing-size-label">Size</span>
                 <div class="theme-picker" id="landing-size" role="radiogroup" aria-labelledby="landing-size-label"></div>
-              </div>
-              <div class="menu-field">
-                <span id="landing-locale-label">Language</span>
-                <div class="lang-picker" id="landing-locale" role="radiogroup" aria-labelledby="landing-locale-label" aria-orientation="vertical"></div>
               </div>
             </div>
           </div>

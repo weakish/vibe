@@ -35,8 +35,11 @@ import {
   onThemeKey,
   prefersDark,
   refreshAuthGate,
+  paintLocaleTriggers,
   registerLocaleGroup,
+  registerLocaleTrigger,
   setAfterLandingSettingsToggle,
+  setLandingLanguageOpen,
   setLandingSettingsOpen,
   setLandingStatus,
   setOnChromeError,
@@ -133,6 +136,9 @@ const el = {
   conversationEntries: document.getElementById('conversation-entries'),
   specLink: document.getElementById('spec-link'),
   newChat: document.getElementById('new-chat'),
+  language: document.getElementById('language'),
+  languageFlag: document.getElementById('language-flag'),
+  languagePanel: document.getElementById('language-panel'),
   settings: document.getElementById('settings'),
   settingsPanel: document.getElementById('settings-panel'),
   locale: document.getElementById('locale'),
@@ -160,6 +166,9 @@ const el = {
   demoPlay: document.getElementById('demo-play'),
   landingStatus: document.getElementById('landing-status'),
   landingSignIn: document.getElementById('landing-signin'),
+  demoLanguage: document.getElementById('demo-language'),
+  demoLanguageFlag: document.getElementById('demo-language-flag'),
+  demoLanguagePanel: document.getElementById('demo-language-panel'),
   demoSettings: document.getElementById('demo-settings'),
   demoSettingsPanel: document.getElementById('demo-settings-panel'),
   demoTheme: document.getElementById('demo-theme'),
@@ -362,7 +371,9 @@ function applyChrome() {
   if (!appMounted) {
     return;
   }
+  el.language?.setAttribute('aria-label', msg('language'));
   el.settings.setAttribute('aria-label', msg('settings'));
+  el.newChat.setAttribute('aria-label', msg('newChat'));
   el.themeLabel.textContent = msg('theme');
   el.sizeLabel.textContent = msg('size');
   syncThemePicker(el.theme);
@@ -409,7 +420,7 @@ function applyChrome() {
   el.passkeysClose.textContent = msg('cancel');
   el.logOut.textContent = msg('logOut');
   el.specLink.textContent = msg('spec');
-  el.newChat.textContent = msg('newChat');
+  paintLocaleTriggers();
   el.conversationListTitle.textContent = msg('conversationList');
   el.emptyTitle.textContent = msg('emptyGreeting');
   el.typing.setAttribute('aria-label', msg('typing'));
@@ -462,6 +473,7 @@ function applyDemoChrome() {
   } else {
     el.landingDemo.removeAttribute('data-size');
   }
+  el.demoLanguage?.setAttribute('aria-label', demoMsg('language'));
   el.demoSettings.setAttribute('aria-label', demoMsg('settings'));
   el.demoThemeLabel.textContent = demoMsg('theme');
   el.demoSizeLabel.textContent = demoMsg('size');
@@ -469,6 +481,7 @@ function applyDemoChrome() {
   syncSizePicker(el.demoSize, demoSize, demoMsg);
   el.demoLocaleLabel.textContent = demoMsg('language');
   syncLocalePicker(el.demoLocale, demoLocale);
+  paintLocaleTriggers();
   paintDemoExport();
   el.demoMembers.textContent = demoMsg('people');
   el.demoPasskeys.textContent = demoMsg('passkeys');
@@ -1108,6 +1121,22 @@ function onStaticAssetsKey(event) {
   setStaticAssetsMode(options[next].dataset.staticAssets).catch(handleFailure);
 }
 
+function setDemoLanguageOpen(open) {
+  if (!el.demoLanguagePanel) {
+    return;
+  }
+  el.demoLanguagePanel.hidden = !open;
+  el.demoLanguage?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setDemoSettingsOpen(false);
+    setLandingLanguageOpen(false);
+    setLandingSettingsOpen(false);
+    setLanguageOpen(false);
+    setSettingsOpen(false);
+    ensureLocalePickers().catch(handleFailure);
+  }
+}
+
 function setDemoSettingsOpen(open) {
   if (!el.demoSettingsPanel) {
     return;
@@ -1115,6 +1144,26 @@ function setDemoSettingsOpen(open) {
   el.demoSettingsPanel.hidden = !open;
   el.demoSettings.setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open) {
+    setDemoLanguageOpen(false);
+    setLandingLanguageOpen(false);
+    setLandingSettingsOpen(false);
+    setLanguageOpen(false);
+    setSettingsOpen(false);
+  }
+}
+
+function setLanguageOpen(open) {
+  if (!el.languagePanel) {
+    return;
+  }
+  el.languagePanel.hidden = !open;
+  el.language?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setSettingsOpen(false);
+    setDemoLanguageOpen(false);
+    setDemoSettingsOpen(false);
+    setLandingLanguageOpen(false);
+    setLandingSettingsOpen(false);
     ensureLocalePickers().catch(handleFailure);
   }
 }
@@ -1125,45 +1174,80 @@ function setSettingsOpen(open) {
     el.settings.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
   if (open) {
-    ensureLocalePickers().catch(handleFailure);
-  }
-  if (!open) {
-    setLandingSettingsOpen(false);
+    setLanguageOpen(false);
+    setDemoLanguageOpen(false);
     setDemoSettingsOpen(false);
+    setLandingLanguageOpen(false);
+    setLandingSettingsOpen(false);
+    requestStaticAssets();
+    requestGrokUsage({ fresh: true });
   }
+}
+
+function isLanguageTarget(node) {
+  return Boolean(node && el.language) && (el.language.contains(node) || el.languagePanel?.contains(node));
 }
 
 function isSettingsTarget(node) {
   return Boolean(node && el.settings) && (el.settings.contains(node) || el.settingsPanel.contains(node));
 }
 
+function isAppChromeMenuTarget(node) {
+  return isLanguageTarget(node) || isSettingsTarget(node);
+}
+
+function isDemoLanguageTarget(node) {
+  return (
+    Boolean(node && el.demoLanguage) && (el.demoLanguage.contains(node) || el.demoLanguagePanel?.contains(node))
+  );
+}
+
 function isDemoSettingsTarget(node) {
   return Boolean(node && el.demoSettings) && (el.demoSettings.contains(node) || el.demoSettingsPanel.contains(node));
+}
+
+function isDemoChromeMenuTarget(node) {
+  return isDemoLanguageTarget(node) || isDemoSettingsTarget(node);
+}
+
+function onLanguageClick() {
+  const opening = el.languagePanel.hidden;
+  setLanguageOpen(opening);
 }
 
 function onSettingsClick() {
   const opening = el.settingsPanel.hidden;
   setSettingsOpen(opening);
-  if (opening) {
-    requestStaticAssets();
-    requestGrokUsage({ fresh: true });
-  }
+}
+
+function closeAppChromeMenus() {
+  setLanguageOpen(false);
+  setSettingsOpen(false);
+}
+
+function closeLandingAndDemoMenus() {
+  setLandingLanguageOpen(false);
+  setLandingSettingsOpen(false);
+  setDemoLanguageOpen(false);
+  setDemoSettingsOpen(false);
 }
 
 function onDocumentPointerDown(event) {
-  if (el.settingsPanel && !el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
-    setSettingsOpen(false);
+  if (!isAppChromeMenuTarget(event.target)) {
+    closeAppChromeMenus();
   }
-  if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
+  if (!isDemoChromeMenuTarget(event.target)) {
+    setDemoLanguageOpen(false);
     setDemoSettingsOpen(false);
   }
 }
 
 function onDocumentFocusIn(event) {
-  if (el.settingsPanel && !el.settingsPanel.hidden && !isSettingsTarget(event.target)) {
-    setSettingsOpen(false);
+  if (!isAppChromeMenuTarget(event.target)) {
+    closeAppChromeMenus();
   }
-  if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden && !isDemoSettingsTarget(event.target)) {
+  if (!isDemoChromeMenuTarget(event.target)) {
+    setDemoLanguageOpen(false);
     setDemoSettingsOpen(false);
   }
 }
@@ -1173,9 +1257,20 @@ function onDocumentKeyDown(event) {
   if (event.key !== 'Escape' || document.querySelector('dialog[open]')) {
     return;
   }
+  if (el.demoLanguagePanel && !el.demoLanguagePanel.hidden) {
+    setDemoLanguageOpen(false);
+    el.demoLanguage?.focus();
+    return;
+  }
   if (el.demoSettingsPanel && !el.demoSettingsPanel.hidden) {
     setDemoSettingsOpen(false);
     el.demoSettings.focus();
+    return;
+  }
+  if (el.languagePanel && !el.languagePanel.hidden) {
+    setLanguageOpen(false);
+    el.language?.focus();
+    return;
   }
   if (el.settingsPanel && !el.settingsPanel.hidden) {
     setSettingsOpen(false);
@@ -1463,6 +1558,7 @@ async function loadAppShell() {
     fillThemePicker(el.theme);
     fillSizePicker(el.size);
     registerLocaleGroup(el.locale);
+    registerLocaleTrigger(el.languageFlag);
     appEventsBound = true;
   }
   // applyChrome paints the app only once this is set, and it clears on failure
@@ -1510,6 +1606,9 @@ function captureAppElements() {
   el.conversationEntries = document.getElementById('conversation-entries');
   el.specLink = document.getElementById('spec-link');
   el.newChat = document.getElementById('new-chat');
+  el.language = document.getElementById('language');
+  el.languageFlag = document.getElementById('language-flag');
+  el.languagePanel = document.getElementById('language-panel');
   el.settings = document.getElementById('settings');
   el.settingsPanel = document.getElementById('settings-panel');
   el.locale = document.getElementById('locale');
@@ -1547,6 +1646,9 @@ function captureAppElements() {
 }
 
 function captureDemoElements() {
+  el.demoLanguage = document.getElementById('demo-language');
+  el.demoLanguageFlag = document.getElementById('demo-language-flag');
+  el.demoLanguagePanel = document.getElementById('demo-language-panel');
   el.demoSettings = document.getElementById('demo-settings');
   el.demoSettingsPanel = document.getElementById('demo-settings-panel');
   el.demoTheme = document.getElementById('demo-theme');
@@ -1593,12 +1695,14 @@ function captureDemoElements() {
 }
 
 function bindDemoEvents() {
+  registerLocaleTrigger(el.demoLanguageFlag, () => demoLocale);
+  el.demoLanguage?.addEventListener('click', () => {
+    const open = el.demoLanguagePanel.hidden;
+    setDemoLanguageOpen(open);
+  });
   el.demoSettings.addEventListener('click', () => {
     const open = el.demoSettingsPanel.hidden;
     setDemoSettingsOpen(open);
-    if (open) {
-      setLandingSettingsOpen(false);
-    }
   });
   el.demoExport.addEventListener('click', () => {
     exportDemo();
@@ -1701,7 +1805,7 @@ function bindAppEvents() {
     ['exportPrint', 'print'],
   ]) {
     el[id]?.addEventListener('click', () => {
-      setSettingsOpen(false);
+      closeAppChromeMenus();
       const printWindow = format === 'print' ? openPrintWindow() : null;
       void exportActiveConversation(format, printWindow);
     });
@@ -1716,6 +1820,7 @@ function bindAppEvents() {
     pendingKeptLogId = null;
     el.exportDialog.close();
   });
+  el.language?.addEventListener('click', onLanguageClick);
   el.settings.addEventListener('click', onSettingsClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
   el.newChat.addEventListener('click', newChat);
@@ -2248,7 +2353,7 @@ async function newChat() {
     return;
   }
   const epoch = chatEpoch;
-  setSettingsOpen(false);
+  closeAppChromeMenus();
   const action = await chooseNewChatAction();
   if (epoch !== chatEpoch) {
     return;
@@ -3340,7 +3445,8 @@ function closeDialog(dialog) {
 }
 
 function showLanding() {
-  setSettingsOpen(false);
+  closeAppChromeMenus();
+  closeLandingAndDemoMenus();
   el.landing.hidden = false;
   if (el.app) {
     el.app.inert = true;
@@ -3349,7 +3455,7 @@ function showLanding() {
 }
 
 async function logOut() {
-  setSettingsOpen(false);
+  closeAppChromeMenus();
   closeDialog(el.peopleDialog);
   closeDialog(el.passkeysDialog);
   closeDialog(el.newChatDialog);
@@ -3507,7 +3613,8 @@ function showLogin(message = '', mode = lastLoginMode) {
   if (mode !== 'register') {
     pendingRegistration = null;
   }
-  setSettingsOpen(false);
+  closeAppChromeMenus();
+  closeLandingAndDemoMenus();
   if (el.passkeys) {
     el.passkeys.hidden = true;
   }
@@ -3871,7 +3978,7 @@ function setPasskeyStatus(error) {
 
 async function openPasskeys() {
   const epoch = chatEpoch;
-  setSettingsOpen(false);
+  closeAppChromeMenus();
   el.passkeysStatus.textContent = '';
   const response = await api('/api/passkeys');
   if (epoch !== chatEpoch) {
@@ -4130,7 +4237,7 @@ function paintDialogTheme(dialog, theme, dialogSize) {
 }
 
 function openPeople() {
-  setSettingsOpen(false);
+  closeAppChromeMenus();
   setPeopleStatus('');
   peopleDialogDemo = false;
   paintDialogTheme(el.peopleDialog, null);
@@ -4334,7 +4441,11 @@ if (window.visualViewport) {
 }
 
 setPaintChrome(applyChrome);
-setAfterLandingSettingsToggle(() => setDemoSettingsOpen(false));
+setAfterLandingSettingsToggle(() => {
+  setDemoLanguageOpen(false);
+  setDemoSettingsOpen(false);
+  closeAppChromeMenus();
+});
 setOnChromeError(handleFailure);
 applyChrome();
 

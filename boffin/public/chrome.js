@@ -22,6 +22,9 @@ export const landingEl = {
   root: document.getElementById('landing'),
   demo: document.getElementById('landing-demo'),
   play: document.getElementById('demo-play'),
+  language: document.getElementById('landing-language'),
+  languageFlag: document.getElementById('landing-language-flag'),
+  languagePanel: document.getElementById('landing-language-panel'),
   settings: document.getElementById('landing-settings'),
   settingsPanel: document.getElementById('landing-settings-panel'),
   status: document.getElementById('landing-status'),
@@ -50,6 +53,7 @@ try {
 }
 
 const extraLocaleGroups = new Map();
+const localeTriggerHosts = new Map();
 let flagSerial = 0;
 let flagMarkup = null;
 let localePickersPromise = null;
@@ -308,19 +312,7 @@ function createFlag(localeId) {
   return svg;
 }
 
-function paintLocalePickers() {
-  fillLocalePicker(landingEl.locale);
-  for (const [group, getSelected] of extraLocaleGroups) {
-    fillLocalePicker(group, getSelected());
-  }
-}
-
-export function registerLocaleGroup(group, getSelected = () => locale) {
-  extraLocaleGroups.set(group, getSelected);
-  fillLocalePicker(group, getSelected());
-}
-
-export function ensureLocalePickers() {
+function loadFlagMarkup() {
   if (!localePickersPromise) {
     localePickersPromise = import('./flags.js')
       .then((module) => {
@@ -331,6 +323,48 @@ export function ensureLocalePickers() {
         throw error;
       });
   }
+  return localePickersPromise;
+}
+
+export function registerLocaleTrigger(host, getSelected = () => locale) {
+  if (!host) {
+    return;
+  }
+  localeTriggerHosts.set(host, getSelected);
+  paintLocaleTrigger(host, getSelected());
+  // The button is only the flag, so load that artwork without the other catalogs.
+  loadFlagMarkup()
+    .then(() => paintLocaleTrigger(host, getSelected()))
+    .catch((error) => onChromeError(error));
+}
+
+export function paintLocaleTrigger(host, selected = locale) {
+  if (!host || !flagMarkup) {
+    return;
+  }
+  host.replaceChildren(createFlag(selected));
+}
+
+export function paintLocaleTriggers() {
+  for (const [host, getSelected] of localeTriggerHosts) {
+    paintLocaleTrigger(host, getSelected());
+  }
+}
+
+function paintLocalePickers() {
+  fillLocalePicker(landingEl.locale);
+  for (const [group, getSelected] of extraLocaleGroups) {
+    fillLocalePicker(group, getSelected());
+  }
+  paintLocaleTriggers();
+}
+
+export function registerLocaleGroup(group, getSelected = () => locale) {
+  extraLocaleGroups.set(group, getSelected);
+  fillLocalePicker(group, getSelected());
+}
+
+export function ensureLocalePickers() {
   if (!localeCatalogsPromise) {
     localeCatalogsPromise = loadAllLocales().catch((error) => {
       localeCatalogsPromise = null;
@@ -339,7 +373,7 @@ export function ensureLocalePickers() {
   }
   // Paint from the flags. A failed catalog prefetch retries on the next open.
   return Promise.all([
-    localePickersPromise.then(paintLocalePickers),
+    loadFlagMarkup().then(paintLocalePickers),
     localeCatalogsPromise,
   ]);
 }
@@ -401,12 +435,14 @@ export async function changeLocale(next) {
     return;
   }
   storeLocale(id);
+  paintLocaleTriggers();
   paintChrome();
 }
 
 export function applyLandingChrome() {
   document.documentElement.lang = locale;
   document.documentElement.dir = localeDir(locale);
+  landingEl.language?.setAttribute('aria-label', msg('language'));
   landingEl.settings.setAttribute('aria-label', msg('settings'));
   landingEl.themeLabel.textContent = msg('theme');
   landingEl.sizeLabel.textContent = msg('size');
@@ -436,17 +472,38 @@ export function applyLandingGate() {
   }
 }
 
-export function setLandingSettingsOpen(open) {
-  landingEl.settingsPanel.hidden = !open;
-  landingEl.settings.setAttribute('aria-expanded', open ? 'true' : 'false');
+export function setLandingLanguageOpen(open) {
+  if (!landingEl.languagePanel) {
+    return;
+  }
+  landingEl.languagePanel.hidden = !open;
+  landingEl.language?.setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open) {
+    setLandingSettingsOpen(false);
     ensureLocalePickers().catch((error) => onChromeError(error));
     afterLandingSettingsToggle();
   }
 }
 
+export function setLandingSettingsOpen(open) {
+  landingEl.settingsPanel.hidden = !open;
+  landingEl.settings.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setLandingLanguageOpen(false);
+    afterLandingSettingsToggle();
+  }
+}
+
+export function isLandingLanguageTarget(node) {
+  return Boolean(node) && (landingEl.language?.contains(node) || landingEl.languagePanel?.contains(node));
+}
+
 export function isLandingSettingsTarget(node) {
   return Boolean(node) && (landingEl.settings.contains(node) || landingEl.settingsPanel.contains(node));
+}
+
+export function isLandingChromeMenuTarget(node) {
+  return isLandingLanguageTarget(node) || isLandingSettingsTarget(node);
 }
 
 export async function refreshAuthGate() {
@@ -488,6 +545,11 @@ export function clearJoinParam() {
 }
 
 export function bindLandingChromeEvents() {
+  registerLocaleTrigger(landingEl.languageFlag);
+  landingEl.language?.addEventListener('click', () => {
+    const open = landingEl.languagePanel.hidden;
+    setLandingLanguageOpen(open);
+  });
   landingEl.settings.addEventListener('click', () => {
     const open = landingEl.settingsPanel.hidden;
     setLandingSettingsOpen(open);
@@ -504,17 +566,24 @@ export function bindLandingChromeEvents() {
     }
   });
   document.addEventListener('pointerdown', (event) => {
-    if (!landingEl.settingsPanel.hidden && !isLandingSettingsTarget(event.target)) {
+    if (!isLandingChromeMenuTarget(event.target)) {
+      setLandingLanguageOpen(false);
       setLandingSettingsOpen(false);
     }
   });
   document.addEventListener('focusin', (event) => {
-    if (!landingEl.settingsPanel.hidden && !isLandingSettingsTarget(event.target)) {
+    if (!isLandingChromeMenuTarget(event.target)) {
+      setLandingLanguageOpen(false);
       setLandingSettingsOpen(false);
     }
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || document.querySelector('dialog[open]')) {
+      return;
+    }
+    if (!landingEl.languagePanel.hidden) {
+      setLandingLanguageOpen(false);
+      landingEl.language?.focus();
       return;
     }
     if (!landingEl.settingsPanel.hidden) {

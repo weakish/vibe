@@ -6,7 +6,25 @@
             <div class="topbar-actions">
               <button type="button" class="pill-button" id="demo-spec-back" hidden>Chat</button>
               <button type="button" class="pill-button" id="demo-spec-edit" hidden>Edit</button>
-              <div class="settings-host">
+              <div class="menu-host">
+                <button
+                  type="button"
+                  class="icon-button icon-button-flag"
+                  id="demo-language"
+                  aria-expanded="false"
+                  aria-controls="demo-language-panel"
+                  aria-label="Language"
+                >
+                  <span class="locale-trigger" id="demo-language-flag" aria-hidden="true"></span>
+                </button>
+                <div class="menu-panel menu-panel-compact" id="demo-language-panel" hidden>
+                  <div class="menu-field">
+                    <span id="demo-locale-label">Language</span>
+                    <div class="lang-picker" id="demo-locale" role="radiogroup" aria-labelledby="demo-locale-label" aria-orientation="vertical"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="menu-host">
                 <button
                   type="button"
                   class="icon-button"
@@ -39,10 +57,6 @@
                   <div class="menu-field">
                     <span id="demo-size-label">Size</span>
                     <div class="theme-picker" id="demo-size" role="radiogroup" aria-labelledby="demo-size-label"></div>
-                  </div>
-                  <div class="menu-field">
-                    <span id="demo-locale-label">Language</span>
-                    <div class="lang-picker" id="demo-locale" role="radiogroup" aria-labelledby="demo-locale-label" aria-orientation="vertical"></div>
                   </div>
                   <button type="button" class="menu-action" id="demo-export">Export</button>
                   <button type="button" class="menu-action" id="demo-members">Members</button>

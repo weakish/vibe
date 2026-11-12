@@ -271,9 +271,20 @@ dialog:focus-visible {
   max-width: 100%;
 }
 
-.settings-host {
+.menu-host {
   position: relative;
   flex: none;
+}
+
+.menu-panel.menu-panel-compact {
+  width: min(14rem, calc(100vw - calc(28px * var(--ui-scale))));
+}
+
+.icon-button-flag .locale-trigger,
+.icon-button-flag .locale-trigger .flag {
+  display: block;
+  width: calc(24px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
 }
 
 .icon-button {
@@ -1206,7 +1217,9 @@ html[dir='rtl'] .app .icon-send,
   position: relative;
   z-index: 5;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: calc(8px * var(--ui-scale));
 }
 
 .landing-title {
