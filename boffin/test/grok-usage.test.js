@@ -154,6 +154,21 @@ test('refreshGrokUsage fetches billing then reads the snapshot', async () => {
   assert.equal(body.grok.period, 'weekly');
 });
 
+test('fetchGrokBillingViaAcp waits for billing before closing stdin', async () => {
+  const grokHome = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-grok-acp-delay-'));
+  const { fetchGrokBillingViaAcp } = await import('../src/grok-usage.js');
+  const env = { ...process.env, FAKE_GROK_USAGE_PERCENT: '55', FAKE_GROK_DELAY_BILLING_MS: '80' };
+  delete env.GROK_HOME;
+  await fetchGrokBillingViaAcp({
+    grokBin: FAKE_GROK_ACP,
+    grokHome,
+    env,
+    logger: { error() {} },
+    timeoutMs: 5_000,
+  });
+  assert.equal(loadGrokUsage(grokHome).percent, 55);
+});
+
 test('fetchGrokBillingViaAcp runs Grok billing over ACP', async () => {
   const grokHome = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-grok-acp-'));
   const { fetchGrokBillingViaAcp } = await import('../src/grok-usage.js');

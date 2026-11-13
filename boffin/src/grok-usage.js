@@ -206,9 +206,11 @@ export async function fetchGrokBillingViaAcp({
         });
         await waitForRpcResult(rl, 1);
         writeRequest(2, BILLING_ACP_METHOD, {});
+        // Keep stdin open until billing returns. Grok 1.0.77 exits 0 on EOF
+        // and drops `_x.ai/billing` if that request is still in flight.
+        await waitForRpcResult(rl, 2);
         stdinClosed = true;
         child.stdin.end();
-        await waitForRpcResult(rl, 2);
         rl.close();
         finish(resolve, undefined);
       } catch (error) {

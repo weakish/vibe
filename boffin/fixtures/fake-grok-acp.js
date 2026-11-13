@@ -40,22 +40,34 @@ if (process.env.FAKE_GROK_HOLD === '1') {
       return;
     }
     if (method === '_x.ai/billing') {
-      const config = {
-        creditUsagePercent: percent,
-        currentPeriod: {
-          type: 'USAGE_PERIOD_TYPE_WEEKLY',
-          end: '2026-11-15T08:53:12.261+00:00',
-        },
+      const delay = Number(process.env.FAKE_GROK_DELAY_BILLING_MS ?? 0);
+      const reply = () => {
+        if (process.stdin.readableEnded) {
+          process.exit(0);
+          return;
+        }
+        const config = {
+          creditUsagePercent: percent,
+          currentPeriod: {
+            type: 'USAGE_PERIOD_TYPE_WEEKLY',
+            end: '2026-11-15T08:53:12.261+00:00',
+          },
+        };
+        const logDir = path.join(grokHome, 'logs');
+        mkdirSync(logDir, { recursive: true });
+        appendFileSync(
+          path.join(logDir, 'unified.jsonl'),
+          `${JSON.stringify({ msg: 'billing: fetched credits config', ctx: { config } })}\n`,
+        );
+        process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: replyId, result: { config } })}\n`);
+        rl.close();
+        process.exit(0);
       };
-      const logDir = path.join(grokHome, 'logs');
-      mkdirSync(logDir, { recursive: true });
-      appendFileSync(
-        path.join(logDir, 'unified.jsonl'),
-        `${JSON.stringify({ msg: 'billing: fetched credits config', ctx: { config } })}\n`,
-      );
-      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: replyId, result: { config } })}\n`);
-      rl.close();
-      process.exit(0);
+      if (delay > 0) {
+        setTimeout(reply, delay);
+        return;
+      }
+      reply();
     }
   });
 }
