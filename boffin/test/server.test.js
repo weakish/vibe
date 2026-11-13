@@ -175,13 +175,10 @@ test('streams a reply as NDJSON and records it in the session', async (t) => {
   assert.equal(ops[0].item.text, 'hello');
 
   const session = await (await api(app.baseUrl, '/api/session')).json();
-  assert.deepEqual(
-    session.items.map((item) => [item.role, item.text]),
-    [
-      ['user', 'hello'],
-      ['assistant', 'Echo: tester: hello'],
-    ],
-  );
+  assert.equal(session.items[0].role, 'user');
+  assert.equal(session.items[0].text, 'hello');
+  assert.equal(session.items[1].role, 'assistant');
+  assert.match(session.items[1].text, /^Echo: tester: hello\n\nShopping list:/);
 });
 
 test('uses the saved chat id for follow-up messages', async (t) => {
@@ -196,7 +193,7 @@ test('uses the saved chat id for follow-up messages', async (t) => {
   const [first, second] = app.calls();
   assert.ok(!first.argv.includes('--resume'));
   assert.equal(second.argv[second.argv.indexOf('--resume') + 1], chatId);
-  assert.equal(second.prompt, 'tester: second');
+  assert.match(second.prompt, /^tester: second\n\nShopping list:/);
   assert.equal(second.argv.includes('--force'), true);
 });
 
@@ -374,6 +371,47 @@ test('serves the built-in spec and keeps edits beside the state file', async (t)
   assert.equal((await (await api(app.baseUrl, '/api/spec')).json()).text, '');
 });
 
+test('serves the shopping list and lets the agent find its file path', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const anon = await api(app.baseUrl, '/api/shopping', { credentials: null });
+  assert.equal(anon.status, 401);
+  assert.equal((await api(app.baseUrl, '/api/shopping', { method: 'PUT', credentials: null, body: { items: [] } })).status, 401);
+
+  const first = await api(app.baseUrl, '/api/shopping');
+  assert.equal(first.status, 200);
+  assert.deepEqual(await first.json(), { version: 1, items: [] });
+  assert.equal(fs.existsSync(path.join(path.dirname(app.conversation.stateFile), 'shopping-list.json')), false);
+
+  const saved = await api(app.baseUrl, '/api/shopping', {
+    method: 'PUT',
+    body: { items: [{ name: 'Milk', wantedBy: 'Ada', bought: false }] },
+  });
+  assert.equal(saved.status, 200);
+  const body = await saved.json();
+  assert.equal(body.items.length, 1);
+  assert.equal(body.items[0].name, 'Milk');
+  assert.match(body.items[0].id, /^[0-9a-f-]{36}$/);
+  assert.equal((await (await api(app.baseUrl, '/api/shopping')).json()).items[0].name, 'Milk');
+
+  const bought = await api(app.baseUrl, '/api/shopping', {
+    method: 'PUT',
+    body: { items: [{ ...body.items[0], bought: true, boughtBy: 'Ken' }] },
+  });
+  assert.equal((await bought.json()).items[0].bought, true);
+
+  assert.equal((await api(app.baseUrl, '/api/shopping', { method: 'PUT', body: { items: [{ name: '', bought: false }] } })).status, 400);
+  assert.equal((await (await api(app.baseUrl, '/api/shopping', { method: 'PUT', body: { items: [{ name: '', bought: false }] } })).json()).error, 'The shopping list is not valid.');
+
+  const { status } = await sendMessage(app.baseUrl, 'We need milk');
+  assert.equal(status, 200);
+  const [call] = app.calls();
+  assert.match(call.prompt, /We need milk/);
+  assert.match(call.prompt, /state\/shopping-list\.json/);
+  assert.match(call.prompt, /already bought/);
+});
+
 test('returns 404 for unknown API routes', async (t) => {
   const app = await startServer();
   t.after(() => app.close());
@@ -424,6 +462,8 @@ test('serves the web app without requiring credentials', async (t) => {
   assert.match(appShell, /<button type="button" class="menu-action" id="log-out">/);
   assert.match(appShell, /id="passkey-label"/);
   assert.match(appShell, /id="new-chat"/);
+  assert.match(appShell, /id="shopping-open"/);
+  assert.match(appShell, /id="shopping"/);
 
   const demoShell = await (await api(app.baseUrl, '/demo-shell.html', { credentials: null })).text();
   assert.match(demoShell, /id="demo-input"/);

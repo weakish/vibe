@@ -139,5 +139,7 @@ test('fills interpolation slots and maps known server errors', () => {
   assert.equal(translateError('en', 'Too many attempts. Try again later.'), 'Too many attempts. Try again later.');
   assert.equal(translateError('ja', 'Too many attempts. Try again later.'), '試行が多すぎます。しばらくしてからもう一度お試しください。');
   assert.equal(translateError('ja', 'The spec must be text.'), '仕様はテキストである必要があります。');
+  assert.equal(translateError('en', 'The shopping list is not valid.'), 'The shopping list is not valid.');
+  assert.equal(translateError('ja', 'The shopping list is not valid.'), '買い物リストが正しくありません。');
   assert.equal(translateError('en', 'The spec is limited to 100000 characters.'), 'The spec is limited to 100000 characters.');
 });

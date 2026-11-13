@@ -102,7 +102,7 @@ test('resumes the same CLI chat for follow-up messages', async () => {
   const [first, second] = calls.map((call) => call.args);
   assert.ok(!first.includes('--resume'));
   assert.deepEqual(second.slice(second.indexOf('--resume'), second.indexOf('--resume') + 2), ['--resume', 'chat-7']);
-  assert.equal(second.at(-1), 'second');
+  assert.match(second.at(-1), /^second\n\nShopping list:/);
   assert.equal(second[second.indexOf('--model') + 1], 'composer-2.5');
 });
 
@@ -306,6 +306,7 @@ test('sends images with --image and other files as paths in the prompt', async (
   assert.equal(images.length, 1);
   assert.equal(fs.readFileSync(images[0]).equals(PNG), true);
   assert.match(args.at(-1), /^look\n\nAttached files:\n/);
+  assert.match(args.at(-1), /data\/shopping-list\.json/);
   assert.match(args.at(-1), /notes\.txt$/m);
   assert.equal(args.includes('--image'), true);
   assert.ok(images[0].startsWith(dir));

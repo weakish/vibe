@@ -80,6 +80,20 @@
               <a class="menu-action" id="spec-link" href="/spec">Spec</a>
             </div>
           </div>
+          <button type="button" class="icon-button" id="shopping-open" hidden aria-pressed="false" aria-label="Shopping list">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6.5 7h14l-1.6 8.2a2 2 0 0 1-2 1.6H9.4a2 2 0 0 1-2-1.6L5.2 4.5H3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <circle cx="10" cy="20" r="1.4" fill="currentColor" />
+              <circle cx="17" cy="20" r="1.4" fill="currentColor" />
+            </svg>
+          </button>
           <button type="button" class="icon-button" id="new-chat" aria-label="New chat">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -122,6 +136,32 @@
       <main class="conversation-list" id="conversation-list" hidden>
         <h2 id="conversation-list-title">Conversations</h2>
         <div id="conversation-entries"></div>
+      </main>
+
+      <main class="shopping" id="shopping" hidden>
+        <p class="status" id="shopping-status" role="status" hidden></p>
+        <section class="shopping-section">
+          <h2 id="shopping-wanted-heading">To buy</h2>
+          <ul class="shopping-list" id="shopping-wanted-list"></ul>
+          <p class="shopping-empty" id="shopping-empty" hidden></p>
+        </section>
+        <section class="shopping-section" id="shopping-bought-section" hidden>
+          <h2 id="shopping-bought-heading">Bought</h2>
+          <ul class="shopping-list" id="shopping-bought-list"></ul>
+        </section>
+        <form class="shopping-add" id="shopping-add-form">
+          <label class="visually-hidden" for="shopping-add-input" id="shopping-add-label">Item</label>
+          <input
+            id="shopping-add-input"
+            type="text"
+            maxlength="200"
+            autocomplete="off"
+            spellcheck="true"
+            enterkeyhint="done"
+            placeholder="Item"
+          />
+          <button type="submit" class="primary-button" id="shopping-add-submit">Add</button>
+        </form>
       </main>
 
       <main class="messages" id="messages">

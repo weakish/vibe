@@ -590,6 +590,108 @@ a.menu-action {
   font-size: calc(12px * var(--ui-scale));
 }
 
+.shopping {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+}
+
+.shopping-section h2 {
+  margin: 0 0 calc(8px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.shopping-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.shopping-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--surface);
+}
+
+.shopping-row.is-bought .shopping-name {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.shopping-check {
+  flex: none;
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  accent-color: var(--accent);
+}
+
+.shopping-meta {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.shopping-name {
+  display: block;
+  word-break: break-word;
+}
+
+.shopping-who {
+  display: block;
+  color: var(--muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.shopping-remove {
+  flex: none;
+  min-height: calc(32px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: calc(12px * var(--ui-scale));
+  cursor: pointer;
+}
+
+.shopping-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: calc(14px * var(--ui-scale));
+}
+
+.shopping-add {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+  margin-top: auto;
+  padding-top: calc(8px * var(--ui-scale));
+}
+
+.shopping-add input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: calc(40px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.shopping-add .primary-button {
+  flex: none;
+  min-width: 5rem;
+}
+
 .pill-button {
   flex: 0 1 auto;
   min-width: 0;
@@ -623,6 +725,7 @@ a.menu-action {
 
 /* Transcript */
 
+.shopping,
 .messages,
 .conversation-list {
   flex: 1;

@@ -109,6 +109,7 @@ const SERVER_ERRORS = new Map([
   ['Could not start a new chat because the conversation could not be saved.', 'newChatSaveFailed'],
   ['Internal server error.', 'internalError'],
   ['The spec must be text.', 'specMustBeText'],
+  ['The shopping list is not valid.', 'shoppingInvalid'],
   ['The agent is still working on the previous message.', 'agentBusyExact'],
   ['The password is no longer used.', 'passwordRetired'],
   ['The passkey was not accepted.', 'passkeyFailed'],

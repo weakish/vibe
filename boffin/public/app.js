@@ -147,6 +147,19 @@ const el = {
   conversationListTitle: document.getElementById('conversation-list-title'),
   conversationEntries: document.getElementById('conversation-entries'),
   specLink: document.getElementById('spec-link'),
+  shopping: document.getElementById('shopping'),
+  shoppingOpen: document.getElementById('shopping-open'),
+  shoppingStatus: document.getElementById('shopping-status'),
+  shoppingWantedHeading: document.getElementById('shopping-wanted-heading'),
+  shoppingWantedList: document.getElementById('shopping-wanted-list'),
+  shoppingEmpty: document.getElementById('shopping-empty'),
+  shoppingBoughtSection: document.getElementById('shopping-bought-section'),
+  shoppingBoughtHeading: document.getElementById('shopping-bought-heading'),
+  shoppingBoughtList: document.getElementById('shopping-bought-list'),
+  shoppingAddForm: document.getElementById('shopping-add-form'),
+  shoppingAddLabel: document.getElementById('shopping-add-label'),
+  shoppingAddInput: document.getElementById('shopping-add-input'),
+  shoppingAddSubmit: document.getElementById('shopping-add-submit'),
   newChat: document.getElementById('new-chat'),
   language: document.getElementById('language'),
   languageFlag: document.getElementById('language-flag'),
@@ -279,6 +292,7 @@ const state = {
   alumni: [],
   invites: [],
   listing: false,
+  shopping: false,
   busy: false,
   streaming: false,
   following: false,
@@ -333,6 +347,9 @@ let demoEventsBound = false;
 let appMounted = false;
 let appShellPromise = null;
 let appEventsBound = false;
+let shoppingItems = [];
+let shoppingBusy = false;
+let shoppingPoll = null;
 let demoUserTurns = [];
 let demoPlayRun = 0;
 let demoScriptShown = 0;
@@ -386,6 +403,9 @@ function applyChrome() {
   el.language?.setAttribute('aria-label', msg('language'));
   el.settings.setAttribute('aria-label', msg('settings'));
   el.newChat.setAttribute('aria-label', msg('newChat'));
+  if (el.shoppingOpen) {
+    el.shoppingOpen.setAttribute('aria-label', msg('shopping'));
+  }
   el.themeLabel.textContent = msg('theme');
   el.sizeLabel.textContent = msg('size');
   syncThemePicker(el.theme);
@@ -443,6 +463,7 @@ function applyChrome() {
   el.passkeysClose.textContent = msg('cancel');
   el.logOut.textContent = msg('logOut');
   el.specLink.textContent = msg('spec');
+  paintShoppingChrome();
   paintLocaleTriggers();
   el.conversationListTitle.textContent = msg('conversationList');
   el.emptyTitle.textContent = msg('emptyGreeting');
@@ -1298,6 +1319,11 @@ function onDocumentKeyDown(event) {
   if (el.settingsPanel && !el.settingsPanel.hidden) {
     setSettingsOpen(false);
     el.settings.focus();
+    return;
+  }
+  if (state.shopping) {
+    hideShopping();
+    el.shoppingOpen?.focus();
   }
 }
 
@@ -1640,6 +1666,19 @@ function captureAppElements() {
   el.conversationListTitle = document.getElementById('conversation-list-title');
   el.conversationEntries = document.getElementById('conversation-entries');
   el.specLink = document.getElementById('spec-link');
+  el.shopping = document.getElementById('shopping');
+  el.shoppingOpen = document.getElementById('shopping-open');
+  el.shoppingStatus = document.getElementById('shopping-status');
+  el.shoppingWantedHeading = document.getElementById('shopping-wanted-heading');
+  el.shoppingWantedList = document.getElementById('shopping-wanted-list');
+  el.shoppingEmpty = document.getElementById('shopping-empty');
+  el.shoppingBoughtSection = document.getElementById('shopping-bought-section');
+  el.shoppingBoughtHeading = document.getElementById('shopping-bought-heading');
+  el.shoppingBoughtList = document.getElementById('shopping-bought-list');
+  el.shoppingAddForm = document.getElementById('shopping-add-form');
+  el.shoppingAddLabel = document.getElementById('shopping-add-label');
+  el.shoppingAddInput = document.getElementById('shopping-add-input');
+  el.shoppingAddSubmit = document.getElementById('shopping-add-submit');
   el.newChat = document.getElementById('new-chat');
   el.language = document.getElementById('language');
   el.languageFlag = document.getElementById('language-flag');
@@ -1856,6 +1895,18 @@ function bindAppEvents() {
     el.exportDialog.close();
   });
   el.language?.addEventListener('click', onLanguageClick);
+  el.shoppingOpen.addEventListener('click', () => {
+    closeAppChromeMenus();
+    if (state.shopping) {
+      hideShopping();
+    } else {
+      void openShopping();
+    }
+  });
+  el.shoppingAddForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void addShoppingItem();
+  });
   el.filesMenu.addEventListener('click', () => {
     closeAppChromeMenus();
     void openFiles();
@@ -2095,8 +2146,14 @@ async function exportDemo() {
 function showChat(session) {
   state.listing = false;
   el.conversationList.hidden = true;
-  el.messages.hidden = false;
-  el.input.closest('.composer').hidden = false;
+  if (state.shopping) {
+    el.messages.hidden = true;
+    el.input.closest('.composer').hidden = true;
+    el.shopping.hidden = false;
+  } else {
+    el.messages.hidden = false;
+    el.input.closest('.composer').hidden = false;
+  }
   applySessionIdentity(session);
   state.agent = session.agent ?? 'cursor';
   state.model = session.model ?? '';
@@ -2110,6 +2167,7 @@ function showChat(session) {
   el.newChat.hidden = !state.canManage;
   el.people.hidden = !state.canManage;
   el.filesMenu.hidden = false;
+  el.shoppingOpen.hidden = false;
   el.passkeys.hidden = false;
   rebindInviteNames(el.transcript, false);
   scheduleRender();
@@ -2120,6 +2178,8 @@ function showConversationList(conversations) {
   state.listing = true;
   state.items = [];
   state.busy = false;
+  hideShopping();
+  el.shoppingOpen.hidden = true;
   el.messages.hidden = true;
   el.input.closest('.composer').hidden = true;
   el.conversationList.hidden = false;
@@ -2127,6 +2187,7 @@ function showConversationList(conversations) {
   el.newChat.hidden = true;
   el.people.hidden = true;
   el.filesMenu.hidden = true;
+  el.shoppingOpen.hidden = true;
   el.passkeys.hidden = false;
   el.staticAssetsField.hidden = true;
   el.conversationListTitle.textContent = msg('conversationList');
@@ -3509,6 +3570,10 @@ async function logOut() {
   state.busy = false;
   state.stopping = false;
   state.listing = false;
+  hideShopping();
+  if (el.shoppingOpen) {
+    el.shoppingOpen.hidden = true;
+  }
   state.items = [];
   state.nodes.clear();
   state.you = null;
@@ -4390,6 +4455,215 @@ async function transferFileEntry(entry, viewWindow) {
       return;
     }
     setFilesStatus(error.message || msg('filesOpenFailed'));
+  }
+}
+
+function paintShoppingChrome() {
+  if (!el.shopping) {
+    return;
+  }
+  el.shoppingWantedHeading.textContent = msg('shoppingWanted');
+  el.shoppingBoughtHeading.textContent = msg('shoppingBought');
+  el.shoppingEmpty.textContent = msg('shoppingEmpty');
+  el.shoppingAddLabel.textContent = msg('shoppingItem');
+  el.shoppingAddInput.placeholder = msg('shoppingItem');
+  el.shoppingAddInput.setAttribute('aria-label', msg('shoppingItem'));
+  el.shoppingAddSubmit.textContent = msg('shoppingAdd');
+  renderShoppingItems();
+}
+
+function setShoppingStatus(text) {
+  if (!el.shoppingStatus) {
+    return;
+  }
+  el.shoppingStatus.hidden = !text;
+  el.shoppingStatus.textContent = text;
+}
+
+function stopShoppingPoll() {
+  if (shoppingPoll) {
+    clearInterval(shoppingPoll);
+    shoppingPoll = null;
+  }
+}
+
+function hideShopping() {
+  state.shopping = false;
+  stopShoppingPoll();
+  if (el.shopping) {
+    el.shopping.hidden = true;
+  }
+  if (el.shoppingOpen) {
+    el.shoppingOpen.setAttribute('aria-pressed', 'false');
+  }
+  if (!state.listing && el.messages) {
+    el.messages.hidden = false;
+    const composer = el.input?.closest('.composer');
+    if (composer) {
+      composer.hidden = false;
+    }
+  }
+}
+
+async function openShopping() {
+  if (state.listing || !el.shopping) {
+    return;
+  }
+  state.shopping = true;
+  el.messages.hidden = true;
+  el.input.closest('.composer').hidden = true;
+  el.shopping.hidden = false;
+  el.shoppingOpen.setAttribute('aria-pressed', 'true');
+  setShoppingStatus('');
+  paintShoppingChrome();
+  await loadShoppingList();
+  stopShoppingPoll();
+  shoppingPoll = setInterval(() => {
+    if (document.visibilityState === 'hidden' || shoppingBusy || !state.shopping) {
+      return;
+    }
+    void loadShoppingList({ quiet: true });
+  }, 2000);
+}
+
+async function loadShoppingList({ quiet = false } = {}) {
+  try {
+    const response = await api('/api/shopping');
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const body = await response.json();
+    shoppingItems = Array.isArray(body.items) ? body.items : [];
+    renderShoppingItems();
+    if (!quiet) {
+      setShoppingStatus('');
+    }
+  } catch (error) {
+    if (error instanceof SessionEndedError) {
+      return;
+    }
+    if (error instanceof AuthError) {
+      handleFailure(error);
+      return;
+    }
+    if (!quiet) {
+      setShoppingStatus(error.message || msg('shoppingLoadFailed'));
+    }
+  }
+}
+
+function renderShoppingItems() {
+  if (!el.shoppingWantedList) {
+    return;
+  }
+  const wanted = shoppingItems.filter((item) => !item.bought);
+  const bought = shoppingItems.filter((item) => item.bought);
+  fillShoppingList(el.shoppingWantedList, wanted);
+  fillShoppingList(el.shoppingBoughtList, bought);
+  el.shoppingEmpty.hidden = wanted.length > 0;
+  el.shoppingBoughtSection.hidden = bought.length === 0;
+}
+
+function fillShoppingList(node, items) {
+  node.replaceChildren();
+  for (const item of items) {
+    node.append(shoppingRow(item));
+  }
+}
+
+function shoppingRow(item) {
+  const row = document.createElement('li');
+  row.className = item.bought ? 'shopping-row is-bought' : 'shopping-row';
+  const check = document.createElement('input');
+  check.type = 'checkbox';
+  check.className = 'shopping-check';
+  check.checked = Boolean(item.bought);
+  check.setAttribute('aria-label', item.name);
+  check.addEventListener('change', () => {
+    void saveShoppingItems(
+      shoppingItems.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              bought: check.checked,
+              boughtBy: check.checked ? state.you?.name || entry.boughtBy || '' : '',
+            }
+          : entry,
+      ),
+    );
+  });
+  const meta = document.createElement('div');
+  meta.className = 'shopping-meta';
+  const name = document.createElement('span');
+  name.className = 'shopping-name';
+  name.textContent = item.name;
+  meta.append(name);
+  const who = item.bought ? item.boughtBy : item.wantedBy;
+  if (who) {
+    const line = document.createElement('span');
+    line.className = 'shopping-who';
+    line.textContent = item.bought ? msg('shoppingBoughtBy', { name: who }) : msg('shoppingWantedBy', { name: who });
+    meta.append(line);
+  }
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'shopping-remove';
+  remove.textContent = msg('shoppingRemove');
+  remove.addEventListener('click', () => {
+    void saveShoppingItems(shoppingItems.filter((entry) => entry.id !== item.id));
+  });
+  row.append(check, meta, remove);
+  return row;
+}
+
+async function addShoppingItem() {
+  const name = el.shoppingAddInput.value.trim();
+  if (!name) {
+    el.shoppingAddInput.focus();
+    return;
+  }
+  const exists = shoppingItems.some((item) => item.name.toLowerCase() === name.toLowerCase() && !item.bought);
+  if (exists) {
+    el.shoppingAddInput.value = '';
+    return;
+  }
+  await saveShoppingItems([
+    ...shoppingItems,
+    {
+      name,
+      wantedBy: state.you?.name || '',
+      bought: false,
+      boughtBy: '',
+      note: '',
+    },
+  ]);
+  el.shoppingAddInput.value = '';
+  el.shoppingAddInput.focus();
+}
+
+async function saveShoppingItems(items) {
+  shoppingBusy = true;
+  setShoppingStatus('');
+  try {
+    const response = await api('/api/shopping', { method: 'PUT', body: { items } });
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const body = await response.json();
+    shoppingItems = Array.isArray(body.items) ? body.items : items;
+    renderShoppingItems();
+  } catch (error) {
+    if (error instanceof SessionEndedError) {
+      return;
+    }
+    if (error instanceof AuthError) {
+      handleFailure(error);
+      return;
+    }
+    setShoppingStatus(error.message || msg('shoppingSaveFailed'));
+    renderShoppingItems();
+  } finally {
+    shoppingBusy = false;
   }
 }
 

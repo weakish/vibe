@@ -26,6 +26,7 @@ import {
   safeFileName,
   sniffImage,
 } from './media.js';
+import { shoppingListPrompt, shoppingListRelativePath } from './shopping-list.js';
 
 const STATE_VERSION = 1;
 // A file written as a run starts can get an mtime a few milliseconds before Date.now().
@@ -591,7 +592,7 @@ export class Conversation {
         model: this.model,
         force: this.force,
         resumeId: this.chatId,
-        prompt: agentPrompt(text, stored, author),
+        prompt: agentPrompt(text, stored, author, this.workdir, this.stateFile),
         imagePaths: this.agent === CURSOR ? imagePaths : [],
         cwd: this.workdir,
       });
@@ -940,9 +941,10 @@ function canonicalPaths(files) {
   return paths;
 }
 
-function agentPrompt(text, stored, author) {
+function agentPrompt(text, stored, author, workdir, stateFile) {
   const body = stored.length === 0 ? text : `${text || 'Please look at the attached files.'}\n\nAttached files:\n${stored.map((file) => `- ${file.path}`).join('\n')}`;
-  return author ? `${author}: ${body}` : body;
+  const named = author ? `${author}: ${body}` : body;
+  return `${named}\n\n${shoppingListPrompt(shoppingListRelativePath(workdir, stateFile))}`;
 }
 
 function chooseAgent(saved, backends) {

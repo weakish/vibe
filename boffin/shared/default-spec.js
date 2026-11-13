@@ -65,7 +65,7 @@ For Cursor it runs \`agent\` (or \`agent_bin\` from the config). The arguments a
 - \`--force\` when \`force\` is true (the default)
 - \`--resume\` and the chat id on follow-up turns
 - \`--image\` and a file path for each attached image
-- \`--\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag
+- \`--\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag. After the message, the prompt includes a shopping list instruction with the path of the JSON file.
 
 For Grok it runs \`grok\` (or \`grok_bin\` from the config). The arguments are:
 
@@ -75,7 +75,7 @@ For Grok it runs \`grok\` (or \`grok_bin\` from the config). The arguments are:
 - \`--reasoning-effort\` when the chosen model has an effort, such as high for Grok 4.7 High
 - \`--always-approve\` when \`force\` is true (the default)
 - \`--resume\` and the chat id on follow-up turns
-- \`--single=\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag
+- \`--single=\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag. After the message, the prompt includes a shopping list instruction with the path of the JSON file.
 
 A Cursor chat id is not passed to Grok, and a Grok session id is not passed to Cursor. The default Cursor model is Composer 2.5. The default Grok model is Grok 4.7 High. Only first-party models for each CLI are offered.
 
@@ -86,6 +86,14 @@ More than one person may be in the conversation, and a send still starts one age
 Assistant text is shown as it streams. Tool calls appear with a name and a short summary. Images the agent creates are stored and shown in the transcript, and each one can be downloaded. A file the agent creates or changes during the run, or names in its reply, is stored and offered for download when it stays inside the workdir and is 8 MB or smaller. Up to 8 such files are offered. Sign-in config, the data directory, git metadata, and dependencies are not offered. A file or image larger than 8 MB (8,388,608 bytes) is not stored or shown, and no notice is given. The first bad line of agent output in a run becomes one error notice. Later bad lines are logged on the server only. Lines after a bad line are still read.
 
 Files in Settings lists every file tied to this conversation: media and images from the transcript, and user attachments kept under \`.boffin/uploads\`. Everyone in the conversation can open the list, view a file when the browser can show it, and download any listed file. Only the owner sees a second list for the working directory: publishable paths up to 8 MB, with the same exclusions as agent downloads. That list is view and download only; the Files page does not create, rename, move, or delete anything in the workdir.
+
+# Shopping list
+
+The page has a Shopping list. Anyone in the conversation can open it from the header. It lists things people want to buy, and things already bought. The list is kept in \`shopping-list.json\` next to the state file. A missing file is an empty list. New chat does not clear it.
+
+Anyone in the conversation can add an item, mark it bought, or remove it. The agent must also keep this file up to date. Each prompt includes the path and the rules. When a person says they want to buy something, the agent adds that item, with that person's name as \`wantedBy\`, unless the same name is already on the list. When a person says they bought something, the agent marks that item bought and sets \`boughtBy\` to that person's name. The agent does not invent items, and does not rewrite the file when the message is not about buying. The assistant may send a short acknowledgment, or nothing.
+
+The file is version-1 JSON: \`{"version":1,"items":[...]}\`. Each item has \`id\` (a UUID), \`name\`, \`wantedBy\`, \`bought\`, \`boughtBy\`, and \`note\`. \`bought\` is true or false. \`wantedBy\` and \`boughtBy\` are names, and may be empty. \`note\` may be empty. There may be up to 200 items. A name may be up to 200 characters. A note may be up to 500 characters. A person's name on an item may be up to 40 characters.
 
 Sign-in secrets are not passed to the agent's environment or arguments. The agent can still read files in the workdir (see BUGS).
 

@@ -19,6 +19,12 @@ import { GROK } from './backends.js';
 import { DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
 import { GROK_USAGE_REFRESH_FAILED, createGrokUsage } from './grok-usage.js';
+import {
+  parseShoppingList,
+  readShoppingList,
+  shoppingListPathForState,
+  writeShoppingList,
+} from './shopping-list.js';
 import { readSavedSpec, specPathForState, writeSavedSpec } from './spec-store.js';
 import {
   PASSKEY_ATTEMPT_LIMIT,
@@ -187,6 +193,7 @@ export function createServer({
     readGrokUsage: readGrokUsageOverride ?? grokUsage.read,
     refreshGrokUsage: refreshGrokUsageOverride ?? grokUsage.refresh,
     specFile,
+    shoppingFile: shoppingListPathForState(conversation.stateFile),
     workdir: conversation.workdir,
     projectRoot: PROJECT_ROOT,
     staticAssetsState: defaultStaticAssetsState(),
@@ -336,6 +343,12 @@ async function handleApi(req, res, url, context) {
     }
     return sendMedia(res, conversation, mediaId[1]);
   }
+  if (req.method === 'GET' && url.pathname === '/api/shopping') {
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
+    return handleShopping(req, res, context.shoppingFile, context.logger);
+  }
   if (req.method === 'GET' && url.pathname === '/api/files') {
     return handleFilesList(res, conversation, person);
   }
@@ -429,6 +442,12 @@ async function handleApi(req, res, url, context) {
       return { ok: true };
     });
   }
+  if (req.method === 'PUT' && url.pathname === '/api/shopping') {
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
+    return handleShopping(req, res, context.shoppingFile, context.logger);
+  }
   if (req.method === 'PUT' && url.pathname === '/api/spec') {
     if (!person.owner) {
       return sendJson(res, 403, { error: OWNER_ONLY });
@@ -439,6 +458,35 @@ async function handleApi(req, res, url, context) {
     return handleSpec(req, res, context.specFile, context.logger, true);
   }
   return sendJson(res, 404, { error: 'Not found.' });
+}
+
+async function handleShopping(req, res, shoppingFile, logger) {
+  if (req.method === 'GET') {
+    try {
+      return sendJson(res, 200, await readShoppingList(shoppingFile));
+    } catch (error) {
+      logger.error(`[boffin] could not read shopping list: ${error.message}`);
+      return sendJson(res, 500, { error: 'Internal server error.' });
+    }
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    const status = error.status ?? 400;
+    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  }
+  const list = parseShoppingList(body);
+  if (!list) {
+    return sendJson(res, 400, { error: 'The shopping list is not valid.' });
+  }
+  try {
+    await writeShoppingList(shoppingFile, list);
+  } catch (error) {
+    logger.error(`[boffin] could not save shopping list: ${error.message}`);
+    return sendJson(res, 500, { error: 'Internal server error.' });
+  }
+  return sendJson(res, 200, list);
 }
 
 async function handleSpec(req, res, specFile, logger, canEdit) {
