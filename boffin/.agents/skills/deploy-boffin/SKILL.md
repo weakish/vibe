@@ -357,7 +357,7 @@ Give the operator:
 
 Both accounts write `/srv/boffin` through the shared `boffin` group, so an update is just a push and a restart — no ownership changes and no need to stop the service first (a push only ever lands on a clean, fast-forward tree):
 
-1. Locally: `git pull --rebase deploy main` to bring in any commits the agent made, then `git push deploy HEAD:main`.
+1. Locally: `git pull --rebase deploy main` to bring in any commits the agent made, then `git push deploy HEAD:main`. Optional: after merges to `main`, CircleCI can run the same push, `chmod g+w`, and restart (`docs/circleci-deploy.md`, `scripts/circleci-deploy.sh`).
 2. Rejected as **non-fast-forward**: the agent committed since your last fetch — repeat step 1.
 3. Rejected because the **working directory is dirty** ("refusing to update checked out branch" / unstaged or uncommitted changes): this is intentional — nothing was overwritten, and a chat may be in progress. Wait for any running chat to finish, then settle the agent's edits **as `boffin`** over SSH: `sudo -u boffin git -C /srv/boffin status` (and `diff` if dirty). Either commit them (`sudo -u boffin git -C /srv/boffin commit -am ...`, then go to step 1) or — only with the operator's explicit approval — discard them (`sudo -u boffin git -C /srv/boffin checkout -- .`). Never force the push.
 4. The push ran as your account, so re-grant group write on the files it checked out, as in step 3: on the server, `find /srv/boffin -user <github-username> -exec chmod g+w {} +`. Files the agent creates are already group-writable via the service's `UMask=0002`; this step covers yours.

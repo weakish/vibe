@@ -1,0 +1,29 @@
+# Deploy-only pipeline: pushes merged commits on main to /srv/boffin over SSH.
+# Setup: docs/circleci-deploy.md
+
+version: 2.1
+
+jobs:
+  deploy:
+    docker:
+      - image: cimg/base:2026.10
+    environment:
+      GIT_LFS_SKIP_SMUDGE: "1"
+    steps:
+      # A blobless checkout omits blobs a catch-up push still has to upload.
+      - checkout:
+          method: full
+      # Add the deploy key under Project Settings → SSH Keys → Additional SSH Keys
+      # (hostname = your DEPLOY_HOST). Paste its SHA256 fingerprint below.
+      - add_ssh_keys:
+          fingerprints:
+            - "SHA256:REPLACE_WITH_DEPLOY_KEY_FINGERPRINT"
+      - run:
+          name: Push to production and restart Boffin
+          command: ./scripts/circleci-deploy.sh
+
+workflows:
+  deploy-production:
+    when: pipeline.git.branch == "main"
+    jobs:
+      - deploy
