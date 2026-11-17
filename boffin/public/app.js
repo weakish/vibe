@@ -115,6 +115,30 @@ const el = {
   filesWorkdirList: document.getElementById('files-workdir-list'),
   filesWorkdirEmpty: document.getElementById('files-workdir-empty'),
   filesClose: document.getElementById('files-close'),
+  overviewMenu: document.getElementById('overview-menu'),
+  overviewDialog: document.getElementById('overview-dialog'),
+  overviewTitle: document.getElementById('overview-title'),
+  overviewStatus: document.getElementById('overview-status'),
+  overviewEmpty: document.getElementById('overview-empty'),
+  overviewTopicSection: document.getElementById('overview-topic-section'),
+  overviewTopicHeading: document.getElementById('overview-topic-heading'),
+  overviewTopic: document.getElementById('overview-topic'),
+  overviewRequestsSection: document.getElementById('overview-requests-section'),
+  overviewRequestsHeading: document.getElementById('overview-requests-heading'),
+  overviewRequestsList: document.getElementById('overview-requests-list'),
+  overviewResponsesSection: document.getElementById('overview-responses-section'),
+  overviewResponsesHeading: document.getElementById('overview-responses-heading'),
+  overviewResponsesList: document.getElementById('overview-responses-list'),
+  overviewWorkSection: document.getElementById('overview-work-section'),
+  overviewWorkHeading: document.getElementById('overview-work-heading'),
+  overviewWorkList: document.getElementById('overview-work-list'),
+  overviewMaterialsSection: document.getElementById('overview-materials-section'),
+  overviewMaterialsHeading: document.getElementById('overview-materials-heading'),
+  overviewMaterialsList: document.getElementById('overview-materials-list'),
+  overviewIssuesSection: document.getElementById('overview-issues-section'),
+  overviewIssuesHeading: document.getElementById('overview-issues-heading'),
+  overviewIssuesList: document.getElementById('overview-issues-list'),
+  overviewClose: document.getElementById('overview-close'),
   invite: document.getElementById('invite'),
   people: document.getElementById('people'),
   passkeys: document.getElementById('passkeys'),
@@ -453,6 +477,20 @@ function applyChrome() {
     el.filesConversationEmpty.textContent = msg('filesEmpty');
     el.filesWorkdirEmpty.textContent = msg('filesEmpty');
     el.filesClose.textContent = msg('cancel');
+  }
+  if (el.overviewMenu) {
+    el.overviewMenu.textContent = msg('overview');
+  }
+  if (el.overviewTitle) {
+    el.overviewTitle.textContent = msg('overviewTitle');
+    el.overviewTopicHeading.textContent = msg('overviewTopic');
+    el.overviewRequestsHeading.textContent = msg('overviewRequests');
+    el.overviewResponsesHeading.textContent = msg('overviewResponses');
+    el.overviewWorkHeading.textContent = msg('overviewWork');
+    el.overviewMaterialsHeading.textContent = msg('overviewMaterials');
+    el.overviewIssuesHeading.textContent = msg('overviewIssues');
+    el.overviewEmpty.textContent = msg('overviewEmpty');
+    el.overviewClose.textContent = msg('cancel');
   }
   el.people.textContent = msg('people');
   el.passkeys.textContent = msg('passkeys');
@@ -1633,6 +1671,30 @@ function captureAppElements() {
   el.exportDialogTitle = document.getElementById('export-dialog-title');
   el.exportDialogCancel = document.getElementById('export-dialog-cancel');
   el.filesMenu = document.getElementById('files-menu');
+  el.overviewMenu = document.getElementById('overview-menu');
+  el.overviewDialog = document.getElementById('overview-dialog');
+  el.overviewTitle = document.getElementById('overview-title');
+  el.overviewStatus = document.getElementById('overview-status');
+  el.overviewEmpty = document.getElementById('overview-empty');
+  el.overviewTopicSection = document.getElementById('overview-topic-section');
+  el.overviewTopicHeading = document.getElementById('overview-topic-heading');
+  el.overviewTopic = document.getElementById('overview-topic');
+  el.overviewRequestsSection = document.getElementById('overview-requests-section');
+  el.overviewRequestsHeading = document.getElementById('overview-requests-heading');
+  el.overviewRequestsList = document.getElementById('overview-requests-list');
+  el.overviewResponsesSection = document.getElementById('overview-responses-section');
+  el.overviewResponsesHeading = document.getElementById('overview-responses-heading');
+  el.overviewResponsesList = document.getElementById('overview-responses-list');
+  el.overviewWorkSection = document.getElementById('overview-work-section');
+  el.overviewWorkHeading = document.getElementById('overview-work-heading');
+  el.overviewWorkList = document.getElementById('overview-work-list');
+  el.overviewMaterialsSection = document.getElementById('overview-materials-section');
+  el.overviewMaterialsHeading = document.getElementById('overview-materials-heading');
+  el.overviewMaterialsList = document.getElementById('overview-materials-list');
+  el.overviewIssuesSection = document.getElementById('overview-issues-section');
+  el.overviewIssuesHeading = document.getElementById('overview-issues-heading');
+  el.overviewIssuesList = document.getElementById('overview-issues-list');
+  el.overviewClose = document.getElementById('overview-close');
   el.filesDialog = document.getElementById('files-dialog');
   el.filesTitle = document.getElementById('files-title');
   el.filesStatus = document.getElementById('files-status');
@@ -1912,6 +1974,11 @@ function bindAppEvents() {
     void openFiles();
   });
   el.filesClose.addEventListener('click', () => el.filesDialog.close());
+  el.overviewMenu.addEventListener('click', () => {
+    closeAppChromeMenus();
+    void openOverview();
+  });
+  el.overviewClose.addEventListener('click', () => el.overviewDialog.close());
   el.settings.addEventListener('click', onSettingsClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
   el.newChat.addEventListener('click', newChat);
@@ -2167,6 +2234,7 @@ function showChat(session) {
   el.newChat.hidden = !state.canManage;
   el.people.hidden = !state.canManage;
   el.filesMenu.hidden = false;
+  el.overviewMenu.hidden = false;
   el.shoppingOpen.hidden = false;
   el.passkeys.hidden = false;
   rebindInviteNames(el.transcript, false);
@@ -2187,6 +2255,7 @@ function showConversationList(conversations) {
   el.newChat.hidden = true;
   el.people.hidden = true;
   el.filesMenu.hidden = true;
+  el.overviewMenu.hidden = true;
   el.shoppingOpen.hidden = true;
   el.passkeys.hidden = false;
   el.staticAssetsField.hidden = true;
@@ -4693,6 +4762,97 @@ async function openFiles() {
       return;
     }
     setStatus(() => error.message || msg('filesOpenFailed'));
+  }
+}
+
+function setOverviewStatus(message) {
+  if (!el.overviewStatus) {
+    return;
+  }
+  const text = message || '';
+  el.overviewStatus.textContent = text;
+  el.overviewStatus.hidden = !text;
+}
+
+function overviewRow(who, text) {
+  const row = document.createElement('li');
+  row.className = 'files-row';
+  const meta = document.createElement('div');
+  meta.className = 'files-meta';
+  if (who) {
+    const title = document.createElement('strong');
+    title.textContent = who;
+    tintMember(title, who);
+    meta.append(title);
+  }
+  const detail = document.createElement('span');
+  detail.className = 'overview-text';
+  detail.textContent = text;
+  meta.append(detail);
+  row.append(meta);
+  return row;
+}
+
+function renderOverviewSection(section, list, entries, render) {
+  list.replaceChildren();
+  section.hidden = entries.length === 0;
+  for (const entry of entries) {
+    list.append(render(entry));
+  }
+}
+
+async function openOverview() {
+  setOverviewStatus('');
+  try {
+    const response = await api('/api/overview');
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
+    }
+    const body = await response.json();
+    el.overviewEmpty.hidden = !body.empty;
+    if (body.topic) {
+      el.overviewTopicSection.hidden = false;
+      el.overviewTopic.replaceChildren();
+      if (body.topic.author) {
+        const who = document.createElement('strong');
+        who.textContent = body.topic.author;
+        tintMember(who, body.topic.author);
+        el.overviewTopic.append(who);
+      }
+      const text = document.createElement('p');
+      text.textContent = body.topic.text;
+      el.overviewTopic.append(text);
+    } else {
+      el.overviewTopicSection.hidden = true;
+    }
+    renderOverviewSection(el.overviewRequestsSection, el.overviewRequestsList, body.requests ?? [], (entry) =>
+      overviewRow(entry.author, entry.text),
+    );
+    renderOverviewSection(el.overviewResponsesSection, el.overviewResponsesList, body.responses ?? [], (entry) =>
+      overviewRow('', entry.text),
+    );
+    renderOverviewSection(el.overviewWorkSection, el.overviewWorkList, body.work ?? [], (entry) =>
+      overviewRow(entry.name, entry.summary),
+    );
+    renderOverviewSection(
+      el.overviewMaterialsSection,
+      el.overviewMaterialsList,
+      body.materials ?? [],
+      (name) => overviewRow('', name),
+    );
+    renderOverviewSection(el.overviewIssuesSection, el.overviewIssuesList, body.issues ?? [], (entry) =>
+      overviewRow('', entry.text),
+    );
+    el.overviewDialog.showModal();
+  } catch (error) {
+    if (error instanceof SessionEndedError) {
+      return;
+    }
+    if (error instanceof AuthError) {
+      handleFailure(error);
+      return;
+    }
+    setStatus(() => error.message || msg('overviewOpenFailed'));
   }
 }
 

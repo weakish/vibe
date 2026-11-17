@@ -15,6 +15,7 @@ import { MAX_SPEC_CHARS, DEFAULT_SPEC } from '../shared/default-spec.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { AttachmentError, parseAttachments } from './attachments.js';
 import { listConversationFiles, listWorkdirFiles, readStashFile, readWorkdirFileForOwner } from './file-view.js';
+import { buildConversationOverview } from './overview.js';
 import { GROK } from './backends.js';
 import { DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
@@ -352,6 +353,9 @@ async function handleApi(req, res, url, context) {
   if (req.method === 'GET' && url.pathname === '/api/files') {
     return handleFilesList(res, conversation, person);
   }
+  if (req.method === 'GET' && url.pathname === '/api/overview') {
+    return handleOverview(res, context, person);
+  }
   if (req.method === 'GET' && url.pathname === '/api/files/stash') {
     if (!canEnter(person, conversation)) {
       return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
@@ -621,6 +625,14 @@ function handleFilesList(res, conversation, person) {
     body.workdir = listWorkdirFiles(conversation.workdir);
   }
   return sendJson(res, 200, body);
+}
+
+function handleOverview(res, context, person) {
+  const { conversation } = context;
+  if (!canEnter(person, conversation)) {
+    return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+  }
+  return sendJson(res, 200, buildConversationOverview({ items: conversation.items }));
 }
 
 function sendStashFile(res, conversation, relativePath) {

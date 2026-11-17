@@ -1083,3 +1083,31 @@ test('lists conversation files and serves workdir reads for the owner only', asy
   const stash = await api(app.baseUrl, '/api/files/stash?path=.boffin/uploads/nope.txt');
   assert.equal(stash.status, 404);
 });
+
+test('summarizes the conversation content over GET /api/overview', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const { ops } = await sendMessage(app.baseUrl, 'attach the logo', [
+    { name: 'shot.png', data: PNG.toString('base64') },
+    { name: 'notes.txt', data: Buffer.from('hello stash').toString('base64') },
+  ]);
+  const mediaId = ops[0].item.attachments[0].id;
+  assert.ok(typeof mediaId === 'string' && mediaId);
+  assert.equal(ops[0].item.attachments[1].name, 'notes.txt');
+  assert.ok(!ops[0].item.attachments[1].id);
+
+  const owner = await api(app.baseUrl, '/api/overview');
+  assert.equal(owner.status, 200);
+  const body = await owner.json();
+  assert.equal(body.empty, false);
+  assert.equal(body.topic.author, 'tester');
+  assert.match(body.topic.text, /attach the logo/);
+  assert.equal(body.requests.length, 1);
+  assert.ok(body.responses.length >= 1);
+  assert.ok(body.materials.includes('notes.txt'));
+  assert.ok(body.materials.includes('shot.png'));
+
+  const unauthenticated = await api(app.baseUrl, '/api/overview', { credentials: null });
+  assert.equal(unauthenticated.status, 401);
+});

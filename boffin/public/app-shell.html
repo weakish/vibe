@@ -74,6 +74,7 @@
                 <button type="button" class="menu-action" id="export-print" disabled>Print / PDF</button>
               </div>
               <button type="button" class="menu-action" id="files-menu" hidden>Files</button>
+              <button type="button" class="menu-action" id="overview-menu" hidden>Overview</button>
               <button type="button" class="menu-action" id="people" hidden>Members</button>
               <button type="button" class="menu-action" id="passkeys" hidden>Passkeys</button>
               <button type="button" class="menu-action" id="log-out">Log out</button>
@@ -235,6 +236,39 @@
           <button type="button" class="menu-action" data-export-format="print">Print / PDF</button>
           <button type="button" class="ghost-button" id="export-dialog-cancel">Cancel</button>
         </div>
+      </div>
+    </dialog>
+
+    <dialog class="sheet files-sheet" id="overview-dialog" aria-labelledby="overview-title">
+      <div class="login-card">
+        <h2 id="overview-title">Overview</h2>
+        <p class="status-line" id="overview-status" role="status" hidden></p>
+        <p class="files-empty" id="overview-empty" hidden></p>
+        <div class="files-section" id="overview-topic-section" hidden>
+          <h3 id="overview-topic-heading">Topic</h3>
+          <div class="overview-topic" id="overview-topic"></div>
+        </div>
+        <div class="files-section" id="overview-requests-section" hidden>
+          <h3 id="overview-requests-heading">Requests</h3>
+          <ul class="files-list" id="overview-requests-list"></ul>
+        </div>
+        <div class="files-section" id="overview-responses-section" hidden>
+          <h3 id="overview-responses-heading">Responses</h3>
+          <ul class="files-list" id="overview-responses-list"></ul>
+        </div>
+        <div class="files-section" id="overview-work-section" hidden>
+          <h3 id="overview-work-heading">Work done</h3>
+          <ul class="files-list" id="overview-work-list"></ul>
+        </div>
+        <div class="files-section" id="overview-materials-section" hidden>
+          <h3 id="overview-materials-heading">Files</h3>
+          <ul class="files-list" id="overview-materials-list"></ul>
+        </div>
+        <div class="files-section" id="overview-issues-section" hidden>
+          <h3 id="overview-issues-heading">Issues</h3>
+          <ul class="files-list" id="overview-issues-list"></ul>
+        </div>
+        <button type="button" class="ghost-button" id="overview-close">Close</button>
       </div>
     </dialog>
 
