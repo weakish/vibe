@@ -239,6 +239,195 @@ test('marks a failed Grok tool call as an error', () => {
   assert.equal(items[0].status, 'error');
 });
 
+const openCodeText = (id, text) => ({ type: 'text', sessionID: 'ses_1', part: { id, type: 'text', text } });
+const openCodeTool = (id, tool, status, input) => ({
+  type: 'tool_use',
+  sessionID: 'ses_1',
+  part: { id, type: 'tool', tool, state: { status, input } },
+});
+const openCodeFinish = (reason) => ({ type: 'step_finish', sessionID: 'ses_1', part: { type: 'step-finish', reason } });
+
+test('maps OpenCode text parts, tools, and step finishes', () => {
+  const { items, state } = replay([
+    openCodeText('prt_1', 'Let me look.'),
+    openCodeTool('call_1', 'read', 'completed', { path: 'README.md' }),
+    openCodeText('prt_2', 'Done.'),
+    openCodeFinish('stop'),
+  ]);
+  assert.equal(state.chatId, 'ses_1');
+  assert.equal(state.sawResult, true);
+  assert.deepEqual(
+    items.map((item) => [item.role, item.text ?? item.summary]),
+    [
+      ['assistant', 'Let me look.'],
+      ['tool', 'README.md'],
+      ['assistant', 'Done.'],
+    ],
+  );
+  assert.equal(items[1].name, 'Read');
+  assert.equal(items[1].status, 'done');
+});
+
+test('replaces the bubble when an OpenCode text part repeats with the full text', () => {
+  const { items } = replay([
+    openCodeText('prt_1', 'Hel'),
+    openCodeText('prt_1', 'Hello'),
+    openCodeFinish('stop'),
+  ]);
+  assert.deepEqual(
+    items.map((item) => item.text),
+    ['Hello'],
+  );
+});
+
+test('labels an OpenCode output-limit step as max tokens', () => {
+  const { items, state } = replay([openCodeFinish('length')]);
+  assert.equal(state.sawResult, true);
+  assert.equal(items.at(-1).text, 'The agent stopped (max tokens).');
+});
+
+test('keeps OpenCode tool loops open until the final step', () => {
+  const { state } = replay([
+    openCodeTool('call_1', 'shell', 'completed', { command: 'npm test' }),
+    openCodeFinish('tool-calls'),
+  ]);
+  assert.equal(state.sawResult, false);
+
+  const unknown = replay([openCodeFinish('unknown'), openCodeText('prt_2', 'Still going.')]);
+  assert.equal(unknown.state.sawResult, false);
+  assert.deepEqual(
+    unknown.items.map((item) => item.text),
+    ['Still going.'],
+  );
+
+  const finished = replay([
+    openCodeTool('call_1', 'shell', 'completed', { command: 'npm test' }),
+    openCodeFinish('tool-calls'),
+    openCodeText('prt_2', 'Passed.'),
+    openCodeFinish('stop'),
+  ]);
+  assert.equal(finished.state.sawResult, true);
+});
+
+test('marks a failed OpenCode tool call as an error', () => {
+  const { items } = replay([openCodeTool('call_2', 'shell', 'error', { command: 'false' })]);
+  assert.equal(items[0].name, 'Shell');
+  assert.equal(items[0].summary, 'false');
+  assert.equal(items[0].status, 'error');
+});
+
+test('marks a completed OpenCode tool with a non-zero exit as an error', () => {
+  // v1 keeps the exit code at `state.metadata.exit`; v2 nests the tool's own
+  // metadata one level deeper, at `state.metadata.metadata.exit`.
+  for (const metadata of [{ exit: 1 }, { metadata: { exit: 1 } }]) {
+    const { items } = replay([
+      {
+        type: 'tool_use',
+        sessionID: 'ses_1',
+        part: {
+          id: 'call_3',
+          type: 'tool',
+          tool: 'bash',
+          state: { status: 'completed', input: { command: 'false' }, metadata },
+        },
+      },
+    ]);
+    assert.equal(items[0].name, 'Bash');
+    assert.equal(items[0].summary, 'false');
+    assert.equal(items[0].status, 'error');
+  }
+
+  for (const metadata of [{ exit: 0 }, { metadata: { exit: 0 } }]) {
+    const { items } = replay([
+      {
+        type: 'tool_use',
+        sessionID: 'ses_1',
+        part: {
+          id: 'call_4',
+          type: 'tool',
+          tool: 'bash',
+          state: { status: 'completed', input: { command: 'true' }, metadata },
+        },
+      },
+    ]);
+    assert.equal(items[0].status, 'done');
+  }
+});
+
+test('reports an OpenCode provider error even when the process exits cleanly', () => {
+  const state = createRunState();
+  const ops = eventToOps(
+    {
+      type: 'error',
+      sessionID: 'ses_1',
+      error: { type: 'provider.no-route', message: 'Model unavailable: opencode/no-such-model' },
+    },
+    state,
+  );
+  assert.deepEqual(ops, []);
+  const finished = finishOps({ error: null, code: 0, signal: null, stderr: '' }, state);
+  assert.deepEqual(
+    finished.map((op) => [op.item.role, op.item.level, op.item.text]),
+    [['notice', 'error', 'Model unavailable: opencode/no-such-model']],
+  );
+});
+
+test('prefers an OpenCode provider error over a generic error finish', () => {
+  const state = createRunState();
+  assert.deepEqual(eventToOps(openCodeFinish('error'), state), []);
+  eventToOps(
+    {
+      type: 'error',
+      sessionID: 'ses_1',
+      error: { message: 'Model unavailable: opencode/no-such-model' },
+    },
+    state,
+  );
+  assert.equal(state.sawResult, false);
+  assert.deepEqual(
+    finishOps({ error: null, code: 1, signal: null, stderr: '' }, state).map((op) => op.item.text),
+    ['Model unavailable: opencode/no-such-model'],
+  );
+
+  const onlyFinish = createRunState();
+  eventToOps(openCodeFinish('error'), onlyFinish);
+  assert.deepEqual(
+    finishOps({ error: null, code: 0, signal: null, stderr: '' }, onlyFinish).map((op) => op.item.text),
+    ['The agent stopped (error).'],
+  );
+
+  const providerFirst = createRunState();
+  eventToOps(
+    {
+      type: 'error',
+      sessionID: 'ses_1',
+      error: { message: 'Rate limit exceeded' },
+    },
+    providerFirst,
+  );
+  assert.deepEqual(eventToOps(openCodeFinish('error'), providerFirst), []);
+  assert.deepEqual(
+    finishOps({ error: null, code: 1, signal: null, stderr: '' }, providerFirst).map((op) => op.item.text),
+    ['Rate limit exceeded'],
+  );
+});
+
+test('reads an OpenCode error message from error.data.message', () => {
+  const state = createRunState();
+  eventToOps(
+    {
+      type: 'error',
+      sessionID: 'ses_1',
+      error: { name: 'APIError', data: { message: 'Rate limit exceeded', statusCode: 429 } },
+    },
+    state,
+  );
+  assert.deepEqual(
+    finishOps({ error: null, code: 0, signal: null, stderr: '' }, state).map((op) => op.item.text),
+    ['Rate limit exceeded'],
+  );
+});
+
 test('reports a Grok stop reason and prefers a user stop over an error event', () => {
   const limited = replay([
     { type: 'text', data: 'Hi' },
@@ -262,6 +451,17 @@ test('reports a Grok stop reason and prefers a user stop over an error event', (
     finishOps({ code: null, signal: 'SIGTERM', stderr: '' }, stopped, { cancelled: true }).map((op) => op.item.text),
     ['Stopped.'],
   );
+
+  const unknown = replay([
+    { type: 'text', data: 'Hi' },
+    { type: 'end', stopReason: 'unknown', sessionId: 's' },
+  ]);
+  assert.equal(unknown.state.sawResult, true);
+  assert.equal(unknown.items.at(-1).text, 'The agent stopped (unknown).');
+
+  const toolCalls = replay([{ type: 'end', stopReason: 'tool_calls', sessionId: 's' }]);
+  assert.equal(toolCalls.state.sawResult, true);
+  assert.equal(toolCalls.items.at(-1).text, 'The agent stopped (tool calls).');
 });
 
 test('ignores unknown event types and malformed shapes', () => {

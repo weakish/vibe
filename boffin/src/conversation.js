@@ -7,6 +7,7 @@ import { runAgent as runAgentProcess } from './agent.js';
 import {
   CURSOR,
   DEFAULT_CURSOR_MODEL,
+  GROK,
   catalogFor,
   defaultModelId,
   findModel,
@@ -90,16 +91,27 @@ export class Conversation {
   constructor({
     model,
     grokModel,
+    opencodeModel,
     workdir,
     agentBin,
     grokBin,
+    opencodeBin,
     force,
     agents,
     stateFile,
     runAgent = runAgentProcess,
     logger = console,
   }) {
-    this.backends = resolveBackends({ agents, model, grokModel, agentBin, grokBin, force });
+    this.backends = resolveBackends({
+      agents,
+      model,
+      grokModel,
+      opencodeModel,
+      agentBin,
+      grokBin,
+      opencodeBin,
+      force,
+    });
     if (!this.backends) {
       throw new StateError('The configured agent or model is not available.');
     }
@@ -593,7 +605,7 @@ export class Conversation {
         force: this.force,
         resumeId: this.chatId,
         prompt: agentPrompt(text, stored, author, this.workdir, this.stateFile),
-        imagePaths: this.agent === CURSOR ? imagePaths : [],
+        imagePaths: this.agent === GROK ? [] : imagePaths,
         cwd: this.workdir,
       });
       run.handle = this.runAgent({
@@ -950,9 +962,12 @@ function agentPrompt(text, stored, author, workdir, stateFile) {
 function chooseAgent(saved, backends) {
   const fallback = backends.ids[0];
   const agent = backends.ids.includes(saved.agent) ? saved.agent : fallback;
-  const model = findModel(agent, saved.model) ? saved.model : defaultModelId(agent, backends);
-  // State written before agents were stored is a Cursor chat. Do not pass that id to Grok.
+  // State written before agents were stored is a Cursor chat. Do not pass that
+  // id, or a Grok model id that looks like provider/model, to another agent.
   const savedAgent = typeof saved.agent === 'string' ? saved.agent : null;
+  const sameAgent = savedAgent === null ? agent === CURSOR : savedAgent === agent;
+  const model =
+    sameAgent && findModel(agent, saved.model) ? saved.model : defaultModelId(agent, backends);
   return {
     agent,
     model,

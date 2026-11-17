@@ -106,6 +106,34 @@ test('resumes the same CLI chat for follow-up messages', async () => {
   assert.equal(second[second.indexOf('--model') + 1], 'composer-2.5');
 });
 
+test('runs OpenCode and resumes its session', async () => {
+  const { stateFile } = tempStateFile();
+  const { runAgent, calls } = scriptedRunner([
+    { type: 'text', sessionID: 'ses_9', part: { id: 'prt_1', type: 'text', text: 'Hi' } },
+    { type: 'step_finish', sessionID: 'ses_9', part: { type: 'step-finish', reason: 'stop' } },
+  ]);
+  const conversation = makeConversation(runAgent, stateFile, { agents: ['opencode'], opencodeBin: 'opencode-test' });
+
+  await conversation.start('first', () => {});
+  await conversation.start('second', () => {});
+
+  assert.equal(conversation.chatId, 'ses_9');
+  const [first, second] = calls;
+  assert.equal(first.bin, 'opencode-test');
+  assert.equal(first.args[first.args.indexOf('--model') + 1], 'opencode/big-pickle');
+  assert.ok(!first.args.includes('--session'));
+  assert.deepEqual(second.args.slice(second.args.indexOf('--session'), second.args.indexOf('--session') + 2), ['--session', 'ses_9']);
+  assert.deepEqual(
+    conversation.items.map((item) => [item.role, item.text]),
+    [
+      ['user', 'first'],
+      ['assistant', 'Hi'],
+      ['user', 'second'],
+      ['assistant', 'Hi'],
+    ],
+  );
+});
+
 test('rejects overlapping messages and resets while a run is active', async () => {
   const { stateFile } = tempStateFile();
   const { runAgent, runs } = manualRunner();
@@ -639,7 +667,7 @@ test('kept log records the agent that ended, not the new chat', async () => {
   assert.equal(saved.kept[0].model, 'composer-2.5');
 });
 
-test('does not resume a legacy Cursor chat id on Grok', () => {
+test('does not resume a legacy Cursor chat id on Grok or OpenCode', () => {
   const { stateFile } = tempStateFile();
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
   fs.writeFileSync(stateFile, JSON.stringify({ version: 1, chatId: 'cursor-1', items: [] }));
@@ -648,6 +676,11 @@ test('does not resume a legacy Cursor chat id on Grok', () => {
   assert.equal(grokOnly.agent, 'grok');
   assert.equal(grokOnly.chatId, null);
 
+  fs.writeFileSync(stateFile, JSON.stringify({ version: 1, chatId: 'cursor-1', items: [] }));
+  const opencodeOnly = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['opencode'] });
+  assert.equal(opencodeOnly.agent, 'opencode');
+  assert.equal(opencodeOnly.chatId, null);
+
   fs.writeFileSync(
     stateFile,
     JSON.stringify({ version: 1, agent: 'grok', model: 'grok-4.7/low', chatId: 'sess-9', items: [] }),
@@ -655,6 +688,15 @@ test('does not resume a legacy Cursor chat id on Grok', () => {
   const restored = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['grok'] });
   assert.equal(restored.chatId, 'sess-9');
   assert.equal(restored.model, 'grok-4.7/low');
+
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({ version: 1, agent: 'grok', model: 'grok-4.7/high', chatId: 'sess-9', items: [] }),
+  );
+  const switched = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['opencode'] });
+  assert.equal(switched.agent, 'opencode');
+  assert.equal(switched.model, 'opencode/big-pickle');
+  assert.equal(switched.chatId, null);
 });
 
 test('treats a kept log without agent or model as a Cursor Composer 2.5 chat', () => {

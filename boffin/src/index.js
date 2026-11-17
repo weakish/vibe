@@ -16,9 +16,11 @@ function main() {
     conversation = new Conversation({
       model: config.model,
       grokModel: config.grokModel,
+      opencodeModel: config.opencodeModel,
       workdir: config.workdir,
       agentBin: config.agentBin,
       grokBin: config.grokBin,
+      opencodeBin: config.opencodeBin,
       force: config.force,
       agents: config.agents,
       stateFile: config.stateFile,

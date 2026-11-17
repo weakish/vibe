@@ -13,6 +13,7 @@ export default {
     agentLabel: 'ايجن',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
+    agentOpenCode: 'OpenCode',
     modelLabel: 'موديل',
     unknownAgent: 'ايجن ايت ايندا تساديا.',
     unknownModel: 'موديل ايت ايندا تساديا.',

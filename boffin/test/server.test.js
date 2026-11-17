@@ -285,6 +285,37 @@ test('lets the owner pick a first-party model when starting a new chat', async (
   assert.equal((await bad.json()).error, 'That agent is not available.');
 });
 
+test('offers OpenCode and accepts its model when starting a new chat', async (t) => {
+  const app = await startServer({
+    conversation: { agents: ['cursor', 'opencode'], opencodeBin: FAKE_AGENT },
+  });
+  t.after(() => app.close());
+
+  const session = await (await api(app.baseUrl, '/api/session')).json();
+  assert.deepEqual(
+    session.agents.map((entry) => entry.id),
+    ['cursor', 'opencode'],
+  );
+  const opencode = session.agents[1];
+  assert.equal(opencode.defaultModel, 'opencode/big-pickle');
+  assert.ok(opencode.models.some((entry) => entry.id === 'opencode/big-pickle'));
+
+  const ok = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'opencode', model: 'opencode/big-pickle' },
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(app.conversation.agent, 'opencode');
+  assert.equal(app.conversation.model, 'opencode/big-pickle');
+
+  const bad = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'opencode', model: 'not-a-model' },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error, 'That model is not available.');
+});
+
 test('returns 500 when a new chat cannot be saved', async (t) => {
   const app = await startServer();
   t.after(() => app.close());

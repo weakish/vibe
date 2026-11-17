@@ -23,6 +23,7 @@ export function createRunState() {
   return {
     chatId: null,
     segmentId: null,
+    opencodeTextId: null,
     tools: new Map(),
     sawText: false,
     sawResult: false,
@@ -30,6 +31,10 @@ export function createRunState() {
 }
 
 export function eventToOps(event, state) {
+  // Every OpenCode event names the session. Capture it before the per-type handling.
+  if (typeof event?.sessionID === 'string' && event.sessionID) {
+    state.chatId = event.sessionID;
+  }
   switch (event?.type) {
     case 'system':
       return onSystem(event, state);
@@ -39,10 +44,17 @@ export function eventToOps(event, state) {
       return event.subtype ? onToolCall(event, state) : onGrokTool(event, state);
     case 'tool_call_update':
       return onGrokTool(event, state);
+    case 'tool_use':
+      return onOpenCodeTool(event, state);
+    case 'step_start':
+      state.opencodeTextId = null;
+      return [];
+    case 'step_finish':
+      return onOpenCodeStepFinish(event, state);
     case 'result':
       return onResult(event, state);
     case 'text':
-      return onGrokText(event, state);
+      return event.part && typeof event.part === 'object' ? onOpenCodeText(event, state) : onGrokText(event, state);
     case 'end':
       return onGrokEnd(event, state);
     case 'error':
@@ -136,7 +148,7 @@ function onAssistant(event, state) {
     return ops;
   }
 
-  const images = messageImages(event.message);
+  const images = imageParts(event.message?.content);
   if (state.segmentId) {
     const id = state.segmentId;
     state.segmentId = null;
@@ -225,9 +237,14 @@ function onGrokEnd(event, state) {
   if (sessionId) {
     state.chatId = sessionId;
   }
+  return finishStep(state, stopReason(event));
+}
+
+// A Grok `end` and an OpenCode final `step_finish` both close the run. OpenCode
+// `tool-calls` and `unknown` are handled before this: another step follows.
+function finishStep(state, reason) {
   state.segmentId = null;
-  const reason = stopReason(event);
-  if (!reason || reason === 'end_turn' || reason === 'endturn' || reason === 'stop') {
+  if (!reason || reason === 'stop' || reason === 'end_turn' || reason === 'endturn') {
     if (!state.agentError) {
       state.sawResult = true;
     }
@@ -238,26 +255,101 @@ function onGrokEnd(event, state) {
     state.agentError = 'The agent stopped (cancelled).';
     return [];
   }
+  // `error` is not the message. The error event carries that, and finishOps reports
+  // it. A notice here would mark the run finished and hide the provider text.
+  if (reason === 'error') {
+    if (!state.agentError) {
+      state.agentError = 'The agent stopped (error).';
+    }
+    return [];
+  }
   state.sawResult = true;
   return [notice('error', `The agent stopped (${STOP_REASON_LABELS[reason] ?? reason.replace(/_/g, ' ')}).`)];
 }
 
 function onGrokError(event, state) {
-  state.agentError = firstString(event.message, event.data) || 'The agent reported an error.';
+  const error = event.error;
+  const nested =
+    error && typeof error === 'object'
+      ? firstString(error.message, nestedErrorMessage(error.data), error.name, error.type)
+      : error;
+  state.agentError =
+    firstString(event.message, event.data, nested, event.part?.error?.message) || 'The agent reported an error.';
   return [];
+}
+
+function nestedErrorMessage(data) {
+  if (typeof data === 'string') {
+    return data;
+  }
+  return data && typeof data === 'object' ? data.message : '';
 }
 
 // Grok streaming-json tool events have no Cursor subtype. `tool_call` starts one;
 // `tool_call_update` patches it. Status words follow the ACP tool-call status.
 function onGrokTool(event, state) {
   const rawId = event.toolCallId ?? event.tool_call_id;
-  const callId = rawId == null || rawId === '' ? null : String(rawId);
-  const status = grokToolStatus(event.status);
-  const name = firstString(event.title) || (typeof event.toolName === 'string' ? labelFor(event.toolName) : '');
-  const summary = summarize(event.rawInput ?? event.raw_input);
-  const images = grokToolImages(event.content);
-  state.segmentId = null;
+  return upsertTool(state, {
+    callId: rawId == null || rawId === '' ? null : String(rawId),
+    name: firstString(event.title) || (typeof event.toolName === 'string' ? labelFor(event.toolName) : ''),
+    summary: summarize(event.rawInput ?? event.raw_input),
+    status: toolCallStatus(event.status),
+    images: imageParts(event.content),
+  });
+}
 
+// OpenCode JSON mode emits a text part only when it has ended, with the whole
+// `part.text`. A later event for the same id is that same string (or a longer
+// replacement), not a suffix, so keep the bubble and set its text.
+function onOpenCodeText(event, state) {
+  const part = event.part ?? {};
+  const text = firstString(part.text);
+  if (!text) {
+    return [];
+  }
+  const partId = firstString(part.id);
+  if (partId && state.opencodeTextId === partId && state.segmentId) {
+    state.sawText = true;
+    return [{ op: 'set', id: state.segmentId, patch: { text } }];
+  }
+  state.opencodeTextId = partId || null;
+  state.segmentId = randomUUID();
+  state.sawText = true;
+  return [{ op: 'add', item: { id: state.segmentId, role: 'assistant', text } }];
+}
+
+// OpenCode sends one `tool_use` per finished call, with the tool id in `part.tool`
+// and the arguments in `part.state.input`.
+function onOpenCodeTool(event, state) {
+  const part = event.part ?? {};
+  const info = part.state ?? {};
+  const name = firstString(part.tool, info.title);
+  state.opencodeTextId = null;
+  return upsertTool(state, {
+    callId: firstString(part.id) || null,
+    name: name ? labelFor(name) : '',
+    summary: summarize(info.input ?? info.rawInput),
+    status: openCodeToolStatus(info),
+    images: imageParts(info.metadata?.content),
+  });
+}
+
+// `status: completed` means the tool returned, not that the command succeeded.
+// A shell call keeps a non-zero code and still says completed: v1 puts it at
+// `metadata.exit`, and v2 nests the tool's own metadata one level deeper.
+function openCodeToolStatus(info) {
+  const status = toolCallStatus(info.status);
+  const exitCode = info.metadata?.exit ?? info.metadata?.metadata?.exit;
+  if (status === 'done' && typeof exitCode === 'number' && exitCode !== 0) {
+    return 'error';
+  }
+  return status;
+}
+
+// One bubble per call: the first event adds it, later events patch it. A call that
+// is no longer running leaves the map, so a reused id would start a new bubble.
+function upsertTool(state, { callId, name, summary, status, images }) {
+  state.segmentId = null;
   const existingId = callId === null ? undefined : state.tools.get(callId);
   if (existingId === undefined) {
     const id = randomUUID();
@@ -287,7 +379,19 @@ function onGrokTool(event, state) {
   return [{ op: 'set', id: existingId, patch }];
 }
 
-function grokToolStatus(status) {
+// `tool-calls` and `unknown` mean another step follows. A Grok `end` with those
+// reasons is the end of the run, so it goes through finishStep.
+function onOpenCodeStepFinish(event, state) {
+  state.opencodeTextId = null;
+  const reason = normalizeReason(event.part?.reason);
+  if (reason === 'tool_calls' || reason === 'unknown') {
+    state.segmentId = null;
+    return [];
+  }
+  return finishStep(state, reason);
+}
+
+function toolCallStatus(status) {
   const value = typeof status === 'string' ? status.trim().toLowerCase() : '';
   if (value === 'completed' || value === 'done' || value === 'success') {
     return 'done';
@@ -298,21 +402,16 @@ function grokToolStatus(status) {
   return 'running';
 }
 
-function grokToolImages(content) {
-  if (!Array.isArray(content)) {
-    return [];
-  }
-  return content
-    .filter((part) => part && part.type === 'image' && typeof part.data === 'string' && part.data.trim())
-    .map((part) => ({ name: 'image', data: part.data, filePath: '' }));
+function stopReason(event) {
+  return normalizeReason(event.stopReason ?? event.stop_reason);
 }
 
-function stopReason(event) {
-  const value = event.stopReason ?? event.stop_reason;
+function normalizeReason(value) {
   return typeof value === 'string' ? value.trim().toLowerCase().replace(/[\s-]+/g, '_') : '';
 }
 
 const STOP_REASON_LABELS = {
+  length: 'max tokens',
   max_tokens: 'max tokens',
   max_turn_requests: 'max turns',
   refusal: 'refusal',
@@ -352,10 +451,9 @@ function messageText(message) {
     .join('');
 }
 
-// Image parts travel with the assistant message. Bytes stay in `data` until the
-// conversation stores them; the browser only ever sees a media id.
-function messageImages(message) {
-  const content = message?.content;
+// Image parts travel with an assistant message or a tool result. Bytes stay in
+// `data` until the conversation stores them; the browser only ever sees a media id.
+function imageParts(content) {
   if (!Array.isArray(content)) {
     return [];
   }

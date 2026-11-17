@@ -1,6 +1,6 @@
 ---
 name: deploy-boffin
-description: Deploy Boffin (a Node.js chat web UI for the Cursor Agent CLI and/or Grok CLI) to a Debian 13 (trixie) server whose SSH public-key access and git identity are already configured, with Boffin and the chosen agent(s) running as a dedicated boffin user behind systemd and a Caddy HTTPS reverse proxy, administered and updated over SSH as the operator's GitHub-username account. Use when asked to deploy, install, set up, update, roll back, or troubleshoot Boffin on such a server.
+description: Deploy Boffin (a Node.js chat web UI for the Cursor Agent CLI, Grok CLI, and/or OpenCode CLI) to a Debian 13 (trixie) server whose SSH public-key access and git identity are already configured, with Boffin and the chosen agent(s) running as a dedicated boffin user behind systemd and a Caddy HTTPS reverse proxy, administered and updated over SSH as the operator's GitHub-username account. Use when asked to deploy, install, set up, update, roll back, or troubleshoot Boffin on such a server.
 ---
 
 # Deploy Boffin to Debian trixie
@@ -25,9 +25,9 @@ Architecture you are building:
 
 ```text
 Browser ──443/TLS──▶ Caddy ──127.0.0.1:8080 + X-Forwarded-For──▶ Boffin (systemd, user boffin)
-                                                                      │ spawns agent --force and/or grok --always-approve
+                                                                      │ spawns agent --force, grok --always-approve, and/or opencode --auto
                                                                       ▼
-                                              Cursor and/or Grok CLI (user boffin) ──edits/commits──▶ /srv/boffin
+                          Cursor, Grok, and/or OpenCode CLI (user boffin) ──edits/commits──▶ /srv/boffin
 Operator ──ssh <github-username>@<hostname>──▶ administer via sudo; push source over SSH (both users write /srv/boffin via the shared boffin group)
 ```
 
@@ -39,9 +39,9 @@ If the operator has not already supplied them in the request, ask for:
 | --- | --- | --- |
 | The operator's **GitHub username** | `<github-username>` | Only as the SSH user: `ssh <github-username>@<hostname>` for administration, and the same SSH identity for the `deploy` git remote when pushing Boffin source updates. |
 | The **deployment server hostname** | `<hostname>` | A fully qualified hostname (e.g. `boffin.example.com`) used for **both** SSH (`ssh <github-username>@<hostname>`) and the deployed service (`https://<hostname>`). It must resolve to the server. Passkeys bind to this hostname, so confirm it is final — changing it later orphans all passkeys. |
-| Which **agent(s)** to install | `<agents>` | `cursor`, `grok`, or `both`. Written to `config.json` as `"agents": ["cursor"]`, `["grok"]`, or `["cursor", "grok"]`. If they have not named one, ask — do not silently pick. **Do not ask for a model.** Cursor always uses Composer 2.5 (`composer-2.5`). Grok always uses Grok 4.7 High (`grok-4.7/high`). The owner can pick a first-party model (and Cursor vs Grok, when both are enabled) when starting a new chat in the app. |
+| Which **agent(s)** to install | `<agents>` | Any combination of `cursor`, `grok`, and `opencode` (for example `cursor`, `grok`, `opencode`, or any two). Written to `config.json` as a `"agents"` array. If they have not named one, ask — do not silently pick. **Do not ask for a model.** Cursor always uses Composer 2.5 (`composer-2.5`), Grok always uses Grok 4.7 High (`grok-4.7/high`), and OpenCode always uses Big Pickle (`opencode/big-pickle`). The owner can pick a model (and agent, when more than one is enabled) when starting a new chat in the app. |
 
-Derived, do not ask separately: SSH target `<github-username>@<hostname>`, service URL `https://<hostname>`, service account `boffin`, Cursor binary `/home/boffin/.local/bin/agent`, Grok binary `/home/boffin/.grok/bin/grok`, workdir `/srv/boffin`, Boffin web-login username `boffin`.
+Derived, do not ask separately: SSH target `<github-username>@<hostname>`, service URL `https://<hostname>`, service account `boffin`, Cursor binary `/home/boffin/.local/bin/agent`, Grok binary `/home/boffin/.grok/bin/grok`, OpenCode binary `/home/boffin/.opencode/bin/opencode`, workdir `/srv/boffin`, Boffin web-login username `boffin`.
 
 Default unless the operator volunteers otherwise: deploy the current local checkout `HEAD` (committed content only — `git push` ignores uncommitted and untracked files).
 
@@ -83,7 +83,7 @@ sudo apt-get update && sudo apt-get install -y curl ca-certificates git caddy no
 node --version   # must be >= 20 (package.json engines); trixie ships Node 20.x
 ```
 
-If Node ever reports < 20, stop and install a supported Node.js (e.g. the NodeSource 22 LTS repository) before continuing. Boffin has zero npm dependencies — do not run `npm install`. The Cursor and Grok CLIs bundle their own runtimes. No firewall tooling is installed or configured here: the firewall is part of the pre-configured environment, and port 8080 needs no rule because Boffin is loopback-only.
+If Node ever reports < 20, stop and install a supported Node.js (e.g. the NodeSource 22 LTS repository) before continuing. Boffin has zero npm dependencies — do not run `npm install`. The Cursor, Grok, and OpenCode CLIs bundle their own runtimes. No firewall tooling is installed or configured here: the firewall is part of the pre-configured environment, and port 8080 needs no rule because Boffin is loopback-only.
 
 **Bundled static assets (optional, for slow client links):** Boffin serves unbundled files by default so agent edits to `public/` show up after refresh. The owner can switch to **release** in Settings, which runs `bun build` on the server and serves hashed bundles from `public/dist/`. Install Bun for the `boffin` user before using that mode:
 
@@ -178,7 +178,7 @@ Ownership of `/srv/boffin` itself never changes after this: it stays `boffin:bof
 
 The agent runs as the dedicated `boffin` account created in step 3, so it is installed and authenticated as that account. Install **only** the CLIs named in `<agents>`.
 
-### Cursor (`cursor` or `both`)
+### Cursor (when `<agents>` includes `cursor`)
 
 ```bash
 sudo su - boffin -c 'curl https://cursor.com/install -fsS | bash'
@@ -194,7 +194,7 @@ sudo su - boffin -c '~/.local/bin/agent status'                    # confirm sig
 
 If the operator has told you they use an API key instead, follow Cursor's current CLI documentation for supplying it to the `boffin` user's environment, and do not write the key into the repository.
 
-### Grok (`grok` or `both`)
+### Grok (when `<agents>` includes `grok`)
 
 The Grok installer also places an `agent` binary next to `grok`. **Do not put `/home/boffin/.grok/bin` on PATH** (including the systemd unit in step 6). Point `grok_bin` at `/home/boffin/.grok/bin/grok`. If the installer overwrites `/home/boffin/.local/bin/agent`, re-run the Cursor install above before continuing.
 
@@ -211,7 +211,23 @@ Authenticate with device-code login (headless; needs the operator now):
 sudo su - boffin -c '~/.grok/bin/grok login --device-auth'   # prints a URL/code for the operator to approve
 ```
 
-Credentials land in `/home/boffin`, which is why the systemd unit in step 6 sets `HOME`. If sign-in later expires, chats fail with auth errors; re-run the matching login (`agent status` or `grok login --device-auth`).
+### OpenCode (when `<agents>` includes `opencode`)
+
+The OpenCode installer puts the binary in `/home/boffin/.opencode/bin/opencode` and adds that directory to the shell's `PATH`. Point `opencode_bin` at the real path so the service does not depend on `PATH` under systemd.
+
+```bash
+sudo su - boffin -c 'curl -fsSL https://opencode.ai/install | bash'
+sudo su - boffin -c '~/.opencode/bin/opencode --version'
+```
+
+Authenticate with the provider or the OpenCode gateway (interactive, needs the operator now):
+
+```bash
+sudo su - boffin -c '~/.opencode/bin/opencode auth login'
+sudo su - boffin -c '~/.opencode/bin/opencode models'   # confirm the chosen model is available
+```
+
+Credentials land in `/home/boffin`, which is why the systemd unit in step 6 sets `HOME`. If sign-in later expires, chats fail with auth errors; re-run the matching login (`agent status`, `grok login --device-auth`, or `opencode auth login` from step 4).
 
 ## Step 5 — Boffin configuration
 
@@ -224,8 +240,10 @@ Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u b
   "agents": ["cursor"],
   "model": "composer-2.5",
   "grok_model": "grok-4.7/high",
+  "opencode_model": "opencode/big-pickle",
   "agent_bin": "/home/boffin/.local/bin/agent",
   "grok_bin": "/home/boffin/.grok/bin/grok",
+  "opencode_bin": "/home/boffin/.opencode/bin/opencode",
   "bun_bin": "/home/boffin/.bun/bin/bun",
   "force": true,
   "username": "boffin",
@@ -234,7 +252,7 @@ Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u b
 }
 ```
 
-- Set `"agents"` from `<agents>`: `["cursor"]`, `["grok"]`, or `["cursor", "grok"]`. Always write `"model": "composer-2.5"` and `"grok_model": "grok-4.7/high"` — do not ask for a model. Omit `agent_bin` only when Cursor is not installed; omit `grok_bin` only when Grok is not installed. Set `"bun_bin"` to `/home/boffin/.bun/bin/bun` when Bun is installed for release mode. Use absolute paths to avoid PATH surprises under systemd. The web-login `username` is the literal `boffin` — the GitHub username plays no role here.
+- Set `"agents"` from `<agents>` using any combination of `"cursor"`, `"grok"`, and `"opencode"`. Always write `"model": "composer-2.5"`, `"grok_model": "grok-4.7/high"`, and `"opencode_model": "opencode/big-pickle"` — do not ask for a model. Omit `agent_bin` only when Cursor is not installed; omit `grok_bin` only when Grok is not installed; omit `opencode_bin` only when OpenCode is not installed. Set `"bun_bin"` to `/home/boffin/.bun/bin/bun` when Bun is installed for release mode. Use absolute paths to avoid PATH surprises under systemd. The web-login `username` is the literal `boffin` — the GitHub username plays no role here.
 - Generate the password on the server (e.g. `openssl rand -base64 24`), put it only in this file, and report it to the operator once at handover.
 - **What the password is for:** it is only the bootstrap credential for first-time owner passkey enrollment. Once an owner passkey exists, the server answers "The password is no longer used" and sign-in is passkey-only. Whoever enrolls first becomes the owner, so the operator must enroll as the very first action after step 7 — from the moment Caddy is live, the service is publicly reachable (enrollment is still gated by this password and per-client rate limits, but do not leave it unenrolled).
 
@@ -318,7 +336,7 @@ Do not hand over until all of these pass:
 - [ ] Compression: `curl -sI -H 'Accept-Encoding: gzip' https://<hostname>/app.js` includes `content-encoding: gzip` or `zstd` and an ETag. `curl -sI http://127.0.0.1:8080/app.js` includes an ETag and no `content-encoding`.
 - [ ] Service: `systemctl is-enabled boffin caddy` both report enabled; `journalctl -u boffin` is clean; `systemctl show -p User boffin` confirms the service runs as `boffin`.
 - [ ] **Operator enrolls the owner passkey immediately:** open `https://<hostname>`, sign in with username `boffin` and the generated password, create the owner passkey. Then confirm a fresh browser session signs in with the passkey and the password is now refused ("The password is no longer used").
-- [ ] Agent: the operator sends a trivial chat message (e.g. "say hi") and gets a streamed reply — this exercises Caddy streaming, the systemd service, and the `boffin`-user CLI login in one shot. If both agents are enabled, start a new chat as owner and confirm Cursor and Grok can each be selected.
+- [ ] Agent: the operator sends a trivial chat message (e.g. "say hi") and gets a streamed reply — this exercises Caddy streaming, the systemd service, and the `boffin`-user CLI login in one shot. If more than one agent is enabled, start a new chat as owner and confirm each enabled agent (Cursor, Grok, OpenCode) can be selected.
 - [ ] Agent git: on the server, `sudo -u boffin git -C /srv/boffin status` and `sudo -u boffin git -C /srv/boffin config user.email` work with no "dubious ownership" error, the latter printing the identity copied in step 3.
 - [ ] Persistence across reboot — optionally prove with a reboot if the operator accepts a few minutes of downtime.
 
@@ -331,6 +349,7 @@ Give the operator:
   - `sudo systemctl restart boffin`, `journalctl -u boffin -f`, `sudo systemctl reload caddy`
   - Cursor: `sudo su - boffin -c '~/.local/bin/agent status'`
   - Grok: `sudo su - boffin -c '~/.grok/bin/grok login --device-auth'` (only if sign-in expired)
+  - OpenCode: `sudo su - boffin -c '~/.opencode/bin/opencode auth login'` (only if sign-in expired)
   - Deploy an update: follow "Updating" below (pull/push over SSH, re-grant group write on your pushed files, restart the service).
   - Fetch the agent's own commits: locally `git fetch deploy` at any time (the shared group makes the repo readable/writable by both accounts), or inspect on the server with `sudo -u boffin git -C /srv/boffin log`.
 
@@ -348,7 +367,7 @@ Both accounts write `/srv/boffin` through the shared `boffin` group, so an updat
 ## Rollback and troubleshooting
 
 - **Bad agent edit broke the service:** the agent is allowed to modify Boffin's own source in `/srv/boffin`; a bad edit can crash the service on restart. Recover on the server as `boffin`: `sudo -u boffin git -C /srv/boffin log --oneline -5`, then `sudo -u boffin git -C /srv/boffin reset --hard <good-commit>` (or `git revert <bad-commit>`), then `sudo systemctl restart boffin`. Uncommitted breakage: `sudo -u boffin git -C /srv/boffin checkout -- .`; also remove stray untracked files with `sudo -u boffin git -C /srv/boffin clean -fd -e config.json -e data` only after checking `status` (ignored files such as `config.json` and `data/` are kept by default).
-- **Chats fail with agent auth errors:** the Cursor or Grok login (as `boffin`) expired. On the server, re-run the matching login from step 4, then `sudo systemctl restart boffin`.
+- **Chats fail with agent auth errors:** the Cursor, Grok, or OpenCode login (as `boffin`) expired. On the server, re-run the matching login from step 4, then `sudo systemctl restart boffin`.
 - **Certificate issuance fails:** DNS for `<hostname>` does not point at the server yet, or the pre-configured firewall blocks 80/443. Check `journalctl -u caddy` and DNS yourself; firewall changes are the operator's, outside this skill — do not install or reconfigure `ufw`/provider rules to fix it.
 - **Everyone shares one rate-limit budget / instant 429s:** the proxy is not sending the header, or Boffin is not behind loopback Caddy. Confirm the Caddyfile `header_up` line from step 7 and that `host` is still `127.0.0.1` in `config.json`. Boffin ignores `X-Forwarded-For` from non-loopback peers by design, so direct exposure cannot be spoofed but collapses all clients into the peer's bucket. A local process (including the agent) can set the header itself over loopback — accepted, since it can already read `config.json`.
 - **Passkeys stopped working after a change:** passkeys are bound to the hostname (WebAuthn RP ID). Since `<hostname>` is the server's own hostname it should never change; if it ever does, the operator must re-enroll — there is no migration.
@@ -357,7 +376,7 @@ Both accounts write `/srv/boffin` through the shared `boffin` group, so an updat
 
 ## Risks to state to the operator
 
-- The agent runs as the dedicated `boffin` user with auto-approve (`--force` / `--always-approve`): it can read `config.json`, `data/state.json` (passkeys, conversation), and the CLI credentials in `/home/boffin`, run arbitrary commands as `boffin`, and edit Boffin's own source. The dedicated user protects the operator's account (including its SSH keys and `sudo`) and root — not the app itself.
+- The agent runs as the dedicated `boffin` user with auto-approve (`--force` / `--always-approve` / `--auto`): it can read `config.json`, `data/state.json` (passkeys, conversation), and the CLI credentials in `/home/boffin`, run arbitrary commands as `boffin`, and edit Boffin's own source. The dedicated user protects the operator's account (including its SSH keys and `sudo`) and root — not the app itself.
 - The window between Caddy going live (step 7) and owner passkey enrollment (step 8) is the one exposed moment: enrollment is gated by the generated password and rate limits, but enroll immediately.
 - `<hostname>` is permanent as far as passkeys are concerned: changing the server's hostname orphans all enrolled passkeys.
 - Sharing `/srv/boffin` via the `boffin` group only works if the permissions in step 3 survive: setgid group-writable directories, `core.sharedRepository=group`, the service's `UMask=0002`, and the operator's post-push `chmod g+w`. If either side starts failing with permission errors, re-check those (and that `id -nG` still lists `boffin`) — fix them with `chmod`, never by recursively `chown`ing the tree, which just moves the breakage to the other user.

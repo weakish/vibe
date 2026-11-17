@@ -86,6 +86,27 @@ test('runs in the configured working directory and forwards the resume id', asyn
   assert.equal(call.prompt, 'hi');
 });
 
+test('sets PWD to the configured working directory', async () => {
+  const dir = tempDir();
+  const events = [];
+  const handle = runAgent({
+    bin: process.execPath,
+    args: [
+      '-e',
+      'process.stdout.write(JSON.stringify({type:"system",pwd:process.env.PWD,cwd:process.cwd()})+"\\n")',
+    ],
+    cwd: dir,
+    env: { ...process.env, PWD: process.cwd() },
+    onEvent: (event) => events.push(event),
+    logger: { error() {} },
+  });
+  const outcome = await handle.done;
+
+  assert.equal(outcome.code, 0);
+  assert.equal(events[0].pwd, path.resolve(dir));
+  assert.equal(events[0].cwd, fs.realpathSync(dir));
+});
+
 test('reports one malformed-line signal and keeps later events', async () => {
   const events = [];
   const handle = runAgent({

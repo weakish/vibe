@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { buildCursorArgs } from './backends.js';
 
 const STDERR_LIMIT = 8 * 1024;
@@ -18,7 +19,7 @@ export function runAgent({ bin, args, cwd, env = process.env, onEvent, logger = 
   const detached = process.platform !== 'win32';
   const child = spawn(bin, args, {
     cwd,
-    env: agentEnvironment(env),
+    env: agentEnvironment(env, cwd),
     stdio: ['ignore', 'pipe', 'pipe'],
     detached,
     windowsHide: true,
@@ -141,8 +142,14 @@ function createLineSplitter(onLine) {
 
 // The CLI runs as this user and can print its environment. Boffin sign-in
 // secrets stay in the server process.
-function agentEnvironment(env) {
+function agentEnvironment(env, cwd) {
   const copy = { ...env };
+  // OpenCode picks its project root from PWD, not from spawn's cwd, so without
+  // this it would use the directory the server was started from. Set it for every
+  // agent so the child's own idea of its working directory matches spawn's cwd.
+  if (typeof cwd === 'string' && cwd) {
+    copy.PWD = path.resolve(cwd);
+  }
   delete copy.BOFFIN_PASSWORD;
   delete copy.BOFFIN_USERNAME;
   delete copy.BOFFIN_ACCESS_TOKEN;
