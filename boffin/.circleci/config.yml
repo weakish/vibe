@@ -1,4 +1,4 @@
-# Deploy-only pipeline: pushes merged commits on main to /srv/boffin over SSH.
+# Deploy-only pipeline: pushes commits on mvp to /srv/boffin (server branch main) over SSH.
 # Setup: docs/circleci-deploy.md
 
 version: 2.1
@@ -24,6 +24,6 @@ jobs:
 
 workflows:
   deploy-production:
-    when: pipeline.git.branch == "main"
+    when: pipeline.git.branch == "mvp"
     jobs:
       - deploy

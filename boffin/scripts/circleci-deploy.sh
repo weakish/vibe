@@ -10,8 +10,9 @@ deploy_user="${DEPLOY_SSH_USER:?Set DEPLOY_SSH_USER in CircleCI project environm
 deploy_host="${DEPLOY_HOST:?Set DEPLOY_HOST in CircleCI project environment variables}"
 commit="${CIRCLE_SHA1:-HEAD}"
 
-if [[ "${CIRCLE_BRANCH:-}" != "main" ]]; then
-  echo "Refusing to deploy: expected branch main, got '${CIRCLE_BRANCH:-unknown}'." >&2
+# Origin branch that may deploy. The server checkout stays main (updateInstead).
+if [[ "${CIRCLE_BRANCH:-}" != "mvp" ]]; then
+  echo "Refusing to deploy: expected branch mvp, got '${CIRCLE_BRANCH:-unknown}'." >&2
   exit 1
 fi
 
