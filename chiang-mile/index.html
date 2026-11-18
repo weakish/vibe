@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<script>
+var path = location.pathname.replace(/\/+$/, "") || "/"
+if (path === "/index.html") path = "/"
+var dest = "/api/wiki/html"
+if (path === "/edit") dest = "/api/wiki/edit"
+else if (path === "/history") dest = "/api/wiki/history"
+location.replace(dest + location.search + location.hash)
+</script>
+<noscript>
+<meta http-equiv="refresh" content="0;url=/api/wiki/html">
+</noscript>
+</head>
+<body>
+<p><a href="/api/wiki/html">Page</a> | <a href="/api/wiki/history">History</a> | <a href="/api/wiki/edit">Edit</a></p>
+</body>
+</html>

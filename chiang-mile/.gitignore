@@ -1,0 +1,11 @@
+.data
+dist
+node_modules
+storybook-static
+
+# Speed platform assets — intercepted by the edge proxy (proxy/proxy.go pathProxyMap)
+# in production, so in-repo copies are never read. Fetch via `make fetch-speed-assets`
+# from docker-images/startkit/ for local debugging.
+public/speed-sdk.js
+public/speed-service-worker.js
+public/_speed/inject-entry.js

@@ -1,0 +1,67 @@
+{
+  "name": "cnx-run-weekly",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "rsbuild dev",
+    "build": "rsbuild build",
+    "check": "tsgo -b --noEmit",
+    "db:apply": "tsx /tmp/framework/db-apply.ts",
+    "db:migration:create": "drizzle-kit generate --custom --name",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o /tmp/storybook-static",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.46",
+    "ai": "^6.0.175",
+    "@base-ui/react": "^1.0.0",
+    "@hono/node-server": "^1.14.4",
+    "@hono/node-ws": "^1.2.0",
+    "@hono/zod-validator": "^0.7.2",
+    "@rsbuild/plugin-react": "^1.4.2",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "chokidar": "^4.0.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "debug": "^4.4.1",
+    "hono": "^4.12.0",
+    "linkify-string": "^3.0.4",
+    "linkifyjs": "^3.0.5",
+    "jose": "^6.0.11",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0",
+    "speed-framework": "file:../framework",
+    "drizzle-orm": "^0.38.0",
+    "better-sqlite3": "^11.7.0",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "tsx": "^4.22.3",
+    "wouter": "^3.9.0",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.30.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@rsbuild/core": "^1.7.2",
+    "@storybook/addon-themes": "^10.1.11",
+    "@typescript/native-preview": "^7.0.0-dev.20260113.1",
+    "storybook": "^10.1.11",
+    "storybook-react-rsbuild": "^3.2.0",
+    "vitest": "^3.0.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "core-js"
+    ]
+  }
+}
