@@ -720,7 +720,7 @@ async function handlePassword(req, res, context) {
   if (!userOk || !passwordOk) {
     return sendJson(res, 401, { error: 'Invalid or missing username or password.' });
   }
-  const place = passkeyOrigin(req.headers.origin ?? '');
+  const place = passkeyOrigin(req.headers.origin ?? '', req.headers.host ?? '');
   if (!place) {
     return sendJson(res, 400, { error: PASSKEY_UNAVAILABLE });
   }
@@ -772,7 +772,7 @@ async function handleAddPasskey(req, res, context, person) {
     }
     throw error;
   }
-  const place = passkeyOrigin(req.headers.origin ?? '');
+  const place = passkeyOrigin(req.headers.origin ?? '', req.headers.host ?? '');
   if (!place) {
     return sendJson(res, 400, { error: PASSKEY_UNAVAILABLE });
   }
@@ -828,7 +828,7 @@ async function handleLoginOptions(req, res, context) {
   if (!username) {
     return sendJson(res, 400, { error: 'Enter a username.' });
   }
-  const place = passkeyOrigin(req.headers.origin ?? '');
+  const place = passkeyOrigin(req.headers.origin ?? '', req.headers.host ?? '');
   if (!place) {
     return sendJson(res, 400, { error: PASSKEY_UNAVAILABLE });
   }
@@ -981,7 +981,7 @@ async function handleJoin(req, res, context) {
   if (signedIn && canEnter(signedIn, context.conversation)) {
     return sendJson(res, 403, { error: ALREADY_IN_CONVERSATION });
   }
-  const place = passkeyOrigin(req.headers.origin ?? '');
+  const place = passkeyOrigin(req.headers.origin ?? '', req.headers.host ?? '');
   if (!place) {
     return sendJson(res, 400, { error: PASSKEY_UNAVAILABLE });
   }

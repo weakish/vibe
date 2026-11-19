@@ -19,12 +19,27 @@ export function bytesFromBase64url(value) {
 }
 
 // A passkey can be created on HTTPS, or on http://localhost, which browsers treat
-// as a secure context. An IP address is not a relying-party hostname.
-export function passkeyOrigin(origin) {
+// as a secure context. An IP address is not a relying-party hostname. Origin must
+// also match the request Host so a mismatched or proxied Origin cannot choose its
+// own relying-party id.
+export function passkeyOrigin(origin, hostHeader) {
+  if (typeof origin !== 'string' || typeof hostHeader !== 'string') {
+    return null;
+  }
+  const trimmedHost = hostHeader.trim();
+  if (!trimmedHost || /[\s/?#@\\]/.test(trimmedHost) || trimmedHost.endsWith(':')) {
+    return null;
+  }
+  if (!origin || /^\s|\s$/.test(origin) || origin.endsWith('/')) {
+    return null;
+  }
   let url;
   try {
     url = new URL(origin);
   } catch {
+    return null;
+  }
+  if (url.pathname !== '/' || url.search !== '' || url.hash !== '' || url.username !== '' || url.password !== '') {
     return null;
   }
   const host = url.hostname;
@@ -33,6 +48,15 @@ export function passkeyOrigin(origin) {
     return null;
   }
   if (!isHostname(host)) {
+    return null;
+  }
+  let requestUrl;
+  try {
+    requestUrl = new URL(`${url.protocol}//${trimmedHost}`);
+  } catch {
+    return null;
+  }
+  if (requestUrl.host !== url.host) {
     return null;
   }
   return { origin: url.origin, rpId: host };

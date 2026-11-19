@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Conversation } from '../src/conversation.js';
 import { runAgent } from '../src/agent.js';
 import { LOGIN_CREDENTIAL_SLOTS, createServer } from '../src/server.js';
-import { encodeCbor } from '../src/webauthn.js';
+import { encodeCbor, passkeyOrigin } from '../src/webauthn.js';
 
 const FAKE_AGENT = fileURLToPath(new URL('../fixtures/fake-agent.js', import.meta.url));
 const USER = 'tester';
@@ -108,7 +109,7 @@ async function startServer(dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-p
   const server = createServer({ conversation, username: USER, password: PASS, logger: quietLogger });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const baseUrl = `http://localhost:${port}`;
   const origin = `http://localhost:${port}`;
   return {
     dir,
@@ -123,21 +124,42 @@ async function startServer(dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-p
   };
 }
 
-function call(baseUrl, route, { method = 'GET', body, token, origin } = {}) {
-  const headers = {};
+function call(baseUrl, route, { method = 'GET', body, token, origin, host, headers: extraHeaders } = {}) {
+  const url = new URL(baseUrl);
+  const headers = { Host: host ?? url.host, ...extraHeaders };
   if (origin) {
     headers.Origin = origin;
   }
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  if (body !== undefined) {
+  const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
+  if (payload !== null) {
     headers['Content-Type'] = 'application/json';
+    headers['Content-Length'] = String(payload.length);
   }
-  return fetch(`${baseUrl}${route}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: '127.0.0.1', port: Number(url.port), path: route, method, headers },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          resolve({
+            status: res.statusCode,
+            headers: res.headers,
+            text: async () => text,
+            json: async () => JSON.parse(text),
+          });
+        });
+      },
+    );
+    req.on('error', reject);
+    if (payload !== null) {
+      req.write(payload);
+    }
+    req.end();
   });
 }
 
@@ -187,7 +209,7 @@ test('the owner password works once, then the passkey signs in from another requ
   assert.equal(owner.session.people.length, 1);
   assert.equal(owner.session.people[0].owner, true);
 
-  const basic = await fetch(`${app.baseUrl}/api/session`, {
+  const basic = await call(app.baseUrl, '/api/session', {
     headers: { Authorization: `Basic ${Buffer.from(`${USER}:${PASS}`).toString('base64')}` },
   });
   assert.equal(basic.status, 401);
@@ -849,4 +871,112 @@ test('registration requires user verification and allows an extension suffix', a
     body: { challengeId: trailingOptions.challengeId, credential: extraCredential },
   });
   assert.equal(extraRegistered.status, 401);
+});
+
+test('passkeyOrigin requires Origin to match the request Host', () => {
+  assert.deepEqual(passkeyOrigin('https://boffin.example.com', 'boffin.example.com'), {
+    origin: 'https://boffin.example.com',
+    rpId: 'boffin.example.com',
+  });
+  assert.deepEqual(passkeyOrigin('https://boffin.example.com', 'boffin.example.com:443'), {
+    origin: 'https://boffin.example.com',
+    rpId: 'boffin.example.com',
+  });
+  assert.deepEqual(passkeyOrigin('https://boffin.example.com:8443', 'boffin.example.com:8443'), {
+    origin: 'https://boffin.example.com:8443',
+    rpId: 'boffin.example.com',
+  });
+  assert.deepEqual(passkeyOrigin('http://localhost:8080', 'localhost:8080'), {
+    origin: 'http://localhost:8080',
+    rpId: 'localhost',
+  });
+  assert.deepEqual(passkeyOrigin('http://localhost', 'localhost:80'), {
+    origin: 'http://localhost',
+    rpId: 'localhost',
+  });
+  assert.deepEqual(passkeyOrigin('https://BOFFIN.EXAMPLE.COM', 'boffin.example.com'), {
+    origin: 'https://boffin.example.com',
+    rpId: 'boffin.example.com',
+  });
+
+  for (const [origin, host] of [
+    ['https://evil.example', 'boffin.example.com'],
+    ['http://localhost:8080', 'boffin.example.com'],
+    ['http://localhost:8080', '127.0.0.1:8080'],
+    ['http://localhost:8080', 'localhost:9090'],
+    ['https://boffin.example.com:8443', 'boffin.example.com'],
+    ['https://boffin.example.com', 'boffin.example.com:80'],
+    ['http://boffin.example.com', 'boffin.example.com'],
+    ['https://boffin.example.com', ''],
+    ['https://boffin.example.com', undefined],
+    ['https://boffin.example.com/', 'boffin.example.com'],
+    ['https://boffin.example.com/path', 'boffin.example.com'],
+    ['https://user@boffin.example.com', 'boffin.example.com'],
+    ['https://boffin.example.com', 'boffin.example.com:'],
+    ['https://boffin.example.com', 'user@boffin.example.com'],
+    ['https://boffin.example.com', 'boffin.example.com/path'],
+    [' https://boffin.example.com', 'boffin.example.com'],
+  ]) {
+    assert.equal(passkeyOrigin(origin, host), null, `expected null for (${origin}, ${host})`);
+  }
+});
+
+test('passkey ceremonies reject Origin headers that do not match Host', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const badBootstrap = await call(app.baseUrl, '/api/auth/password', {
+    method: 'POST',
+    host: 'boffin.example.com',
+    origin: 'https://evil.example',
+    body: { username: USER, password: PASS },
+  });
+  assert.equal(badBootstrap.status, 400);
+
+  const badLocalhost = await call(app.baseUrl, '/api/auth/password', {
+    method: 'POST',
+    host: 'boffin.example.com',
+    origin: app.origin,
+    body: { username: USER, password: PASS },
+  });
+  assert.equal(badLocalhost.status, 400);
+
+  const owner = await registerOwner(app);
+
+  const badOptions = await call(app.baseUrl, '/api/auth/options', {
+    method: 'POST',
+    host: 'boffin.example.com',
+    origin: 'https://evil.example',
+    body: { username: USER },
+  });
+  assert.equal(badOptions.status, 400);
+
+  const okOptions = await call(app.baseUrl, '/api/auth/options', {
+    method: 'POST',
+    host: 'boffin.example.com',
+    origin: 'https://boffin.example.com',
+    body: { username: USER },
+  });
+  assert.equal(okOptions.status, 200);
+  assert.equal((await okOptions.json()).options.rpId, 'boffin.example.com');
+
+  const badAdd = await call(app.baseUrl, '/api/passkeys', {
+    method: 'POST',
+    token: owner.session.token,
+    host: 'boffin.example.com',
+    origin: 'https://evil.example',
+    body: { label: 'Laptop' },
+  });
+  assert.equal(badAdd.status, 400);
+
+  const invite = await (
+    await call(app.baseUrl, '/api/invites', { method: 'POST', token: owner.session.token, body: {} })
+  ).json();
+  const badJoin = await call(app.baseUrl, '/api/join', {
+    method: 'POST',
+    host: 'boffin.example.com',
+    origin: 'https://evil.example',
+    body: { inviteId: invite.id, name: 'Ada' },
+  });
+  assert.equal(badJoin.status, 400);
 });
