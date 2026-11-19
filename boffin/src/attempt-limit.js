@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 // Fixed window from the first attempt. A full window refuses more attempts
 // until it ends; the refusal does not open a new window.
 const SWEEP_AT = 1000;
+export const MAX_ATTEMPT_BUCKETS = 10_000;
 
 export const PASSWORD_ATTEMPT_LIMIT = 8;
 export const PASSKEY_ATTEMPT_LIMIT = 30;
@@ -120,27 +121,22 @@ export function requestAddress(req) {
   return isIP(value) ? clientAddress(value) : peer;
 }
 
-export function createAttemptLimiter(limit, windowMs = ATTEMPT_WINDOW_MS) {
+export function createAttemptLimiter(limit, windowMs = ATTEMPT_WINDOW_MS, maxBuckets = MAX_ATTEMPT_BUCKETS) {
   const buckets = new Map();
 
   function retryAfter(bucket, now) {
     return Math.max(1, Math.ceil((bucket.start + windowMs - now) / 1000));
   }
 
-  function bucketFor(key, now) {
-    let bucket = buckets.get(key);
-    if (!bucket || now - bucket.start >= windowMs) {
-      bucket = { start: now, count: 0 };
-      buckets.set(key, bucket);
-    }
-    if (buckets.size > SWEEP_AT) {
-      for (const [id, entry] of buckets) {
-        if (now - entry.start >= windowMs) {
-          buckets.delete(id);
-        }
+  // Buckets are inserted at window start (and deleted before re-insertion on reset),
+  // so expired windows sit at the front of the Map and are pruned in O(1) amortized time.
+  function pruneExpired(now) {
+    for (const [id, entry] of buckets) {
+      if (now - entry.start < windowMs) {
+        break;
       }
+      buckets.delete(id);
     }
-    return bucket;
   }
 
   return {
@@ -150,14 +146,37 @@ export function createAttemptLimiter(limit, windowMs = ATTEMPT_WINDOW_MS) {
     // Whether another attempt would be recorded. Records nothing and opens no window.
     status(key, now = Date.now()) {
       const bucket = buckets.get(key);
-      if (!bucket || now - bucket.start >= windowMs) {
-        return { ok: true, retryAfter: 0 };
+      if (bucket && now - bucket.start < windowMs) {
+        return { ok: bucket.count < limit, retryAfter: retryAfter(bucket, now) };
       }
-      return { ok: bucket.count < limit, retryAfter: retryAfter(bucket, now) };
+      if (buckets.size >= maxBuckets) {
+        const oldest = buckets.values().next().value;
+        if (oldest && now - oldest.start < windowMs) {
+          return { ok: false, retryAfter: retryAfter(oldest, now) };
+        }
+      }
+      return { ok: true, retryAfter: 0 };
     },
     // Records one attempt when the window still has room.
     record(key, now = Date.now()) {
-      const bucket = bucketFor(key, now);
+      let bucket = buckets.get(key);
+      if (!bucket || now - bucket.start >= windowMs) {
+        if (bucket) {
+          buckets.delete(key);
+        }
+        if (buckets.size >= SWEEP_AT || buckets.size >= maxBuckets) {
+          pruneExpired(now);
+        }
+        if (buckets.size >= maxBuckets) {
+          const oldest = buckets.values().next().value;
+          return {
+            ok: false,
+            retryAfter: oldest ? retryAfter(oldest, now) : Math.max(1, Math.ceil(windowMs / 1000)),
+          };
+        }
+        bucket = { start: now, count: 0 };
+        buckets.set(key, bucket);
+      }
       if (bucket.count >= limit) {
         return { ok: false, retryAfter: retryAfter(bucket, now) };
       }

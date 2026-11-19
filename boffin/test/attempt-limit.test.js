@@ -112,3 +112,41 @@ test('a status check opens no window', () => {
   assert.equal(limiter.record('x', 900).ok, true);
   assert.equal(limiter.record('x', 1000).ok, false);
 });
+
+test('caps active buckets instead of growing unbounded or evicting blocked clients', () => {
+  const limiter = createAttemptLimiter(2, 1000, 3);
+  assert.equal(limiter.record('a', 0).ok, true);
+  assert.equal(limiter.record('a', 10).ok, true);
+  assert.equal(limiter.record('a', 20).ok, false);
+  assert.equal(limiter.record('b', 100).ok, true);
+  assert.equal(limiter.record('c', 200).ok, true);
+  assert.equal(limiter.size, 3);
+
+  // Full: new addresses are refused without evicting 'a' or growing the map.
+  assert.deepEqual(limiter.status('d', 300), { ok: false, retryAfter: 1 });
+  assert.deepEqual(limiter.record('d', 300), { ok: false, retryAfter: 1 });
+  assert.equal(limiter.size, 3);
+  assert.equal(limiter.record('a', 300).ok, false);
+  // Existing addresses with room left in their window still work.
+  assert.equal(limiter.record('b', 300).ok, true);
+
+  // Once 'a' expires, front pruning frees its slot for 'd'.
+  assert.deepEqual(limiter.status('d', 1000), { ok: true, retryAfter: 0 });
+  assert.equal(limiter.record('d', 1000).ok, true);
+  assert.equal(limiter.size, 3);
+});
+
+test('resetting an expired bucket moves it to the back so front pruning keeps working', () => {
+  const limiter = createAttemptLimiter(1, 1000, 2);
+  assert.equal(limiter.record('a', 0).ok, true);
+  assert.equal(limiter.record('b', 500).ok, true);
+
+  // Reset 'a' at t=1000: 'b' (start 500) is now oldest, 'a' (start 1000) is newest.
+  assert.equal(limiter.record('a', 1000).ok, true);
+  assert.equal(limiter.size, 2);
+
+  // At t=1500, 'b' has expired and must be pruned from the front to admit 'c'.
+  assert.equal(limiter.record('c', 1500).ok, true);
+  assert.equal(limiter.size, 2);
+  assert.equal(limiter.record('a', 1500).ok, false);
+});
