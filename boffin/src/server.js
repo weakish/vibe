@@ -21,6 +21,10 @@ import { ConfigError, DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
 import { GROK_USAGE_REFRESH_FAILED, createGrokUsage } from './grok-usage.js';
 import {
+  MAX_SHOPPING_ITEMS,
+  MAX_SHOPPING_NAME,
+  MAX_SHOPPING_NOTE,
+  MAX_SHOPPING_WHO,
   parseShoppingList,
   readShoppingList,
   shoppingListPathForState,
@@ -77,6 +81,10 @@ export const MAX_BODY_BYTES =
 // Password and passkey bodies carry no attachments. The chat cap would let one
 // address pin tens of megabytes on each of the few attempts it is allowed.
 export const AUTH_BODY_BYTES = 64 * 1024;
+export const SMALL_BODY_BYTES = 16 * 1024;
+export const SPEC_BODY_BYTES = MAX_SPEC_CHARS * 6 + 64;
+export const SHOPPING_BODY_BYTES =
+  MAX_SHOPPING_ITEMS * ((MAX_SHOPPING_NAME + MAX_SHOPPING_NOTE + MAX_SHOPPING_WHO * 2) * 6 + 256) + 64;
 const HEARTBEAT_MS = 15000;
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Only these exact paths are served, so request paths never reach the file system directly.
@@ -512,12 +520,9 @@ async function handleShopping(req, res, shoppingFile, logger) {
       return sendJson(res, 500, { error: 'Internal server error.' });
     }
   }
-  let body;
-  try {
-    body = await readJsonBody(req);
-  } catch (error) {
-    const status = error.status ?? 400;
-    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  const body = await readBody(req, res, SHOPPING_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
   }
   const list = parseShoppingList(body);
   if (!list) {
@@ -537,12 +542,9 @@ async function handleSpec(req, res, specFile, logger, canEdit) {
     const saved = await readSavedSpec(specFile);
     return sendJson(res, 200, { text: saved ?? DEFAULT_SPEC, canEdit });
   }
-  let body;
-  try {
-    body = await readJsonBody(req);
-  } catch (error) {
-    const status = error.status ?? 400;
-    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  const body = await readBody(req, res, SPEC_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
   }
   if (typeof body?.text !== 'string') {
     return sendJson(res, 400, { error: 'The spec must be text.' });
@@ -562,15 +564,9 @@ async function handleSpec(req, res, specFile, logger, canEdit) {
 // Streams transcript operations as NDJSON. The run keeps going if the client disconnects;
 // the transcript is the source of truth and the browser can reload it at any time.
 async function handleMessage(req, res, { conversation, logger }, person) {
-  let body;
-  try {
-    body = await readJsonBody(req);
-  } catch (error) {
-    // Closing the async iterator already stopped the upload. Destroying the
-    // socket before writeHead drops the 413 on the floor, so answer first and
-    // hang up afterwards. Otherwise leftover body bytes become the next request.
-    const status = error.status ?? 400;
-    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  const body = await readBody(req, res, MAX_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
   }
 
   const text = typeof body?.text === 'string' ? body.text.trim() : '';
@@ -697,12 +693,9 @@ function contentDisposition(name, inline) {
 }
 
 async function handleReset(req, res, conversation) {
-  let body;
-  try {
-    body = await readJsonBody(req);
-  } catch (error) {
-    const status = error.status ?? 400;
-    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  const body = await readBody(req, res, SMALL_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
   }
   try {
     conversation.reset(new Date().toISOString(), {
@@ -1395,6 +1388,9 @@ async function readBody(req, res, limit = MAX_BODY_BYTES) {
   try {
     return await readJsonBody(req, limit);
   } catch (error) {
+    // Closing the async iterator already stopped the upload. Destroying the
+    // socket before writeHead drops the 413 on the floor, so answer first and
+    // hang up afterwards. Otherwise leftover body bytes become the next request.
     const status = error.status ?? 400;
     sendJson(res, status, { error: error.message }, { close: status === 413 });
     return undefined;
@@ -1488,12 +1484,9 @@ async function switchStaticAssetsToDev(context) {
 }
 
 async function handleStaticAssetsPut(req, res, context) {
-  let body;
-  try {
-    body = await readJsonBody(req);
-  } catch (error) {
-    const status = error.status ?? 400;
-    return sendJson(res, status, { error: error.message }, { close: status === 413 });
+  const body = await readBody(req, res, SMALL_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
   }
   const mode = body?.mode === 'release' ? 'release' : body?.mode === 'dev' ? 'dev' : null;
   if (!mode) {

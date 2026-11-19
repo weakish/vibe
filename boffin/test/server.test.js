@@ -13,7 +13,14 @@ import { runAgent } from '../src/agent.js';
 import { DEFAULT_SPEC, MAX_SPEC_CHARS } from '../shared/default-spec.js';
 import { PASSKEY_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_LIMIT, STATUS_ATTEMPT_LIMIT } from '../src/attempt-limit.js';
 import { entityTag, httpDate } from '../src/http-encode.js';
-import { MAX_BODY_BYTES, MAX_MESSAGE_CHARS, createServer } from '../src/server.js';
+import {
+  MAX_BODY_BYTES,
+  MAX_MESSAGE_CHARS,
+  SHOPPING_BODY_BYTES,
+  SMALL_BODY_BYTES,
+  SPEC_BODY_BYTES,
+  createServer,
+} from '../src/server.js';
 
 const FAKE_AGENT = fileURLToPath(new URL('../fixtures/fake-agent.js', import.meta.url));
 const USER = 'tester';
@@ -373,6 +380,27 @@ test('returns JSON when the body exceeds the byte cap', async (t) => {
   });
   assert.equal(response.status, 413);
   assert.match((await response.json()).error, /too large/);
+});
+
+test('non-attachment endpoints enforce smaller body byte caps', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const cases = [
+    ['POST', '/api/new', SMALL_BODY_BYTES],
+    ['PUT', '/api/static-assets', SMALL_BODY_BYTES],
+    ['PUT', '/api/spec', SPEC_BODY_BYTES],
+    ['PUT', '/api/shopping', SHOPPING_BODY_BYTES],
+  ];
+  for (const [method, route, limit] of cases) {
+    assert.ok(limit < MAX_BODY_BYTES, `${route} limit should stay well below MAX_BODY_BYTES`);
+    const response = await api(app.baseUrl, route, {
+      method,
+      body: 'x'.repeat(limit + 1),
+    });
+    assert.equal(response.status, 413, `${method} ${route} should reject bodies past ${limit} bytes`);
+    assert.match((await response.json()).error, /too large/);
+  }
 });
 
 test('serves the built-in spec and keeps edits beside the state file', async (t) => {
