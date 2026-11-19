@@ -105,7 +105,6 @@ sudo systemctl reload caddy     # after editing /etc/caddy/Caddyfile
 ```
 
 - **Update:** `git pull --rebase deploy main` (pick up any commits the agent made), `git push deploy HEAD:main`, then on the server re-grant group write on the files your push checked out (`find /srv/boffin -user <github-username> -exec chmod g+w {} +`) and restart the service. A push is refused if the server working tree has uncommitted changes — settle the agent's edits as `boffin` first (details in the skill); the service does not need to be stopped for an update. Never copy files over `/srv/boffin` with `rsync`/`scp`; it would overwrite the agent's work and its `.git`.
-- **CircleCI (optional):** After pushes to `mvp`, a deploy-only pipeline can run the same push-and-restart sequence (onto the server's `main`). Setup and a CircleCI vs Buildkite comparison for that path are in [`docs/circleci-deploy.md`](docs/circleci-deploy.md).
 - **Recover from a bad agent edit:** over SSH, inspect `sudo -u boffin git -C /srv/boffin log`, `git reset --hard <good-commit>` (or `git revert`) as `boffin`, then restart the service. Uncommitted breakage: `sudo -u boffin git -C /srv/boffin checkout -- .`.
 
 ## Security model
