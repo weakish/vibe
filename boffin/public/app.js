@@ -21,6 +21,7 @@ import {
   authGate,
   clearJoinParam,
   currentLandingStatus,
+  currentLandingStatusAlert,
   ensureLocalePickers,
   fillSizePicker,
   fillThemePicker,
@@ -36,6 +37,7 @@ import {
   prefersDark,
   refreshAuthGate,
   paintLocaleTriggers,
+  paintStatusMessage,
   registerLocaleGroup,
   registerLocaleTrigger,
   setAfterLandingSettingsToggle,
@@ -2955,7 +2957,7 @@ async function exportPrintView(items, meta, labels, printWindow) {
   const when = meta.exportedAt ? new Date(meta.exportedAt) : new Date();
   if (!printWindow || printWindow.closed) {
     await shareOrDownloadText(conversationPrintFilename(when), html, 'text/html;charset=utf-8');
-    setStatus(() => msg('exportPrintBlocked'));
+    setStatus(() => msg('exportPrintBlocked'), { alert: true });
     return;
   }
   printWindow.document.open();
@@ -3581,8 +3583,8 @@ function isNearBottom(container = el.messages, slop = NEAR_BOTTOM_PX) {
   return scrollHeight - scrollTop - clientHeight < slop;
 }
 
-function setStatus(message) {
-  setLandingStatus(typeof message === 'function' ? message : () => message);
+function setStatus(message, { alert = false } = {}) {
+  setLandingStatus(typeof message === 'function' ? message : () => message, { alert });
   applyStatus();
 }
 
@@ -3603,12 +3605,9 @@ function applyStatus() {
   // Landing can set this after the app module loads; paint from that same function.
   renderStatus = currentLandingStatus();
   const message = renderStatus();
-  if (el.status) {
-    el.status.textContent = message;
-    el.status.hidden = !message;
-  }
-  el.landingStatus.textContent = message;
-  el.landingStatus.hidden = !message;
+  const alert = currentLandingStatusAlert();
+  paintStatusMessage(el.status, message, alert);
+  paintStatusMessage(el.landingStatus, message, alert);
 }
 
 function setLoginError(message) {

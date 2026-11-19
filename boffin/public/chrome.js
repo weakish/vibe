@@ -72,6 +72,24 @@ let paintChrome = applyLandingChrome;
 let afterLandingSettingsToggle = () => {};
 let onChromeError = () => {};
 let landingStatus = () => '';
+let landingStatusAlert = false;
+
+export function paintStatusMessage(node, text, alert) {
+  if (!node) {
+    return;
+  }
+  const message = text || '';
+  const isAlert = Boolean(message) && Boolean(alert);
+  node.classList.toggle('is-alert', isAlert);
+  const role = isAlert ? 'alert' : 'status';
+  if (node.getAttribute('role') !== role) {
+    node.setAttribute('role', role);
+  }
+  node.hidden = !message;
+  if (node.textContent !== message) {
+    node.textContent = message;
+  }
+}
 
 export function msg(key, vars) {
   return t(locale, key, vars);
@@ -89,8 +107,9 @@ export function setOnChromeError(fn) {
   onChromeError = fn;
 }
 
-export function setLandingStatus(message) {
+export function setLandingStatus(message, { alert = false } = {}) {
   landingStatus = typeof message === 'function' ? message : () => message || '';
+  landingStatusAlert = Boolean(alert);
   paintLandingStatus();
 }
 
@@ -98,10 +117,12 @@ export function currentLandingStatus() {
   return landingStatus;
 }
 
+export function currentLandingStatusAlert() {
+  return landingStatusAlert;
+}
+
 function paintLandingStatus() {
-  const text = landingStatus() || '';
-  landingEl.status.hidden = !text;
-  landingEl.status.textContent = text;
+  paintStatusMessage(landingEl.status, landingStatus() || '', landingStatusAlert);
 }
 
 function storedSession() {
