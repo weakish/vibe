@@ -822,6 +822,151 @@ test('placeholder ids use the real credential length', async (t) => {
   assert.deepEqual(new Set(await lengths('nobody')), new Set([32]));
 });
 
+async function joinMember(app, owner, name, idBytes) {
+  const invite = await (
+    await call(app.baseUrl, '/api/invites', { method: 'POST', token: owner.session.token, body: {} })
+  ).json();
+  const joinOptions = await (
+    await call(app.baseUrl, '/api/join', {
+      method: 'POST',
+      origin: app.origin,
+      body: { inviteId: invite.id, name },
+    })
+  ).json();
+  const device = authenticator({ idBytes });
+  const joined = await call(app.baseUrl, '/api/join/finish', {
+    method: 'POST',
+    origin: app.origin,
+    body: {
+      challengeId: joinOptions.challengeId,
+      credential: device.register(Buffer.from(joinOptions.options.challenge, 'base64url'), app.origin),
+    },
+  });
+  assert.equal(joined.status, 200);
+  return { device, session: await joined.json() };
+}
+
+async function allowIds(app, username) {
+  const response = await call(app.baseUrl, '/api/auth/options', {
+    method: 'POST',
+    origin: app.origin,
+    body: { username },
+  });
+  assert.equal(response.status, 200);
+  return (await response.json()).options.allowCredentials.map((item) => item.id);
+}
+
+function sortedLengths(ids) {
+  return ids.map((id) => Buffer.from(id, 'base64url').length).sort((a, b) => a - b);
+}
+
+test('mixed credential lengths produce the same length distribution for known and unknown usernames', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const owner = await registerOwner(app, authenticator({ idBytes: 32 }));
+  const { device: adaDevice } = await joinMember(app, owner, 'Ada', 64);
+
+  const ownerIds = await allowIds(app, USER);
+  const adaIds = await allowIds(app, 'Ada');
+  const unknownIds = await allowIds(app, 'nobody');
+
+  assert.equal(ownerIds.includes(owner.device.id), true);
+  assert.equal(adaIds.includes(adaDevice.id), true);
+  assert.deepEqual(sortedLengths(ownerIds), [32, 32, 32, 32, 64, 64, 64, 64]);
+  assert.deepEqual(sortedLengths(adaIds), [32, 32, 32, 32, 64, 64, 64, 64]);
+  assert.deepEqual(sortedLengths(unknownIds), [32, 32, 32, 32, 64, 64, 64, 64]);
+  assert.deepEqual(await allowIds(app, USER), ownerIds);
+  assert.deepEqual(await allowIds(app, 'Ada'), adaIds);
+  assert.deepEqual(await allowIds(app, 'nobody'), unknownIds);
+
+  const lengthSequences = new Set();
+  for (let i = 0; i < 6; i += 1) {
+    const ids = await allowIds(app, `nobody-${i}`);
+    assert.deepEqual(sortedLengths(ids), [32, 32, 32, 32, 64, 64, 64, 64]);
+    lengthSequences.add(ids.map((id) => Buffer.from(id, 'base64url').length).join(','));
+  }
+  assert.ok(lengthSequences.size > 1, 'slot order should vary across usernames');
+});
+
+test('a skewed passkey count keeps one length mix for every username', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const owner = await registerOwner(app, authenticator({ idBytes: 32 }));
+  const ownerIds = [owner.device.id];
+  for (let i = 0; i < 4; i += 1) {
+    const extra = await addPasskey(app, owner.session.token, authenticator({ idBytes: 32 }));
+    ownerIds.push(extra.device.id);
+  }
+
+  const { device: adaDevice, session: ada } = await joinMember(app, owner, 'Ada', 64);
+
+  const balanced = [32, 32, 32, 32, 32, 64, 64, 64];
+
+  const ownerList = await allowIds(app, USER);
+  const adaList = await allowIds(app, 'Ada');
+  const unknownList = await allowIds(app, 'nobody');
+  for (const id of ownerIds) {
+    assert.equal(ownerList.includes(id), true);
+  }
+  assert.equal(adaList.includes(adaDevice.id), true);
+  assert.equal(unknownList.includes(owner.device.id), false);
+  assert.deepEqual(sortedLengths(ownerList), balanced);
+  assert.deepEqual(sortedLengths(adaList), balanced);
+  assert.deepEqual(sortedLengths(unknownList), balanced);
+
+  for (let i = 0; i < 4; i += 1) {
+    await addPasskey(app, ada.token, authenticator({ idBytes: 64 }));
+  }
+  const wide = [32, 32, 32, 32, 32, 64, 64, 64, 64, 64];
+  assert.deepEqual(sortedLengths(await allowIds(app, USER)), wide);
+  assert.deepEqual(sortedLengths(await allowIds(app, 'Ada')), wide);
+  assert.deepEqual(sortedLengths(await allowIds(app, 'nobody')), wide);
+});
+
+test('an account past the sign-in cap does not split the length mix of other names', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const owner = await registerOwner(app, authenticator({ idBytes: 32 }));
+  const ownerIds = [owner.device.id];
+  // Stored directly so the extra ids do not use up the passkey attempt limit.
+  for (let i = 1; i < LOGIN_CREDENTIAL_SLOTS + 1; i += 1) {
+    const credentialId = randomBytes(32).toString('base64url');
+    app.conversation.addPasskey('owner', { credentialId, publicKey: 'test', signCount: 0 });
+    ownerIds.push(credentialId);
+  }
+  assert.equal(ownerIds.length, LOGIN_CREDENTIAL_SLOTS + 1);
+
+  const { device: adaDevice, session: ada } = await joinMember(app, owner, 'Ada', 64);
+  const adaIds = [adaDevice.id];
+  for (let i = 1; i < 6; i += 1) {
+    const credentialId = randomBytes(64).toString('base64url');
+    app.conversation.addPasskey(ada.you.id, { credentialId, publicKey: 'test', signCount: 0 });
+    adaIds.push(credentialId);
+  }
+
+  const covered = [32, 32, 64, 64, 64, 64, 64, 64];
+
+  const ownerList = await allowIds(app, USER);
+  const adaList = await allowIds(app, 'Ada');
+  const unknownList = await allowIds(app, 'nobody');
+  assert.deepEqual(sortedLengths(ownerList), Array(LOGIN_CREDENTIAL_SLOTS + 1).fill(32));
+  for (const id of ownerIds) {
+    assert.equal(ownerList.includes(id), true);
+  }
+  for (const id of adaIds) {
+    assert.equal(adaList.includes(id), true);
+  }
+  assert.equal(unknownList.includes(owner.device.id), false);
+  assert.equal(unknownList.includes(adaDevice.id), false);
+  assert.deepEqual(sortedLengths(adaList), covered);
+  assert.deepEqual(sortedLengths(unknownList), covered);
+  assert.deepEqual(await allowIds(app, 'Ada'), adaList);
+  assert.deepEqual(await allowIds(app, 'nobody'), unknownList);
+});
+
 test('registration requires user verification and allows an extension suffix', async (t) => {
   const extension = Buffer.from('ext');
   const ok = await startServer();

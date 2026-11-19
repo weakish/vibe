@@ -144,8 +144,10 @@ const SECURITY_HEADERS = {
 };
 
 const CHALLENGE_MS = 5 * 60 * 1000;
-// Every sign-in challenge lists this many credential ids. Fewer real passkeys are filled
-// out with placeholders, so a short list does not show by itself whether the username exists.
+// Names with at most this many passkeys share one mix of credential-id lengths, and
+// the list is at least this long. Placeholders fill the rest, so the length and the
+// mix do not show whether a name exists. A name with more passkeys lists each of them
+// and is left out of that shared mix.
 export const LOGIN_CREDENTIAL_SLOTS = 8;
 const PASSKEY_UNAVAILABLE = 'A passkey needs HTTPS on a stable hostname.';
 const PASSKEY_REJECTED = 'The passkey was not accepted.';
@@ -873,23 +875,25 @@ async function handleLoginOptions(req, res, context) {
   });
 }
 
-// Real passkey ids come first, then placeholders. Placeholders are stable for a username,
-// so asking twice, or again after a restart, gives the same list. Each placeholder uses a
-// byte length that already appears, so length does not mark which entries are real.
+// Real ids and placeholders share one length mix for every name with at most
+// LOGIN_CREDENTIAL_SLOTS passkeys. Each length appears as often as the fullest such
+// account has of that length, and placeholders fill shorter lengths until the list
+// has at least that many ids. A keyed hash orders the list, so a real id is not
+// pinned to one slot. The same username gets the same list after a restart. A name
+// past that cap lists each of its ids and is left out of the mix, so the extra ids
+// show only on that name. The sign-in warning is that case.
 function loginAllowList(context, username, realIds) {
+  if (realIds.length > LOGIN_CREDENTIAL_SLOTS) {
+    return orderAllowList(context, username, realIds);
+  }
   const slots = [...realIds];
   const seen = new Set(realIds);
-  const lengths = coverLengths(realIds, storedCredentialLengths(context));
-  const counts = new Map(lengths.map((length) => [length, 0]));
-  for (const id of realIds) {
-    const length = credentialIdByteLength(id);
-    if (counts.has(length)) {
-      counts.set(length, counts.get(length) + 1);
-    }
-  }
+  const lengths = coverLengths(storedCredentialLengths(context));
+  const counts = lengthCounts(realIds, lengths);
+  const targets = sharedCoverTargets(context, lengths);
   let index = 0;
-  while (slots.length < LOGIN_CREDENTIAL_SLOTS) {
-    const length = rarestLength(counts);
+  while (lengthBelowTarget(counts, lengths, targets)) {
+    const length = rarestOpenLength(counts, targets);
     const cover = coverCredentialId(context, username, index, length);
     index += 1;
     if (seen.has(cover)) {
@@ -899,18 +903,79 @@ function loginAllowList(context, username, realIds) {
     counts.set(length, counts.get(length) + 1);
     slots.push(cover);
   }
-  return slots;
+  return orderAllowList(context, username, slots);
 }
 
-function coverLengths(realIds, storedLengths) {
-  const fromReal = uniqueLengths(realIds);
-  if (fromReal.length > 0) {
-    return fromReal;
+function lengthBelowTarget(counts, lengths, targets) {
+  for (const length of lengths) {
+    if (counts.get(length) < targets.get(length)) {
+      return true;
+    }
   }
-  if (storedLengths.length > 0) {
-    return storedLengths;
+  return false;
+}
+
+// Per-length maxima among accounts that still fit in the sign-in cap, then padded
+// to LOGIN_CREDENTIAL_SLOTS. An account past the cap is omitted so its extra ids
+// do not lengthen every other name.
+function sharedCoverTargets(context, lengths) {
+  const byPerson = new Map();
+  for (const passkey of context.conversation.passkeys) {
+    const owned = byPerson.get(passkey.personId) ?? [];
+    owned.push(passkey.credentialId);
+    byPerson.set(passkey.personId, owned);
   }
-  return [16];
+  const targets = new Map(lengths.map((length) => [length, 0]));
+  for (const ids of byPerson.values()) {
+    if (ids.length > LOGIN_CREDENTIAL_SLOTS) {
+      continue;
+    }
+    for (const [length, count] of lengthCounts(ids, lengths)) {
+      if (count > targets.get(length)) {
+        targets.set(length, count);
+      }
+    }
+  }
+  let total = 0;
+  for (const count of targets.values()) {
+    total += count;
+  }
+  while (total < LOGIN_CREDENTIAL_SLOTS) {
+    const length = rarestLength(targets);
+    targets.set(length, targets.get(length) + 1);
+    total += 1;
+  }
+  return targets;
+}
+
+function lengthCounts(ids, lengths) {
+  const counts = new Map(lengths.map((length) => [length, 0]));
+  for (const id of ids) {
+    const length = credentialIdByteLength(id);
+    if (counts.has(length)) {
+      counts.set(length, counts.get(length) + 1);
+    }
+  }
+  return counts;
+}
+
+function coverLengths(storedLengths) {
+  return storedLengths.length > 0 ? storedLengths : [16];
+}
+
+function orderAllowList(context, username, ids) {
+  const keyed = ids.map((id) => ({
+    id,
+    key: createHash('sha256')
+      .update(context.coverKey)
+      .update('\0order\0')
+      .update(username)
+      .update('\0')
+      .update(id)
+      .digest('hex'),
+  }));
+  keyed.sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0));
+  return keyed.map((entry) => entry.id);
 }
 
 function storedCredentialLengths(context) {
@@ -940,9 +1005,16 @@ function credentialIdByteLength(id) {
 }
 
 function rarestLength(counts) {
+  return rarestOpenLength(counts, null);
+}
+
+function rarestOpenLength(counts, targets) {
   let best = null;
   let bestCount = Infinity;
   for (const [length, count] of counts) {
+    if (targets && count >= targets.get(length)) {
+      continue;
+    }
     if (count < bestCount || (count === bestCount && length < best)) {
       best = length;
       bestCount = count;
