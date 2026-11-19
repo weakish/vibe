@@ -19,7 +19,7 @@ This skill is written for a deployment environment that is **already configured*
 Two different users are involved — do not conflate them:
 
 - **`<github-username>`** — the operator's own account. It is used **only for SSH**: logging in to administer the server, and git-over-SSH operations (the `deploy` remote) when deploying or upgrading the Boffin source. It is *not* the account Boffin runs as, not the agent account, and not the Boffin web-login username.
-- **`boffin`** — a dedicated, unprivileged service account created in step 3. The Boffin service and the chosen CLI(s) run as `boffin`, the agent's credentials and commits live in `/home/boffin`, and `/srv/boffin` is owned by `boffin:boffin`. The two accounts share the tree through the **`boffin` group** (step 3) — never by changing its ownership. You never SSH in as `boffin` (no key is installed for it); you reach it via `sudo -u boffin` / `sudo su - boffin` from the operator's SSH login.
+- **`boffin`** — a dedicated, unprivileged service account created in step 3. The Boffin service and the chosen CLI(s) run as `boffin`, the agent's credentials and commits live in `/home/boffin`, and `/srv/boffin` is owned exclusively by `boffin:boffin`. You never SSH in as `boffin` (no key is installed for it); you reach it via `sudo -u boffin` / `sudo su - boffin` from the operator's SSH login, and git-over-SSH pushes/fetches run `git-upload-pack` / `git-receive-pack` as `boffin` via a narrow `sudoers` rule so git never runs inside `/srv/boffin` as `<github-username>`.
 
 Architecture you are building:
 
@@ -28,7 +28,7 @@ Browser ──443/TLS──▶ Caddy ──127.0.0.1:8080 + X-Forwarded-For─�
                                                                       │ spawns agent --force, grok --always-approve, and/or opencode --auto
                                                                       ▼
                           Cursor, Grok, and/or OpenCode CLI (user boffin) ──edits/commits──▶ /srv/boffin
-Operator ──ssh <github-username>@<hostname>──▶ administer via sudo; push source over SSH (both users write /srv/boffin via the shared boffin group)
+Operator ──ssh <github-username>@<hostname>──▶ administer via sudo; push/fetch over SSH (remote git runs as boffin via sudo)
 ```
 
 ## Inputs — ask when missing
@@ -51,7 +51,7 @@ Default unless the operator volunteers otherwise: deploy the current local check
 - **Never write secrets into the repository or kept output.** Passwords and API keys must not be committed or placed in command-line arguments where a process listing would expose them. The one generated Boffin bootstrap password is written only to the server's `config.json` (mode `0600`) and reported to the operator once, through whatever secure channel they prefer.
 - **Ask the operator before irreversible or exposure-changing actions**: overwriting an existing Caddyfile, discarding uncommitted changes on the server, or rebooting.
 - Verify every step before moving on. If a precondition below fails, stop and report it rather than reconfiguring SSH or git identity yourself — that setup belongs to the operator's deployment environment, not this skill.
-- Run git in `/srv/boffin` either as the operator (pushes, fetches) or as `boffin` via `sudo -u boffin` (the agent's own work) — the shared `boffin` group makes both safe. Never run git there via plain `sudo` as root (it creates root-owned files in `.git` and triggers "dubious ownership" errors), never recursively `chown` the tree to either user, and never `rsync`/`scp` over `/srv/boffin`.
+- Always run git inside `/srv/boffin` as `boffin` (via `sudo -u boffin` interactively, or via `remote.deploy.uploadpack` / `receivepack` over SSH). Never run git inside `/srv/boffin` as `<github-username>` or `root`: `boffin` owns `.git` (including hooks and config), so running git there as a more privileged user would cross the isolation boundary — and creates mismatched file ownership. Never `rsync`/`scp` over `/srv/boffin`.
 - Boffin must stay bound to `127.0.0.1` in production, with Caddy as the only public entry. Port 8080 therefore needs no firewall rule — and since the firewall is pre-configured (see Assumptions), this skill neither adds one nor changes any other rule.
 
 ## Step 1 — Verify access and preconditions (no setup)
@@ -114,45 +114,52 @@ Switch back to **development** while actively editing `public/`. `public/dist/` 
 
 ## Step 3 — Dedicated user and code
 
-Create the service account and the shared group (no SSH key is installed for `boffin` — all SSH stays on `<github-username>`). `useradd` creates a `boffin` group as the account's primary group; adding the operator to that group is what lets both accounts write the same working tree, so ownership never has to change hands:
+Create the service account (no SSH key is installed for `boffin` — all SSH stays on `<github-username>`, and `<github-username>` is **not** added to the `boffin` group):
 
 ```bash
 sudo useradd --create-home --shell /bin/bash boffin
-getent group boffin || sudo groupadd boffin   # useradd normally already created it
-sudo usermod -aG boffin <github-username>
 ```
 
-Group membership only takes effect in new sessions: log out of SSH and back in, then verify `id -nG` lists `boffin` before continuing.
-
-Create the working directory owned by `boffin:boffin` from the start — setgid and group-writable so both users' files stay editable by both, and configured as a shared repository that accepts pushes into its checked-out branch:
+Create the working directory owned exclusively by `boffin:boffin` (`0750`), initialize the repository as `boffin`, and allow pushes into its checked-out branch:
 
 ```bash
 # On the server, over SSH as <github-username>:
-sudo install -d -o boffin -g boffin -m 2775 /srv/boffin
+sudo install -d -o boffin -g boffin -m 0750 /srv/boffin
 sudo -u boffin git init --initial-branch=main /srv/boffin
-sudo -u boffin git -C /srv/boffin config core.sharedRepository group
 sudo -u boffin git -C /srv/boffin config receive.denyCurrentBranch updateInstead
 ```
 
-What each piece does: owner stays `boffin` permanently; the setgid bit makes new subdirectories inherit group `boffin`; `core.sharedRepository=group` makes git's own runtime files (objects, refs, index) group-writable regardless of who runs git; and directory write access (2775) lets either user replace files created by the other. Individual file ownership will legitimately be a mix of the two users — that is expected and harmless; do not "fix" it with `chown`.
+Allow `<github-username>` to invoke only `git-upload-pack` and `git-receive-pack` on `/srv/boffin` **as `boffin`** without a password prompt, so git-over-SSH never executes `.git/hooks` or `.git/config` under `<github-username>`'s privileges:
 
-Deploy from the operator's machine. This pushes committed content straight into the server's working tree; git updates the tree in the same step but **refuses if the tree is dirty** (tracked files modified or staged) — by design, so a deploy never overwrites uncommitted agent work. Pushes must also be fast-forward.
+```bash
+# On the server, over SSH as <github-username>:
+tmp=$(mktemp)
+cat <<'EOF' > "$tmp"
+<github-username> ALL=(boffin) NOPASSWD: /usr/bin/git-upload-pack /srv/boffin, /usr/bin/git-receive-pack /srv/boffin
+EOF
+sudo visudo -cf "$tmp" && sudo install -o root -g root -m 0440 "$tmp" /etc/sudoers.d/boffin
+rm -f "$tmp"
+```
+
+Deploy from the operator's machine. Configure the `deploy` remote so Git runs the server-side pack commands as `boffin` (`-n` fails fast if `sudoers` is misconfigured; `-H` sets `HOME=/home/boffin`). Pushing updates the server's working tree in the same step and **refuses if the tree is dirty** (tracked files modified or staged) — by design, so a deploy never overwrites uncommitted agent work. Pushes must also be fast-forward.
 
 ```bash
 # On the operator's machine, from the repository checkout:
 git remote add deploy <github-username>@<hostname>:/srv/boffin   # skip if the remote already exists
+git config remote.deploy.uploadpack "sudo -n -H -u boffin /usr/bin/git-upload-pack"
+git config remote.deploy.receivepack "sudo -n -H -u boffin /usr/bin/git-receive-pack"
 git push deploy HEAD:main
 ```
 
-Verify with `ls /srv/boffin` on the server. Confirm with the operator before pushing if the checkout has uncommitted changes they expected to be deployed — those do not transfer. `config.json` and `data/` are git-ignored, so they stay out of the repo and out of the agent's commits; untracked files on the server never block a push unless a pushed commit adds a file with the same path.
-
-The push ran as the operator, so the files it just checked out are operator-owned and, under a typical umask (022), not group-writable — the agent could not edit them in place. Grant the group write access on exactly the files you own (no `sudo`, no ownership change):
+Verify on the server that the push landed and every file stays owned by `boffin:boffin`:
 
 ```bash
 # On the server:
-find /srv/boffin -user <github-username> -exec chmod g+w {} +
-sudo -u boffin test -w /srv/boffin/src/index.js   # must succeed: boffin can edit pushed files
+sudo -u boffin ls /srv/boffin
+sudo -u boffin stat -c '%U:%G' /srv/boffin/src/index.js   # expect: boffin:boffin
 ```
+
+Confirm with the operator before pushing if the checkout has uncommitted changes they expected to be deployed — those do not transfer. `config.json` and `data/` are git-ignored, so they stay out of the repo and out of the agent's commits; untracked files on the server never block a push unless a pushed commit adds a file with the same path.
 
 Now give the agent its commit identity — copy the operator's already-configured identity (verified in step 1) to the `boffin` account; do not invent or ask for a different one:
 
@@ -164,15 +171,14 @@ sudo -u boffin env HOME=/home/boffin git config --global user.name "$GIT_NAME"
 sudo -u boffin env HOME=/home/boffin git config --global user.email "$GIT_EMAIL"
 ```
 
-Then verify the agent's side of the shared tree:
+Then verify both sides of the repository:
 
 ```bash
 sudo -u boffin git -C /srv/boffin status              # works, no "dubious ownership" error
-sudo -u boffin git -C /srv/boffin config user.email   # prints the copied identity
+sudo -H -u boffin git config --global --get user.email   # prints the copied identity
+# Locally: git ls-remote deploy   # confirms SSH + sudoers uploadpack works
 # Continue to step 4 to install and authenticate the chosen CLI(s) as boffin.
 ```
-
-Ownership of `/srv/boffin` itself never changes after this: it stays `boffin:boffin`, both accounts write through the `boffin` group, and upgrades (see "Updating") push directly against it with no stop-and-hand-over sequence.
 
 ## Step 4 — Install and authenticate the chosen CLI(s) (as `boffin`)
 
@@ -231,7 +237,7 @@ Credentials land in `/home/boffin`, which is why the systemd unit in step 6 sets
 
 ## Step 5 — Boffin configuration
 
-Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u boffin install -m 600 /dev/null /srv/boffin/config.json`, edit it as root or via `sudo -e`, then verify ownership and mode with `ls -l`; fix with `sudo chown boffin:boffin /srv/boffin/config.json && sudo chmod 600 /srv/boffin/config.json` if needed). Per `src/config.js`, the config lives in the working directory and the server is started as `node src/index.js <workdir>`. Based on `config.example.json`:
+Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u boffin install -m 600 /dev/null /srv/boffin/config.json`, edit it as root or via `sudo -e`, then verify ownership and mode with `sudo ls -l /srv/boffin/config.json` — `/srv/boffin` is mode `0750`, so the operator cannot `ls` it directly; fix with `sudo chown boffin:boffin /srv/boffin/config.json && sudo chmod 600 /srv/boffin/config.json` if needed). Per `src/config.js`, the config lives in the working directory and the server is started as `node src/index.js <workdir>`. Based on `config.example.json`:
 
 ```json
 {
@@ -274,15 +280,12 @@ Environment=HOME=/home/boffin
 Environment=PATH=/home/boffin/.local/bin:/home/boffin/.bun/bin:/usr/local/bin:/usr/bin:/bin
 # Do not prepend /home/boffin/.grok/bin — that directory's `agent` would shadow Cursor.
 ExecStart=/usr/bin/node /srv/boffin/src/index.js /srv/boffin
-UMask=0002
 Restart=on-failure
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
 ```
-
-`UMask=0002` is the service-side half of the shared-group setup from step 3: files the agent creates or rewrites come out group-writable (`boffin` group), so the operator's git operations can replace them, mirroring the `chmod g+w` the operator runs on pushed files.
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now boffin
@@ -340,7 +343,7 @@ Do not hand over until all of these pass:
 - [ ] Service: `systemctl is-enabled boffin caddy` both report enabled; `journalctl -u boffin` is clean; `systemctl show -p User boffin` confirms the service runs as `boffin`.
 - [ ] **Operator enrolls the owner passkey immediately:** open `https://<hostname>`, sign in with username `boffin` and the generated password, create the owner passkey. Then confirm a fresh browser session signs in with the passkey and the password is now refused ("The password is no longer used").
 - [ ] Agent: the operator sends a trivial chat message (e.g. "say hi") and gets a streamed reply — this exercises Caddy streaming, the systemd service, and the `boffin`-user CLI login in one shot. If more than one agent is enabled, start a new chat as owner and confirm each enabled agent (Cursor, Grok, OpenCode) can be selected.
-- [ ] Agent git: on the server, `sudo -u boffin git -C /srv/boffin status` and `sudo -u boffin git -C /srv/boffin config user.email` work with no "dubious ownership" error, the latter printing the identity copied in step 3.
+- [ ] Agent git: on the server, `sudo -u boffin git -C /srv/boffin status` and `sudo -H -u boffin git config --global --get user.email` work with no "dubious ownership" error, the latter printing the identity copied in step 3.
 - [ ] Persistence across reboot — optionally prove with a reboot if the operator accepts a few minutes of downtime.
 
 ## Step 9 — Handover
@@ -353,19 +356,39 @@ Give the operator:
   - Cursor: `sudo su - boffin -c '~/.local/bin/agent status'`
   - Grok: `sudo su - boffin -c '~/.grok/bin/grok login --device-auth'` (only if sign-in expired)
   - OpenCode: `sudo su - boffin -c '~/.opencode/bin/opencode auth login'` (only if sign-in expired)
-  - Deploy an update: follow "Updating" below (pull/push over SSH, re-grant group write on your pushed files, restart the service).
-  - Fetch the agent's own commits: locally `git fetch deploy` at any time (the shared group makes the repo readable/writable by both accounts), or inspect on the server with `sudo -u boffin git -C /srv/boffin log`.
+  - Deploy an update: follow "Updating" below (pull/push over SSH, then restart the service).
+  - Fetch the agent's own commits: locally `git fetch deploy` at any time (remote git runs as `boffin` via `sudo`), or inspect on the server with `sudo -u boffin git -C /srv/boffin log`.
 
 ## Updating after the first deploy
 
-Both accounts write `/srv/boffin` through the shared `boffin` group, so an update is just a push and a restart — no ownership changes and no need to stop the service first (a push only ever lands on a clean, fast-forward tree):
+After the one-time migration below, `remote.deploy.uploadpack` and `remote.deploy.receivepack` run Git as `boffin`, so an update is a pull/push and a restart — no further ownership changes, no `chmod`, and no need to stop the service first (a push only ever lands on a clean, fast-forward tree).
+
+**Migrate a shared-group server once** before those steps if `<github-username>` is still a member of group `boffin`, `/srv/boffin` is mode `2775`, or the `deploy` remote has no `uploadpack` / `receivepack`. Until then, `git pull` / `git push` still run as `<github-username>` inside the `boffin`-writable `.git` (hooks and config execute as the operator), and the push checks out files that are no longer made group-writable, so the agent cannot edit them.
+
+On the server, over SSH as `<github-username>`, install the `/etc/sudoers.d/boffin` rule from step 3 if it is absent, then give the tree to `boffin` and drop the shared-group bits. This `chown` is only for this migration; later updates must not chown the tree:
+
+```bash
+sudo chown -R boffin:boffin /srv/boffin
+sudo find /srv/boffin -type d -exec chmod g-s,g-w,o-rwx {} +
+sudo chmod -R g-w /srv/boffin
+sudo chmod 0750 /srv/boffin
+if sudo -u boffin git -C /srv/boffin config --get core.sharedRepository >/dev/null; then
+  sudo -u boffin git -C /srv/boffin config --unset-all core.sharedRepository
+fi
+if getent group boffin | awk -F: '{print $4}' | tr ',' '\n' | grep -Fqx '<github-username>'; then
+  sudo gpasswd -d <github-username> boffin
+fi
+sudo sed -i '/^UMask=0002$/d' /etc/systemd/system/boffin.service
+sudo systemctl daemon-reload
+```
+
+`chmod` only clears setgid, group write, and other access; it does not add bits. `config.json` and other `0600` files, including those under `data/`, stay `0600`. `data/` is a directory and ends as `0750`, like `/srv/boffin` — do not chmod it to `0600` (that drops execute and the service cannot enter it). Log out of SSH and back in so this session drops group `boffin`. On the operator's machine, set the step 3 `remote.deploy.uploadpack` and `remote.deploy.receivepack` values when `git config --get-regexp '^remote\.deploy\.(upload|receive)pack'` does not already print them.
 
 1. Locally: `git pull --rebase deploy main` to bring in any commits the agent made, then `git push deploy HEAD:main`.
 2. Rejected as **non-fast-forward**: the agent committed since your last fetch — repeat step 1.
-3. Rejected because the **working directory is dirty** ("refusing to update checked out branch" / unstaged or uncommitted changes): this is intentional — nothing was overwritten, and a chat may be in progress. Wait for any running chat to finish, then settle the agent's edits **as `boffin`** over SSH: `sudo -u boffin git -C /srv/boffin status` (and `diff` if dirty). Either commit them (`sudo -u boffin git -C /srv/boffin commit -am ...`, then go to step 1) or — only with the operator's explicit approval — discard them (`sudo -u boffin git -C /srv/boffin checkout -- .`). Never force the push.
-4. The push ran as your account, so re-grant group write on the files it checked out, as in step 3: on the server, `find /srv/boffin -user <github-username> -exec chmod g+w {} +`. Files the agent creates are already group-writable via the service's `UMask=0002`; this step covers yours.
-5. `ssh <github-username>@<hostname> sudo systemctl restart boffin`. Code changes, yours or the agent's, take effect only on restart; while chatting, the agent itself cannot restart the service for you.
-6. If `config.example.json` gained new keys in an update, merge them into the server's `config.json` by hand — it is git-ignored and is never updated by a push. Unknown keys in `config.json` make the server refuse to start, so also remove keys an update drops. `config.json` stays owned by `boffin`, mode `0600` (deliberately *not* group-readable).
+3. Rejected because the **working directory is dirty** ("refusing to update checked out branch" / unstaged or uncommitted changes): this is intentional — nothing was overwritten, and a chat may be in progress. Wait for any running chat to finish, then settle the agent's edits **as `boffin`** over SSH: `sudo -u boffin git -C /srv/boffin status` (and `diff` if dirty). Either commit them (`sudo -H -u boffin git -C /srv/boffin commit -am ...`, then go to step 1) or — only with the operator's explicit approval — discard them (`sudo -u boffin git -C /srv/boffin checkout -- .`). Never force the push.
+4. `ssh <github-username>@<hostname> sudo systemctl restart boffin`. Code changes, yours or the agent's, take effect only on restart; while chatting, the agent itself cannot restart the service for you.
+5. If `config.example.json` gained new keys in an update, merge them into the server's `config.json` by hand — it is git-ignored and is never updated by a push. Unknown keys in `config.json` make the server refuse to start, so also remove keys an update drops. `config.json` stays owned by `boffin`, mode `0600`.
 
 ## Rollback and troubleshooting
 
@@ -374,6 +397,7 @@ Both accounts write `/srv/boffin` through the shared `boffin` group, so an updat
 - **Certificate issuance fails:** DNS for `<hostname>` does not point at the server yet, or the pre-configured firewall blocks 80/443. Check `journalctl -u caddy` and DNS yourself; firewall changes are the operator's, outside this skill — do not install or reconfigure `ufw`/provider rules to fix it.
 - **Everyone shares one rate-limit budget / instant 429s:** the proxy is not sending the header, or Boffin is not behind loopback Caddy. Confirm the Caddyfile `header_up` line from step 7 and that `host` is still `127.0.0.1` in `config.json`. Boffin ignores `X-Forwarded-For` from non-loopback peers by design, so direct exposure cannot be spoofed but collapses all clients into the peer's bucket. A local process (including the agent) can set the header itself over loopback — accepted, since it can already read `config.json`.
 - **Passkeys stopped working after a change:** passkeys are bound to the hostname (WebAuthn RP ID). Since `<hostname>` is the server's own hostname it should never change; if it ever does, the operator must re-enroll — there is no migration.
+- **`git push deploy` or `git fetch deploy` fails with `sudo: a password is required` or permission denied:** verify `/etc/sudoers.d/boffin` exists with mode `0440` (check with `sudo visudo -c`) and matches `<github-username>`, and verify `git config --get-regexp '^remote\.deploy\.'` locally has `uploadpack` and `receivepack` set to `sudo -n -H -u boffin /usr/bin/git-upload-pack` and `sudo -n -H -u boffin /usr/bin/git-receive-pack`.
 - **SSH access fails:** this is outside this skill's scope. SSH (including the public key) is part of the already-configured deployment environment: check the operator's local SSH config and keys, or use the provider's out-of-band console. Do not install keys or edit `sshd_config` as part of a Boffin deploy, and do not add an SSH key for the `boffin` account as a workaround.
 - **Git identity missing:** also pre-configured environment, not deployment work. Have the operator configure `user.name` / `user.email` for their account, then redo the copy to `boffin` in step 3 — the agent cannot commit without it.
 
@@ -382,4 +406,4 @@ Both accounts write `/srv/boffin` through the shared `boffin` group, so an updat
 - The agent runs as the dedicated `boffin` user with auto-approve (`--force` / `--always-approve` / `--auto`): it can read `config.json`, `data/state.json` (passkeys, conversation), and the CLI credentials in `/home/boffin`, run arbitrary commands as `boffin`, and edit Boffin's own source. The dedicated user protects the operator's account (including its SSH keys and `sudo`) and root — not the app itself.
 - The window between Caddy going live (step 7) and owner passkey enrollment (step 8) is the one exposed moment: enrollment is gated by the generated password and rate limits, but enroll immediately.
 - `<hostname>` is permanent as far as passkeys are concerned: changing the server's hostname orphans all enrolled passkeys.
-- Sharing `/srv/boffin` via the `boffin` group only works if the permissions in step 3 survive: setgid group-writable directories, `core.sharedRepository=group`, the service's `UMask=0002`, and the operator's post-push `chmod g+w`. If either side starts failing with permission errors, re-check those (and that `id -nG` still lists `boffin`) — fix them with `chmod`, never by recursively `chown`ing the tree, which just moves the breakage to the other user.
+- Never run `git` inside `/srv/boffin` as `<github-username>` or `root`, and never bypass `remote.deploy.uploadpack` / `remote.deploy.receivepack`: because `boffin` owns `/srv/boffin/.git`, running git there as a higher-privileged account would execute `boffin`-writable hooks or config under that account.
