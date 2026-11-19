@@ -123,6 +123,12 @@ export function writeHtmlCache(htmlDoc: string): Promise<void> {
   return run
 }
 
+export function normalizeNote(note?: string | null): string | null {
+  if (!note) return null
+  const cleaned = note.replace(/\s+/g, ' ').trim()
+  return cleaned || null
+}
+
 export function revisionJson(row: {
   id: number
   text: string
@@ -130,6 +136,7 @@ export function revisionJson(row: {
   editorUserId: string
   editorName: string
   source: string
+  note: string | null
   revertedFromId: number | null
   createdAt: number
 }) {
@@ -140,6 +147,7 @@ export function revisionJson(row: {
     editorUserId: row.editorUserId,
     editorName: row.editorName,
     source: row.source,
+    note: row.note,
     revertedFromId: row.revertedFromId,
     createdAt: row.createdAt,
   }
@@ -150,6 +158,7 @@ export function revisionSummary(row: {
   editorUserId: string
   editorName: string
   source: string
+  note: string | null
   revertedFromId: number | null
   createdAt: number
 }) {
@@ -158,6 +167,7 @@ export function revisionSummary(row: {
     editorUserId: row.editorUserId,
     editorName: row.editorName,
     source: row.source,
+    note: row.note,
     revertedFromId: row.revertedFromId,
     createdAt: row.createdAt,
   }

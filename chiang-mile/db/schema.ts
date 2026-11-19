@@ -7,6 +7,7 @@ export const revisions = sqliteTable('revisions', {
   editorUserId: text('editor_user_id').notNull(),
   editorName: text('editor_name').notNull(),
   source: text('source').notNull(),
+  note: text('note'),
   revertedFromId: integer('reverted_from_id'),
   createdAt: integer('created_at').notNull(),
 })

@@ -11,6 +11,7 @@ type RevisionRow = {
   editorUserId: string
   editorName: string
   source: string
+  note: string | null
   revertedFromId: number | null
   createdAt: number
 }
@@ -46,6 +47,7 @@ export function historyPageHtml(
 <td><a href="/api/wiki/html?revisionId=${row.id}">#${row.id}</a></td>
 <td>${escapeHtml(row.source)}${row.revertedFromId != null ? ` ← #${row.revertedFromId}` : ''}</td>
 <td>${escapeHtml(row.editorName)}</td>
+<td>${row.note ? escapeHtml(row.note) : ''}</td>
 <td>${escapeHtml(formatTime(row.createdAt))}</td>
 <td><input type="button" value="Revert" data-revision="${row.id}"></td>
 </tr>`,
@@ -66,7 +68,7 @@ to <select name="to">${toOpts}</select>
 </form>
 ${diffBlock}
 <table>
-<tr><th>#</th><th>source</th><th>editor</th><th>when</th><th></th></tr>
+<tr><th>#</th><th>source</th><th>editor</th><th>note</th><th>when</th><th></th></tr>
 ${tableRows}
 </table>
 <p id="err"></p>
@@ -121,6 +123,7 @@ export function editPageHtml(text: string): string {
   const body = `<h1>Edit</h1>
 <form id="edit" onsubmit="return false">
 <p><textarea id="text" name="text" rows="28" cols="80" spellcheck="false">${escapeHtml(text)}</textarea></p>
+<p><label for="note">Note </label><input id="note" name="note" type="text" size="74" maxlength="200" placeholder="Summarize your change or leave a note for other editors"></p>
 <p><input type="submit" value="Save"></p>
 </form>
 <p id="draft"></p>
@@ -128,16 +131,20 @@ export function editPageHtml(text: string): string {
 <iframe id="preview" sandbox="" width="800" height="480" hidden></iframe>
 <script>
 var text = document.getElementById("text")
+var note = document.getElementById("note")
 var preview = document.getElementById("preview")
 var err = document.getElementById("err")
 var previewSeq = 0
 var draftKey = "wiki-edit-draft"
+var noteKey = "wiki-edit-note"
 var serverText = text.value
 var draftNote = document.getElementById("draft")
 try {
   var draft = sessionStorage.getItem(draftKey)
-  if (draft != null && draft !== serverText) {
-    text.value = draft
+  var draftNoteValue = sessionStorage.getItem(noteKey)
+  if ((draft != null && draft !== serverText) || draftNoteValue) {
+    if (draft != null) text.value = draft
+    if (draftNoteValue != null) note.value = draftNoteValue
     draftNote.textContent = "Restored unsaved edit from this tab. "
     var discard = document.createElement("button")
     discard.type = "button"
@@ -145,11 +152,13 @@ try {
     discard.onclick = function () {
       try {
         sessionStorage.removeItem(draftKey)
+        sessionStorage.removeItem(noteKey)
       } catch (storageError) {
         draftNote.textContent = storageError.message || "Could not discard unsaved edit"
         return
       }
       text.value = serverText
+      note.value = ""
       draftNote.textContent = ""
       ++previewSeq
       preview.srcdoc = ""
@@ -157,8 +166,9 @@ try {
       err.textContent = ""
     }
     draftNote.appendChild(discard)
-  } else if (draft != null) {
+  } else if (draft != null || draftNoteValue != null) {
     sessionStorage.removeItem(draftKey)
+    sessionStorage.removeItem(noteKey)
   }
 } catch (storageError) {
   draftNote.textContent = storageError.message || "Could not restore unsaved edit"
@@ -197,6 +207,7 @@ document.getElementById("edit").onsubmit = async function (e) {
   var draftError = ""
   try {
     sessionStorage.setItem(draftKey, text.value)
+    sessionStorage.setItem(noteKey, note.value)
   } catch (storageError) {
     draftError = storageError.message || "Could not keep unsaved edit in this tab"
   }
@@ -222,7 +233,7 @@ document.getElementById("edit").onsubmit = async function (e) {
     var res = await fetch("/api/wiki", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: text.value, editorName: auth.user.name })
+      body: JSON.stringify({ text: text.value, note: note.value, editorName: auth.user.name })
     })
     if (!res.ok) {
       var body = await res.json().catch(function () { return {} })
@@ -232,6 +243,7 @@ document.getElementById("edit").onsubmit = async function (e) {
     }
     try {
       sessionStorage.removeItem(draftKey)
+      sessionStorage.removeItem(noteKey)
     } catch (storageError) {
       err.textContent = storageError.message || "Saved, but could not clear the unsaved copy in this tab"
       return

@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { headerHtml, renderWikiHtml, toolPage, withChrome, writeHtmlCache } from '../lib/wiki-page'
+import { headerHtml, normalizeNote, renderWikiHtml, toolPage, withChrome, writeHtmlCache } from '../lib/wiki-page'
 import { editPageHtml, historyPageHtml } from '../lib/wiki-views'
 
 describe('renderWikiHtml', () => {
@@ -223,6 +223,25 @@ describe('editPageHtml', () => {
     expect(clearCatchAt).toBeGreaterThan(clearAt)
     expect(redirectAtSave).toBeGreaterThan(clearCatchAt)
   })
+
+  it('includes a one-line note field that is sent on save and preserved in sessionStorage', () => {
+    const html = editPageHtml('hello')
+    expect(html).toContain('<input id="note" name="note" type="text"')
+    expect(html).toContain('wiki-edit-note')
+    expect(html).toContain('sessionStorage.setItem(noteKey, note.value)')
+    expect(html).toContain('sessionStorage.removeItem(noteKey)')
+    expect(html).toContain('note.value = ""')
+    expect(html).toContain('note: note.value')
+  })
+})
+
+describe('normalizeNote', () => {
+  it('collapses newlines, trims whitespace, and turns blank notes into null', () => {
+    expect(normalizeNote(undefined)).toBeNull()
+    expect(normalizeNote(null)).toBeNull()
+    expect(normalizeNote('   \n\t  ')).toBeNull()
+    expect(normalizeNote('  fixed\r\ntypo\n  in schedule  ')).toBe('fixed typo in schedule')
+  })
 })
 
 describe('historyPageHtml', () => {
@@ -234,6 +253,7 @@ describe('historyPageHtml', () => {
           editorUserId: 'seed',
           editorName: 'seed',
           source: 'seed',
+          note: null,
           revertedFromId: null,
           createdAt: 0,
         },
@@ -244,5 +264,24 @@ describe('historyPageHtml', () => {
     expect(html).toContain('The old revisions stay in history.')
     expect(html.indexOf('data-revision')).toBeLessThan(html.lastIndexOf('speed-sdk.js'))
     expect(html.indexOf('btn.onclick')).toBeLessThan(html.lastIndexOf('speed-sdk.js'))
+  })
+
+  it('renders and escapes revision notes in the history table', () => {
+    const html = historyPageHtml(
+      [
+        {
+          id: 2,
+          editorUserId: 'u1',
+          editorName: 'alice',
+          source: 'edit',
+          note: 'update <route> & time',
+          revertedFromId: null,
+          createdAt: 0,
+        },
+      ],
+      null,
+    )
+    expect(html).toContain('<th>note</th>')
+    expect(html).toContain('<td>update &lt;route&gt; &amp; time</td>')
   })
 })

@@ -7,6 +7,8 @@ import { revisions, type Revision } from '../db/schema'
 import { diffLines } from '../lib/line-diff'
 import { editPageHtml, historyPageHtml } from '../lib/wiki-views'
 import {
+  escapeHtml,
+  normalizeNote,
   readSeedText,
   renderWikiHtml,
   revisionJson,
@@ -94,6 +96,7 @@ const revisionSummaryColumns = {
   editorUserId: revisions.editorUserId,
   editorName: revisions.editorName,
   source: revisions.source,
+  note: revisions.note,
   revertedFromId: revisions.revertedFromId,
   createdAt: revisions.createdAt,
 }
@@ -128,8 +131,13 @@ export const routes = new Hono()
         throw new HTTPException(400, { message: 'revisionId must be a positive integer' })
       }
       const row = await revisionById(id)
+      const noteHtml = row.note ? ` — ${escapeHtml(row.note)}` : ''
       return htmlResponse(
-        withChrome(row.html, 'page', `<p>Revision #${row.id} (<a href="/">current</a>)</p>\n`),
+        withChrome(
+          row.html,
+          'page',
+          `<p>Revision #${row.id}${noteHtml} (<a href="/">current</a>)</p>\n`,
+        ),
       )
     }
     const row = await currentRevision()
@@ -215,11 +223,12 @@ export const routes = new Hono()
       z.object({
         text: z.string(),
         editorName: z.string().min(1),
+        note: z.string().nullable().optional(),
       }),
     ),
     async (ctx) => {
       const userId = requireUser(ctx)
-      const { text, editorName } = ctx.req.valid('json')
+      const { text, editorName, note } = ctx.req.valid('json')
       const htmlDoc = renderWikiHtml(text)
       const [row] = await db
         .insert(revisions)
@@ -229,6 +238,7 @@ export const routes = new Hono()
           editorUserId: userId,
           editorName,
           source: 'edit',
+          note: normalizeNote(note),
           createdAt: Date.now(),
         })
         .returning()
