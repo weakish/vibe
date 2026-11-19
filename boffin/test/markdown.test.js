@@ -131,3 +131,66 @@ test('keeps language names from injecting attributes', () => {
   assert.doesNotMatch(html, /<[^>]*onclick/);
   assert.match(html, /onclick=&quot;/);
 });
+
+test('caps deeply nested blockquotes instead of overflowing the stack', () => {
+  assert.equal(
+    renderMarkdown('> outer\n>> inner'),
+    '<blockquote><p>outer</p><blockquote><p>inner</p></blockquote></blockquote>',
+  );
+
+  const deep = `${'> '.repeat(20_000)}bottom`;
+  const html = renderMarkdown(deep);
+  assert.equal((html.match(/<blockquote>/g) ?? []).length, 16);
+  assert.equal((html.match(/<\/blockquote>/g) ?? []).length, 16);
+  assert.match(html, /&gt; bottom<\/p>/);
+});
+
+test('renders GFM pipe tables with alignment, inline formatting, and CSP-safe classes', () => {
+  const md = [
+    '| Name | Count | Align |',
+    '| :--- | :---: | ---: |',
+    '| **A** | `1` | [docs](https://example.com) |',
+    '| `a \\| b` | `x || y` | a \\| b |',
+  ].join('\n');
+  const html = renderMarkdown(md);
+  assert.equal(
+    html,
+    '<div class="table-scroll"><table>' +
+      '<thead><tr><th class="align-left">Name</th><th class="align-center">Count</th><th class="align-right">Align</th></tr></thead>' +
+      '<tbody>' +
+      '<tr><td class="align-left"><strong>A</strong></td><td class="align-center"><code>1</code></td>' +
+      '<td class="align-right"><a href="https://example.com" target="_blank" rel="noopener noreferrer">docs</a></td></tr>' +
+      '<tr><td class="align-left"><code>a | b</code></td><td class="align-center"><code>x || y</code></td>' +
+      '<td class="align-right">a | b</td></tr>' +
+      '</tbody></table></div>',
+  );
+  assert.doesNotMatch(html, /\bstyle=/);
+});
+
+test('handles GFM table edge cases and rejects non-tables', () => {
+  // Without outer pipes, uneven body rows, paragraph interruption, trailing paragraph, and inside blockquote.
+  assert.equal(
+    renderMarkdown('Intro\nA | B\n--- | ---\n| 1 |\n2 | 3 | extra\nTrailing note'),
+    '<p>Intro</p><div class="table-scroll"><table><thead><tr><th>A</th><th>B</th></tr></thead>' +
+      '<tbody><tr><td>1</td><td></td></tr><tr><td>2</td><td>3</td></tr></tbody></table></div><p>Trailing note</p>',
+  );
+  assert.equal(
+    renderMarkdown('| Only |\n| --- |'),
+    '<div class="table-scroll"><table><thead><tr><th>Only</th></tr></thead></table></div>',
+  );
+  assert.equal(
+    renderMarkdown('> | K | V |\n> | - | - |\n> | a | 1 |'),
+    '<blockquote><div class="table-scroll"><table><thead><tr><th>K</th><th>V</th></tr></thead><tbody><tr><td>a</td><td>1</td></tr></tbody></table></div></blockquote>',
+  );
+
+  // Mismatched column counts and plain horizontal rules stay non-tables.
+  assert.equal(renderMarkdown('| A | B |\n| --- |'), '<p>| A | B |<br />| --- |</p>');
+  assert.equal(renderMarkdown('Heading\n---'), '<p>Heading</p><hr />');
+
+  // Escapes HTML and refuses unsafe links inside table cells.
+  const xss = renderMarkdown('| <script>x</script> | Link |\n| --- | --- |\n| <img onerror=1> | [bad](javascript:alert(1)) |');
+  assert.doesNotMatch(xss, /<script|<img/i);
+  assert.deepEqual(anchorTags(xss), []);
+  assert.match(xss, /&lt;script&gt;x&lt;\/script&gt;/);
+  assert.match(xss, /\[bad\]\(javascript:alert\(1\)\)/);
+});

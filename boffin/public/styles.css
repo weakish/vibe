@@ -941,6 +941,7 @@ a.menu-action {
 .md ol,
 .md blockquote,
 .md pre,
+.md .table-scroll,
 .md h3,
 .md h4,
 .md h5,
@@ -1015,6 +1016,41 @@ a.menu-action {
 
 .md del {
   opacity: 0.7;
+}
+
+.md .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.md table {
+  width: max-content;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.md th,
+.md td {
+  padding: 0.35em 0.65em;
+  border: 1px solid var(--border);
+  text-align: start;
+}
+
+.md th {
+  font-weight: 650;
+  background: var(--code-bg);
+}
+
+.md .align-left {
+  text-align: left;
+}
+
+.md .align-center {
+  text-align: center;
+}
+
+.md .align-right {
+  text-align: right;
 }
 
 .media {

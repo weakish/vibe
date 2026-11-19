@@ -12,6 +12,12 @@ body { font-family: serif; line-height: 1.5; margin: 0; padding: 0 0.5em; }
 p { margin: 0.4em 0; }
 blockquote { margin: 0.6em 0; padding-left: 0.75em; border-left: 3px solid #ccc; }
 pre, code { font-family: ui-monospace, monospace; font-size: 0.9em; }
+table { border-collapse: collapse; margin: 0.6em 0; width: 100%; font-size: 0.92em; }
+th, td { padding: 0.3em 0.5em; border: 1px solid #ccc; text-align: start; }
+th { font-weight: bold; }
+.align-left { text-align: left; }
+.align-center { text-align: center; }
+.align-right { text-align: right; }
 img { max-width: 100%; height: auto; margin: 0.5em 0; }
 .file-list { margin: 0.4em 0 0.6em 1.2em; font-size: 0.9em; }
 `;

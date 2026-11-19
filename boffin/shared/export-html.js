@@ -24,6 +24,17 @@ const PRINT_STYLES = `
   .notice .role { color: #9b2226; }
   .body :first-child { margin-top: 0; }
   .body :last-child { margin-bottom: 0; }
+  .body .table-scroll { max-width: 100%; overflow-x: auto; }
+  .body table { border-collapse: collapse; margin: 0.6em 0; max-width: 100%; font-size: 0.92em; }
+  .body th, .body td { padding: 0.35em 0.6em; border: 1px solid #ccc; text-align: start; }
+  .body th { font-weight: 600; background: #f5f5f5; }
+  .body .align-left { text-align: left; }
+  .body .align-center { text-align: center; }
+  .body .align-right { text-align: right; }
+  @media (prefers-color-scheme: dark) {
+    .body th, .body td { border-color: #444; }
+    .body th { background: #1d1d1d; }
+  }
   .media { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
   .media img { max-width: min(100%, 24rem); height: auto; border-radius: 6px; border: 1px solid #ccc; }
   .file-list { margin: 0.5rem 0 0; padding-left: 1.25rem; font-size: 0.9rem; }
