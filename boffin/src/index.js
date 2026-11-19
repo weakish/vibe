@@ -11,6 +11,7 @@ function main() {
   const workdir = process.argv[2] ?? process.cwd();
   let config;
   let conversation;
+  let server;
   try {
     config = loadConfig(workdir);
     conversation = new Conversation({
@@ -25,6 +26,12 @@ function main() {
       agents: config.agents,
       stateFile: config.stateFile,
     });
+    server = createServer({
+      conversation,
+      username: config.username,
+      password: config.password,
+      bunBin: config.bunBin,
+    });
   } catch (error) {
     if (error instanceof ConfigError || error instanceof StateError) {
       console.error(`[boffin] ${error.message}`);
@@ -34,12 +41,6 @@ function main() {
     throw error;
   }
 
-  const server = createServer({
-    conversation,
-    username: config.username,
-    password: config.password,
-    bunBin: config.bunBin,
-  });
   server.on('error', (error) => {
     console.error(`[boffin] ${error.stack || error}`);
     process.exit(1);

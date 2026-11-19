@@ -17,7 +17,7 @@ import { AttachmentError, parseAttachments } from './attachments.js';
 import { listConversationFiles, listWorkdirFiles, readStashFile, readWorkdirFileForOwner } from './file-view.js';
 import { buildConversationOverview } from './overview.js';
 import { GROK } from './backends.js';
-import { DEFAULT_BUN_BIN } from './config.js';
+import { ConfigError, DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
 import { GROK_USAGE_REFRESH_FAILED, createGrokUsage } from './grok-usage.js';
 import {
@@ -172,7 +172,7 @@ const ALREADY_IN_CONVERSATION = 'That person is already in the conversation.';
 export function createServer({
   conversation,
   username,
-  password,
+  password = null,
   bunBin = DEFAULT_BUN_BIN,
   logger = console,
   grokUsage = createGrokUsage({
@@ -183,8 +183,17 @@ export function createServer({
   readGrokUsage: readGrokUsageOverride,
   refreshGrokUsage: refreshGrokUsageOverride,
 } = {}) {
+  if (password !== null && password !== undefined && (typeof password !== 'string' || password === '')) {
+    throw new ConfigError('"password" must be a non-empty string.');
+  }
+  const hasPassword = typeof password === 'string';
+  if (!hasPassword && !conversation.hasOwnerPasskey) {
+    throw new ConfigError(
+      'A password is required in config.json (or BOFFIN_PASSWORD) until an owner passkey is enrolled.',
+    );
+  }
   const expectedUser = digest(username);
-  const expectedPassword = digest(password);
+  const expectedPassword = hasPassword ? digest(password) : null;
   const specFile = specPathForState(conversation.stateFile);
   const context = {
     conversation,
@@ -734,7 +743,8 @@ async function handlePassword(req, res, context) {
   const username = typeof body?.username === 'string' ? body.username : '';
   const password = typeof body?.password === 'string' ? body.password : '';
   const userOk = timingSafeEqual(digest(username), context.expectedUser);
-  const passwordOk = timingSafeEqual(digest(password), context.expectedPassword);
+  const passwordOk =
+    context.expectedPassword !== null && timingSafeEqual(digest(password), context.expectedPassword);
   if (!userOk || !passwordOk) {
     return sendJson(res, 401, { error: 'Invalid or missing username or password.' });
   }
@@ -1364,6 +1374,9 @@ async function readBody(req, res, limit = MAX_BODY_BYTES) {
 }
 
 function isAuthorized(req, expectedUser, expectedPassword) {
+  if (!expectedPassword) {
+    return false;
+  }
   const match = BASIC_AUTH.exec(req.headers.authorization ?? '');
   if (match === null) {
     return false;

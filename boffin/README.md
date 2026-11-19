@@ -53,7 +53,7 @@ Notes:
 - The first argument is the **working directory** the agent operates in; omit it to use the current directory. `config.json` must live in that directory. The directory is created if missing.
 - If `config.json` is missing, Boffin writes one with safe defaults (username `boffin`, a randomly generated password, mode `0600`) and logs that it did — read the password from the file to sign in.
 - `npm start` is shorthand for `node src/index.js` with the current directory as the working directory.
-- The configured username/password are only a bootstrap credential for first-time owner passkey enrollment. Once an owner passkey exists, the server retires the password ("The password is no longer used") and sign-in is passkey-only. Enroll promptly after first exposing the server, and keep the hostname stable afterwards: changing it orphans existing passkeys.
+- The configured username/password are only a bootstrap credential for first-time owner passkey enrollment. Once an owner passkey exists, the server retires the password ("The password is no longer used") and sign-in is passkey-only. You can then remove `"password"` from `config.json` (startup still requires a password if `state_file` has no owner passkey). Enroll promptly after first exposing the server, and keep the hostname stable afterwards: changing it orphans existing passkeys.
 
 ## Configuration
 
@@ -73,7 +73,7 @@ Notes:
 | `bun_bin` | `bun` | Bun executable used when the owner switches static assets to **release** (bundled) mode. |
 | `force` | `true` | Auto-approve: `--force` for Cursor, `--always-approve` for Grok, `--auto` for OpenCode. |
 | `username` | *(required\*)* | Bootstrap username for first passkey enrollment. Must not contain a colon. |
-| `password` | *(required\*)* | Bootstrap password, at least 8 characters. Keep `config.json` at mode `0600`. |
+| `password` | *(required until enrolled\*)* | Bootstrap password, at least 8 characters. May be removed from `config.json` once an owner passkey is saved in `state_file`. Keep `config.json` at mode `0600`. |
 | `state_file` | `data/state.json` | Conversation/passkey state, resolved relative to the working directory. |
 
 \* `username`/`password` can instead come from the `BOFFIN_USERNAME` / `BOFFIN_PASSWORD` environment variables, which override the file. `config.json` and `data/` are git-ignored and must never be committed.

@@ -186,6 +186,17 @@ test('keeps password whitespace that is not an empty string', () => {
   assert.equal(config.password, ' padded-secret ');
 });
 
+test('allows omitting password from config.json while still validating explicit values', () => {
+  const workdir = writeConfig({ password: undefined });
+  assert.equal(loadConfig(workdir, {}).password, null);
+  assert.equal(loadConfig(workdir, { BOFFIN_PASSWORD: 'env-secret' }).password, 'env-secret');
+  assert.throws(() => loadConfig(workdir, { BOFFIN_PASSWORD: 'short' }), /at least 8 characters/);
+
+  assert.throws(() => loadConfig(writeConfig({ password: '' }), {}), ConfigError);
+  assert.throws(() => loadConfig(writeConfig({ password: null }), {}), ConfigError);
+  assert.throws(() => loadConfig(writeConfig({ password: 12345678 }), {}), ConfigError);
+});
+
 test('validates port and force types', () => {
   assert.throws(() => loadConfig(writeConfig({ port: 70000 }), {}), /port number/);
   assert.throws(() => loadConfig(writeConfig({ force: 'yes' }), {}), /true or false/);

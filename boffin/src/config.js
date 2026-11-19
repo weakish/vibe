@@ -125,13 +125,7 @@ function materialize(raw, workdir, env) {
     throw new ConfigError('username is still the placeholder from config.example.json. Replace it.');
   }
 
-  const password = env.BOFFIN_PASSWORD || requiredSecret(raw, 'password');
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new ConfigError(`The password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
-  }
-  if (password.startsWith(PLACEHOLDER_PASSWORD_PREFIX)) {
-    throw new ConfigError('password is still the placeholder from config.example.json. Replace it.');
-  }
+  const password = readPassword(raw, env);
 
   const model = requiredString(raw, 'model');
   const grokModel = optionalString(raw, 'grok_model', DEFAULT_GROK_MODEL);
@@ -196,6 +190,24 @@ function requiredString(raw, key) {
     throw new ConfigError(`"${key}" must be a non-empty string.`);
   }
   return value.trim();
+}
+
+function readPassword(raw, env) {
+  let password;
+  if (env.BOFFIN_PASSWORD) {
+    password = env.BOFFIN_PASSWORD;
+  } else if (raw.password === undefined) {
+    return null;
+  } else {
+    password = requiredSecret(raw, 'password');
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new ConfigError(`The password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
+  }
+  if (password.startsWith(PLACEHOLDER_PASSWORD_PREFIX)) {
+    throw new ConfigError('password is still the placeholder from config.example.json. Replace it.');
+  }
+  return password;
 }
 
 function requiredSecret(raw, key) {

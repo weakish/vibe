@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ConfigError } from '../src/config.js';
 import { Conversation } from '../src/conversation.js';
 import { runAgent } from '../src/agent.js';
 import { LOGIN_CREDENTIAL_SLOTS, createServer } from '../src/server.js';
@@ -96,7 +98,10 @@ function authenticator({ idBytes = 16, flags = null, extension = null } = {}) {
   };
 }
 
-async function startServer(dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-passkey-'))) {
+async function startServer(
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-passkey-')),
+  { password = PASS } = {},
+) {
   const conversation = new Conversation({
     model: 'composer-2.5',
     workdir: dir,
@@ -106,7 +111,7 @@ async function startServer(dir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-p
     runAgent: (options) => runAgent({ ...options, logger: quietLogger }),
     logger: quietLogger,
   });
-  const server = createServer({ conversation, username: USER, password: PASS, logger: quietLogger });
+  const server = createServer({ conversation, username: USER, password, logger: quietLogger });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   const baseUrl = `http://localhost:${port}`;
@@ -1371,4 +1376,60 @@ test('a second pending owner bootstrap challenge cannot register after enrollmen
       }),
     { status: 401, message: 'The password is no longer used.' },
   );
+});
+
+test('server starts without a password after owner enrollment and refuses to start without either', async (t) => {
+  const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-nopass-'));
+  const freshConversation = new Conversation({
+    model: 'composer-2.5',
+    workdir: freshDir,
+    agentBin: FAKE_AGENT,
+    force: true,
+    stateFile: path.join(freshDir, 'state', 'state.json'),
+    runAgent: (options) => runAgent({ ...options, logger: quietLogger }),
+    logger: quietLogger,
+  });
+  assert.throws(
+    () => createServer({ conversation: freshConversation, username: USER, password: null, logger: quietLogger }),
+    ConfigError,
+  );
+  assert.throws(
+    () => createServer({ conversation: freshConversation, username: USER, password: '', logger: quietLogger }),
+    ConfigError,
+  );
+
+  fs.writeFileSync(
+    path.join(freshDir, 'config.json'),
+    JSON.stringify({ model: 'composer-2.5', username: USER }),
+  );
+  const entry = fileURLToPath(new URL('../src/index.js', import.meta.url));
+  const cli = spawnSync(process.execPath, [entry, freshDir], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH ?? '' },
+  });
+  assert.equal(cli.status, 1);
+  assert.match(cli.stderr, /A password is required/);
+
+  const app = await startServer();
+  const owner = await registerOwner(app);
+  await app.close();
+
+  const restarted = await startServer(app.dir, { password: null });
+  t.after(() => restarted.close());
+
+  const session = await signIn(restarted, owner.device);
+  assert.equal((await call(restarted.baseUrl, '/api/session', { token: session.token })).status, 200);
+
+  const pwAttempt = await call(restarted.baseUrl, '/api/auth/password', {
+    method: 'POST',
+    origin: restarted.origin,
+    body: { username: USER, password: 'null' },
+  });
+  assert.equal(pwAttempt.status, 401);
+  assert.equal((await pwAttempt.json()).error, 'The password is no longer used.');
+
+  const basicAttempt = await call(restarted.baseUrl, '/api/session', {
+    headers: { Authorization: `Basic ${Buffer.from(`${USER}:null`).toString('base64')}` },
+  });
+  assert.equal(basicAttempt.status, 401);
 });
