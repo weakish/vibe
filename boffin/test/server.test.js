@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Conversation } from '../src/conversation.js';
 import { runAgent } from '../src/agent.js';
 import { DEFAULT_SPEC, MAX_SPEC_CHARS } from '../shared/default-spec.js';
-import { PASSKEY_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_LIMIT } from '../src/attempt-limit.js';
+import { PASSKEY_ATTEMPT_LIMIT, PASSWORD_ATTEMPT_LIMIT, STATUS_ATTEMPT_LIMIT } from '../src/attempt-limit.js';
 import { entityTag, httpDate } from '../src/http-encode.js';
 import { MAX_BODY_BYTES, MAX_MESSAGE_CHARS, createServer } from '../src/server.js';
 
@@ -522,6 +522,7 @@ test('serves front-end assets with the right content types', async (t) => {
     ['/app.js', /^text\/javascript/],
     ['/landing.js', /^text\/javascript/],
     ['/chrome.js', /^text\/javascript/],
+    ['/join-link.js', /^text\/javascript/],
     ['/markdown.js', /^text\/javascript/],
     ['/stream.js', /^text\/javascript/],
     ['/i18n.js', /^text\/javascript/],
@@ -869,6 +870,27 @@ test('refuses passkey ceremonies after the attempt limit', async (t) => {
   });
   assert.equal(blocked.status, 429);
   assert.equal((await blocked.json()).error, 'Too many attempts. Try again later.');
+
+  const blockedInviteStatus = await api(app.baseUrl, '/api/auth/status', {
+    method: 'POST',
+    credentials: null,
+    body: { join: '00000000-0000-4000-8000-000000000000' },
+  });
+  assert.equal(blockedInviteStatus.status, 429);
+});
+
+test('refuses GET /api/auth/status after the status attempt limit', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  for (let i = 0; i < STATUS_ATTEMPT_LIMIT; i++) {
+    const response = await api(app.baseUrl, '/api/auth/status', { credentials: null });
+    assert.equal(response.status, 200);
+  }
+  const blocked = await api(app.baseUrl, '/api/auth/status', { credentials: null });
+  assert.equal(blocked.status, 429);
+  assert.equal((await blocked.json()).error, 'Too many attempts. Try again later.');
+  assert.match(blocked.headers.get('retry-after'), /^[1-9]\d*$/);
 });
 
 test('records a switch to development static assets', async (t) => {

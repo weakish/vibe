@@ -6,6 +6,7 @@ const SWEEP_AT = 1000;
 
 export const PASSWORD_ATTEMPT_LIMIT = 8;
 export const PASSKEY_ATTEMPT_LIMIT = 30;
+export const STATUS_ATTEMPT_LIMIT = 60;
 export const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
 function parseIpv4(text) {

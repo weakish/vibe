@@ -34,6 +34,7 @@ const STATE_VERSION = 1;
 const OUTPUT_MTIME_LAG_MS = 100;
 const NAME_MAX = 40;
 const COVER_KEY_BYTES = 32;
+export const INVITE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const STATE_KEYS = new Set([
   'version',
@@ -300,26 +301,39 @@ export class Conversation {
     };
   }
 
+  activeInvites(now = Date.now()) {
+    return this.invites.filter((invite) => isInviteActive(invite, now));
+  }
+
+  hasInvite(inviteId, now = Date.now()) {
+    return (
+      typeof inviteId === 'string' &&
+      this.invites.some((invite) => invite.id === inviteId && isInviteActive(invite, now))
+    );
+  }
+
   createInvite() {
-    const invite = { id: randomUUID(), createdAt: new Date().toISOString() };
+    const now = Date.now();
+    const invite = { id: randomUUID(), createdAt: new Date(now).toISOString() };
     this.#commit(() => {
+      this.invites = this.invites.filter((entry) => isInviteActive(entry, now));
       this.invites.push(invite);
     });
     return invite;
   }
 
-  cancelInvite(inviteId) {
-    if (!this.invites.some((invite) => invite.id === inviteId)) {
+  cancelInvite(inviteId, now = Date.now()) {
+    if (!this.hasInvite(inviteId, now)) {
       throw new MembershipError('This invitation has already been used.', 404);
     }
     this.#commit(() => {
-      this.invites = this.invites.filter((invite) => invite.id !== inviteId);
+      this.invites = this.invites.filter((invite) => invite.id !== inviteId && isInviteActive(invite, now));
     });
   }
 
   // Checks the invite and the name. The invite stays open until the passkey is stored.
-  prepareJoin(inviteId, name, ownerName) {
-    if (!this.invites.some((invite) => invite.id === inviteId)) {
+  prepareJoin(inviteId, name, ownerName, now = Date.now()) {
+    if (!this.hasInvite(inviteId, now)) {
       throw new MembershipError('This invitation has already been used.', 404);
     }
     // Every name anyone has ever joined with stays taken, even after they leave or a new chat starts.
@@ -327,8 +341,8 @@ export class Conversation {
     return this.#normalizeName(name, taken);
   }
 
-  completeJoin({ inviteId, personId, name, credential, ownerName }) {
-    const checked = this.prepareJoin(inviteId, name, ownerName);
+  completeJoin({ inviteId, personId, name, credential, ownerName }, now = Date.now()) {
+    const checked = this.prepareJoin(inviteId, name, ownerName, now);
     if (this.passkeys.some((passkey) => passkey.credentialId === credential.credentialId)) {
       throw new MembershipError('That passkey is already saved.', 409);
     }
@@ -336,7 +350,7 @@ export class Conversation {
     this.#commit(() => {
       this.identities.push({ id: personId, name: checked });
       this.members.push(personId);
-      this.invites = this.invites.filter((invite) => invite.id !== inviteId);
+      this.invites = this.invites.filter((invite) => invite.id !== inviteId && isInviteActive(invite, now));
       saved = this.#rememberPasskey(personId, credential);
     });
     return { name: checked, passkeyId: saved.id };
@@ -1038,6 +1052,11 @@ function readIdentities(file, identities) {
     throw new StateError(`State file ${file} has invalid identities.`);
   }
   return identities.map((person) => ({ id: person.id, name: person.name }));
+}
+
+function isInviteActive(invite, now = Date.now()) {
+  const created = Date.parse(invite.createdAt);
+  return Number.isFinite(created) && now - created < INVITE_TTL_MS;
 }
 
 function readInvites(file, invites) {

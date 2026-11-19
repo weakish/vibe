@@ -30,6 +30,7 @@ import { readSavedSpec, specPathForState, writeSavedSpec } from './spec-store.js
 import {
   PASSKEY_ATTEMPT_LIMIT,
   PASSWORD_ATTEMPT_LIMIT,
+  STATUS_ATTEMPT_LIMIT,
   createAttemptLimiter,
   requestAddress,
 } from './attempt-limit.js';
@@ -87,6 +88,7 @@ const STATIC_FILES = new Map([
   ['/app.js', 'public/app.js'],
   ['/landing.js', 'public/landing.js'],
   ['/chrome.js', 'public/chrome.js'],
+  ['/join-link.js', 'public/join-link.js'],
   ['/markdown.js', 'public/markdown.js'],
   ['/stream.js', 'public/stream.js'],
   ['/i18n.js', 'public/i18n.js'],
@@ -155,8 +157,9 @@ const PASSWORD_RETIRED = 'The password is no longer used.';
 const TOO_MANY_ATTEMPTS = 'Too many attempts. Try again later.';
 const PASSWORD_LIMITED = Symbol('password-limited');
 const BASIC_AUTH = /^Basic\s+(\S+)$/i;
-// Ceremonies that mint or consume a challenge without an existing session.
+// Ceremonies that mint, consume, or check a challenge or invitation without an existing session.
 const PUBLIC_PASSKEY_ROUTES = new Set([
+  '/api/auth/status',
   '/api/auth/register',
   '/api/auth/options',
   '/api/auth/login',
@@ -217,6 +220,7 @@ export function createServer({
     coverKey: conversation.coverKey,
     passwordAttempts: createAttemptLimiter(PASSWORD_ATTEMPT_LIMIT),
     passkeyAttempts: createAttemptLimiter(PASSKEY_ATTEMPT_LIMIT),
+    statusAttempts: createAttemptLimiter(STATUS_ATTEMPT_LIMIT),
     reloadStaticAssets: async () => {
       const state = await readStaticAssetsState(context.workdir);
       if (state.mode === 'release' && !(await bundleIsComplete(context.projectRoot, state.manifest))) {
@@ -265,19 +269,22 @@ async function handleRequest(req, res, context) {
 
 async function handleApi(req, res, url, context) {
   if (req.method === 'GET' && url.pathname === '/api/auth/status') {
-    const join = url.searchParams.get('join');
-    const invite = join && context.conversation.invites.some((item) => item.id === join)
-      ? { ownerName: context.username }
-      : null;
+    const attempt = context.statusAttempts.record(requestAddress(req));
+    if (!attempt.ok) {
+      return sendTooMany(res, attempt.retryAfter);
+    }
     return sendJson(res, 200, {
       started: context.conversation.hasPasskey,
-      invite,
+      invite: null,
     });
   }
   if (req.method === 'POST' && PUBLIC_PASSKEY_ROUTES.has(url.pathname)) {
     if (rejectPasskeyAttempt(req, res, context)) {
       return;
     }
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/status') {
+    return handleAuthStatus(req, res, context);
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/password') {
     return handlePassword(req, res, context);
@@ -414,7 +421,7 @@ async function handleApi(req, res, url, context) {
       return sendJson(res, 403, { error: OWNER_ONLY });
     }
     const invite = conversation.createInvite();
-    return sendJson(res, 200, { id: invite.id, path: `/?join=${invite.id}` });
+    return sendJson(res, 200, { id: invite.id, path: `/#join=${invite.id}` });
   }
   const inviteId = /^\/api\/invites\/([0-9a-f-]{36})$/.exec(url.pathname);
   if (req.method === 'DELETE' && inviteId) {
@@ -721,6 +728,19 @@ async function readJsonBody(req, limit = MAX_BODY_BYTES) {
   } catch {
     throw httpError(400, 'Request body must be valid JSON.');
   }
+}
+
+async function handleAuthStatus(req, res, context) {
+  const body = await readBody(req, res, AUTH_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
+  }
+  const join = typeof body?.join === 'string' ? body.join : '';
+  const invite = join && context.conversation.hasInvite(join) ? { ownerName: context.username } : null;
+  return sendJson(res, 200, {
+    started: context.conversation.hasPasskey,
+    invite,
+  });
 }
 
 async function handlePassword(req, res, context) {
@@ -1212,7 +1232,7 @@ function sessionPayload(context, person, listed, token) {
         ...conversation.snapshot(),
         you: publicYou(person, conversation),
         people: conversation.people(context.username),
-        invites: person.owner ? conversation.invites : [],
+        invites: person.owner ? conversation.activeInvites() : [],
         alumni: person.owner ? conversation.alumni() : [],
         home: 'chat',
         canManage: person.owner,

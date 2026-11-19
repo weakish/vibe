@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError } from '../src/config.js';
-import { Conversation } from '../src/conversation.js';
+import { Conversation, INVITE_TTL_MS } from '../src/conversation.js';
 import { runAgent } from '../src/agent.js';
 import { LOGIN_CREDENTIAL_SLOTS, createServer } from '../src/server.js';
 import { encodeCbor, passkeyOrigin } from '../src/webauthn.js';
@@ -322,11 +322,19 @@ test('an invitation passkey joins, and a removed person exports only the earlier
 
   const invite = await call(app.baseUrl, '/api/invites', { method: 'POST', token: owner.session.token, body: {} });
   assert.equal(invite.status, 200);
-  const { id } = await invite.json();
+  const { id, path: invitePath } = await invite.json();
+  assert.equal(invitePath, `/#join=${id}`);
   assert.deepEqual(await (await call(app.baseUrl, `/api/auth/status?join=${id}`)).json(), {
     started: true,
-    invite: { ownerName: USER },
+    invite: null,
   });
+  assert.deepEqual(
+    await (await call(app.baseUrl, '/api/auth/status', { method: 'POST', body: { join: id } })).json(),
+    {
+      started: true,
+      invite: { ownerName: USER },
+    },
+  );
 
   const guest = authenticator();
   const joining = await call(app.baseUrl, '/api/join', {
@@ -1432,4 +1440,54 @@ test('server starts without a password after owner enrollment and refuses to sta
     headers: { Authorization: `Basic ${Buffer.from(`${USER}:null`).toString('base64')}` },
   });
   assert.equal(basicAttempt.status, 401);
+});
+
+test('invites expire after 30 days and are pruned', async (t) => {
+  const app = await startServer();
+  const owner = await registerOwner(app);
+  const created = await (
+    await call(app.baseUrl, '/api/invites', { method: 'POST', token: owner.session.token, body: {} })
+  ).json();
+  await app.close();
+
+  const stateFile = path.join(app.dir, 'state', 'state.json');
+  const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  saved.invites[0].createdAt = new Date(Date.now() - INVITE_TTL_MS - 1000).toISOString();
+  fs.writeFileSync(stateFile, JSON.stringify(saved));
+
+  const restarted = await startServer(app.dir, { password: null });
+  t.after(() => restarted.close());
+
+  const status = await call(restarted.baseUrl, '/api/auth/status', {
+    method: 'POST',
+    body: { join: created.id },
+  });
+  assert.equal(status.status, 200);
+  assert.deepEqual(await status.json(), { started: true, invite: null });
+
+  const joinAttempt = await call(restarted.baseUrl, '/api/join', {
+    method: 'POST',
+    origin: restarted.origin,
+    body: { inviteId: created.id, name: 'Ada' },
+  });
+  assert.equal(joinAttempt.status, 404);
+
+  const session = await signIn(restarted, owner.device);
+  const current = await (await call(restarted.baseUrl, '/api/session', { token: session.token })).json();
+  assert.deepEqual(current.invites, []);
+
+  const cancelExpired = await call(restarted.baseUrl, `/api/invites/${created.id}`, {
+    method: 'DELETE',
+    token: session.token,
+  });
+  assert.equal(cancelExpired.status, 404);
+
+  const fresh = await (
+    await call(restarted.baseUrl, '/api/invites', { method: 'POST', token: session.token, body: {} })
+  ).json();
+  const persisted = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  assert.deepEqual(
+    persisted.invites.map((item) => item.id),
+    [fresh.id],
+  );
 });

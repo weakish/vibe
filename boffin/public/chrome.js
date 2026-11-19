@@ -1,4 +1,5 @@
 import { LOCALES, ensureLocale, loadAllLocales, localeDir, nextRadioIndex, resolveLocale, t } from './i18n.js';
+import { invitationFromHref } from './join-link.js';
 import { SIZES, THEME_COLORS, THEMES, resolveSize, resolveTheme, resolvedScheme } from './theme.js';
 
 export const SESSION_KEY = 'boffin.session';
@@ -39,8 +40,16 @@ export const landingEl = {
   invite: document.getElementById('landing-invite'),
 };
 
+function readJoinId() {
+  const { joinId, path } = invitationFromHref(location.href);
+  if (path !== null) {
+    history.replaceState(null, '', path);
+  }
+  return joinId;
+}
+
 export const authGate = { started: false, invite: null };
-export let joinId = new URLSearchParams(location.search).get('join');
+export let joinId = readJoinId();
 export let locale = readStoredLocale();
 export let theme = readStoredTheme();
 export let size = readStoredSize();
@@ -507,8 +516,14 @@ export function isLandingChromeMenuTarget(node) {
 }
 
 export async function refreshAuthGate() {
-  const path = joinId ? `/api/auth/status?join=${encodeURIComponent(joinId)}` : '/api/auth/status';
-  const response = await fetch(path, { cache: 'no-store' });
+  const response = joinId
+    ? await fetch('/api/auth/status', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ join: joinId }),
+      })
+    : await fetch('/api/auth/status', { cache: 'no-store' });
   if (!response.ok) {
     const raw = await readErrorText(response);
     const error = new Error(raw || `Request failed (${response.status}).`);
@@ -541,6 +556,13 @@ export function clearJoinParam() {
   joinId = null;
   const url = new URL(location.href);
   url.searchParams.delete('join');
+  const hash = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
+  const hashParams = new URLSearchParams(hash);
+  if (hashParams.has('join')) {
+    hashParams.delete('join');
+    const nextHash = hashParams.toString();
+    url.hash = nextHash ? `#${nextHash}` : '';
+  }
   history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
