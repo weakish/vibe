@@ -1,6 +1,12 @@
 node_modules/
 config.json
 data/
+.boffin/
+.env
+.env.*
+*.key
+*.pem
+*.bundle
 public/dist/
 public/dist.previous/
 public/.bundle-staging/
