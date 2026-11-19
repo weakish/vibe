@@ -88,6 +88,37 @@ test('quotes inside URLs cannot break out of the href attribute', () => {
   assert.ok(!html.includes('<img'));
 });
 
+test('urls do not swallow stashed links or code spans into href attributes', () => {
+  const adjacentLink = renderMarkdown('https://a.example/[x](https://b.example/style=color:red/onmouseover=test)');
+  assert.equal(
+    adjacentLink,
+    '<p><a href="https://a.example/" target="_blank" rel="noopener noreferrer">https://a.example/</a>' +
+      '<a href="https://b.example/style=color:red/onmouseover=test" target="_blank" rel="noopener noreferrer">x</a></p>',
+  );
+  for (const tag of anchorTags(adjacentLink)) {
+    assert.match(`${tag}</a>`, SAFE_ANCHOR);
+  }
+
+  assert.equal(
+    renderMarkdown('https://[x](https://b.example/)'),
+    '<p>https://<a href="https://b.example/" target="_blank" rel="noopener noreferrer">x</a></p>',
+  );
+
+  assert.equal(
+    renderMarkdown('https://a.example/`code`'),
+    '<p><a href="https://a.example/" target="_blank" rel="noopener noreferrer">https://a.example/</a><code>code</code></p>',
+  );
+
+  const codeInUrl = renderMarkdown('[x](https://a.example/`code`)');
+  assert.equal(
+    codeInUrl,
+    '<p>[x](<a href="https://a.example/" target="_blank" rel="noopener noreferrer">https://a.example/</a><code>code</code>)</p>',
+  );
+  for (const tag of anchorTags(codeInUrl)) {
+    assert.match(`${tag}</a>`, SAFE_ANCHOR);
+  }
+});
+
 test('renders code spans inside link labels', () => {
   assert.equal(
     renderMarkdown('[`npm test`](https://example.com/ci)'),

@@ -136,10 +136,12 @@ function renderInline(text) {
   let source = text.replace(/(`+)(.+?)\1(?!`)/g, (_match, _ticks, code) => keep(`<code>${escapeHtml(code)}</code>`));
   source = escapeHtml(source);
 
-  source = source.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s()<>]+)\)/g, (_match, label, href) =>
+  // Exclude STASH so a URL cannot swallow an earlier stashed <code> or <a> tag
+  // and splice its unescaped quotes into an href attribute on restore.
+  source = source.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s()<>\u0000]+)\)/g, (_match, label, href) =>
     keep(link(href, label)),
   );
-  source = source.replace(/(^|[\s(])(https?:\/\/[^\s<]+)/g, (_match, lead, url) => {
+  source = source.replace(/(^|[\s(])(https?:\/\/[^\s<\u0000]+)/g, (_match, lead, url) => {
     const href = autolinkHref(url);
     return `${lead}${keep(link(href, href))}${url.slice(href.length)}`;
   });
