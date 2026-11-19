@@ -310,6 +310,7 @@ Replace `/etc/caddy/Caddyfile` (back it up first with `sudo cp -a`, and get the 
 ```caddyfile
 <hostname> {
     encode zstd gzip
+    header Strict-Transport-Security "max-age=31536000"
     reverse_proxy 127.0.0.1:8080 {
         header_up X-Forwarded-For {remote_host}
     }
@@ -317,6 +318,8 @@ Replace `/etc/caddy/Caddyfile` (back it up first with `sudo cp -a`, and get the 
 ```
 
 `encode zstd gzip` compresses at the edge. Debian 13 ships Caddy 2.6.2, and a bare `encode` enables no algorithms, so name them. Left to right is the preference when the client sends no q-factor: zstd, then gzip. Only responses longer than 512 bytes are compressed, and only the default types (`text/*`, `application/json*`, `application/javascript*`, `image/svg+xml*`, and a few XML feeds). HTML, CSS, JavaScript, and large JSON qualify. The manifest is not a default type, `public/icon.svg` is under 512 bytes, and the NDJSON chat stream and images are not compressed. Caddy 2.6 leaves the ETag unchanged, so Boffin's strong tag of the raw bytes still 304s. Do not compress in Node, and do not suffix that ETag. A newer Caddy appends the coding and strips that suffix from `If-None-Match`; a suffix added here would miss.
+
+`header Strict-Transport-Security "max-age=31536000"` tells browsers to stick to HTTPS for `<hostname>` (Caddy does not set HSTS by default, and Caddy's automatic port-80 redirect does not run site handlers, so the header is sent only over HTTPS). `includeSubDomains` is omitted so unrelated subdomains are not affected if `<hostname>` is an apex domain.
 
 The `header_up` line **replaces** the header with the real TCP peer, so a client cannot inject its own value; Boffin only trusts it because the connection comes from loopback. This is also what makes passkeys possible: WebAuthn requires HTTPS on a stable hostname, and the origin/RP ID is derived from the request `Origin` (see `src/webauthn.js`), so `<hostname>` must be the final hostname.
 
@@ -332,7 +335,7 @@ Caddy obtains the Let's Encrypt certificate automatically once DNS resolves and 
 Do not hand over until all of these pass:
 
 - [ ] SSH: `ssh <github-username>@<hostname>` works in a fresh connection.
-- [ ] Web: `curl -I https://<hostname>/api/session` returns **401** over a valid certificate (`/` returning 200 is expected).
+- [ ] Web: `curl -I https://<hostname>/api/session` returns **401** over a valid certificate and includes `strict-transport-security` (`/` returning 200 is expected).
 - [ ] Compression: `curl -sI -H 'Accept-Encoding: gzip' https://<hostname>/app.js` includes `content-encoding: gzip` or `zstd` and an ETag. `curl -sI http://127.0.0.1:8080/app.js` includes an ETag and no `content-encoding`.
 - [ ] Service: `systemctl is-enabled boffin caddy` both report enabled; `journalctl -u boffin` is clean; `systemctl show -p User boffin` confirms the service runs as `boffin`.
 - [ ] **Operator enrolls the owner passkey immediately:** open `https://<hostname>`, sign in with username `boffin` and the generated password, create the owner passkey. Then confirm a fresh browser session signs in with the passkey and the password is now refused ("The password is no longer used").
