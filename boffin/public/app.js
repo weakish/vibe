@@ -3639,7 +3639,7 @@ function showLanding() {
   closeDialog(el.login);
 }
 
-async function logOut() {
+async function logOut({ revokeServer = true } = {}) {
   closeAppChromeMenus();
   closeDialog(el.peopleDialog);
   closeDialog(el.passkeysDialog);
@@ -3677,7 +3677,7 @@ async function logOut() {
   setPeopleStatus('');
   updateComposer();
   showLanding();
-  const revokeError = await revokeServerSession(token);
+  const revokeError = revokeServer ? await revokeServerSession(token) : null;
   await refreshLoggedOutGate(revokeError);
 }
 
@@ -4270,12 +4270,24 @@ async function addPasskey() {
 }
 
 async function deletePasskey(passkeyId) {
+  const epoch = chatEpoch;
   el.passkeysStatus.textContent = '';
   const response = await api(`/api/passkeys/${passkeyId}`, { method: 'DELETE' });
+  if (epoch !== chatEpoch) {
+    return;
+  }
   if (!response.ok) {
     throw new RequestError(await readServerError(response), response.status);
   }
-  renderPasskeys((await response.json()).passkeys ?? []);
+  const body = await response.json();
+  if (epoch !== chatEpoch) {
+    return;
+  }
+  if (body.signedOut) {
+    await logOut({ revokeServer: false });
+    return;
+  }
+  renderPasskeys(body.passkeys ?? []);
 }
 
 function handlePeopleDialogFailure(error) {

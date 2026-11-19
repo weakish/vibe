@@ -433,7 +433,11 @@ async function handleApi(req, res, url, context) {
   if (req.method === 'DELETE' && passkeyId) {
     return runMembership(res, () => {
       conversation.removePasskey(person.personId, passkeyId[1]);
-      return { passkeys: conversation.listPasskeys(person.personId) };
+      revokePasskeySessions(context, passkeyId[1]);
+      return {
+        passkeys: conversation.listPasskeys(person.personId),
+        signedOut: person.passkeyId === passkeyId[1],
+      };
     });
   }
   const memberId = /^\/api\/members\/([0-9a-f-]{36})$/.exec(url.pathname);
@@ -755,8 +759,9 @@ async function handleRegister(req, res, context) {
   if (!verified) {
     return sendJson(res, 401, { error: PASSKEY_REJECTED });
   }
+  let passkey;
   try {
-    context.conversation.setOwnerPasskey(verified);
+    passkey = context.conversation.setOwnerPasskey(verified);
   } catch (error) {
     if (error instanceof MembershipError) {
       return sendJson(res, error.status, { error: error.message });
@@ -764,7 +769,7 @@ async function handleRegister(req, res, context) {
     context.logger.error(`[boffin] could not save passkey: ${error.message}`);
     return sendJson(res, 500, { error: 'Internal server error.' });
   }
-  return sendJson(res, 200, finishSignIn(context, ownerPerson(context)));
+  return sendJson(res, 200, finishSignIn(context, ownerPerson(context), passkey.id));
 }
 
 async function handleAddPasskey(req, res, context, person) {
@@ -977,7 +982,7 @@ async function handleLogin(req, res, context) {
   }
   context.conversation.noteSignCount(verified.credentialId, verified.signCount);
   const person = stored.owner ? ownerPerson(context) : { personId: stored.personId, name: stored.name, owner: false };
-  return sendJson(res, 200, finishSignIn(context, person));
+  return sendJson(res, 200, finishSignIn(context, person, stored.record.id));
 }
 
 async function handleJoin(req, res, context) {
@@ -1033,9 +1038,9 @@ async function handleJoinFinish(req, res, context) {
   if (!verified) {
     return sendJson(res, 401, { error: PASSKEY_REJECTED });
   }
-  let name;
+  let joined;
   try {
-    name = context.conversation.completeJoin({
+    joined = context.conversation.completeJoin({
       inviteId: pending.inviteId,
       personId: pending.personId,
       name: pending.name,
@@ -1049,8 +1054,8 @@ async function handleJoinFinish(req, res, context) {
     context.logger.error(`[boffin] could not save member: ${error.message}`);
     return sendJson(res, 500, { error: 'Internal server error.' });
   }
-  const person = { personId: pending.personId, name, owner: false };
-  return sendJson(res, 200, finishSignIn(context, person));
+  const person = { personId: pending.personId, name: joined.name, owner: false };
+  return sendJson(res, 200, finishSignIn(context, person, joined.passkeyId));
 }
 
 function sendSession(res, context, person, openActive) {
@@ -1181,8 +1186,8 @@ function takeChallenge(context, id, kind) {
   return entry;
 }
 
-function finishSignIn(context, person) {
-  const token = issueSession(context, person);
+function finishSignIn(context, person, passkeyId = null) {
+  const token = issueSession(context, { ...person, passkeyId });
   const showChat = person.owner || context.conversation.homeFor(person.personId) === 'chat';
   return sessionPayload(context, person, !showChat, token);
 }
@@ -1191,6 +1196,14 @@ function issueSession(context, person) {
   const token = randomBytes(32).toString('base64url');
   context.sessions.set(token, person);
   return token;
+}
+
+function revokePasskeySessions(context, passkeyId) {
+  for (const [token, session] of context.sessions) {
+    if (session.passkeyId === passkeyId) {
+      context.sessions.delete(token);
+    }
+  }
 }
 
 // The session behind a Bearer token, or null. Unlike authenticate, it never falls back to Basic.

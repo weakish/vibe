@@ -332,13 +332,14 @@ export class Conversation {
     if (this.passkeys.some((passkey) => passkey.credentialId === credential.credentialId)) {
       throw new MembershipError('That passkey is already saved.', 409);
     }
+    let saved;
     this.#commit(() => {
       this.identities.push({ id: personId, name: checked });
       this.members.push(personId);
       this.invites = this.invites.filter((invite) => invite.id !== inviteId);
-      this.#rememberPasskey(personId, credential);
+      saved = this.#rememberPasskey(personId, credential);
     });
-    return checked;
+    return { name: checked, passkeyId: saved.id };
   }
 
   addMember(personId, ownerName) {
@@ -369,7 +370,7 @@ export class Conversation {
   }
 
   setOwnerPasskey(credential) {
-    this.addPasskey('owner', credential);
+    return this.addPasskey('owner', credential);
   }
 
   listPasskeys(personId) {

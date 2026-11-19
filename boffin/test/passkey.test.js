@@ -1077,3 +1077,96 @@ test('active non-owner members can only read media from their active or kept con
   assert.equal((await call(app.baseUrl, `/api/media/${keptMine.id}`, { token: member.token })).status, 200);
   assert.equal((await call(app.baseUrl, `/api/media/${current.id}`, { token: member.token })).status, 200);
 });
+
+test('removing a passkey revokes every session signed in with it', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const owner = await registerOwner(app);
+  const ownerInitial = await (await call(app.baseUrl, '/api/passkeys', { token: owner.session.token })).json();
+  const firstId = ownerInitial.passkeys[0].id;
+  const firstLogin = await signIn(app, owner.device);
+
+  const extra = await addPasskey(app, owner.session.token, authenticator(), 'Backup');
+  const secondId = extra.passkeys.find((entry) => entry.id !== firstId).id;
+  const secondLogin = await signIn(app, extra.device);
+
+  // Removing the first passkey from the second passkey's session revokes all sessions from the first.
+  const removedFirst = await call(app.baseUrl, `/api/passkeys/${firstId}`, {
+    method: 'DELETE',
+    token: secondLogin.token,
+  });
+  assert.equal(removedFirst.status, 200);
+  const removedFirstBody = await removedFirst.json();
+  assert.equal(removedFirstBody.signedOut, false);
+  assert.deepEqual(
+    removedFirstBody.passkeys.map((entry) => entry.id),
+    [secondId],
+  );
+  assert.equal((await call(app.baseUrl, '/api/session', { token: owner.session.token })).status, 401);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: firstLogin.token })).status, 401);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: secondLogin.token })).status, 200);
+
+  // Failing to remove the last passkey leaves the active session intact.
+  const refusedLast = await call(app.baseUrl, `/api/passkeys/${secondId}`, {
+    method: 'DELETE',
+    token: secondLogin.token,
+  });
+  assert.equal(refusedLast.status, 400);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: secondLogin.token })).status, 200);
+
+  // Removing the passkey that signed in the current session reports signedOut and invalidates it.
+  const third = await addPasskey(app, secondLogin.token, authenticator(), 'Phone');
+  const thirdId = third.passkeys.find((entry) => entry.id !== secondId).id;
+  const thirdLogin = await signIn(app, third.device);
+  const removedSelf = await call(app.baseUrl, `/api/passkeys/${secondId}`, {
+    method: 'DELETE',
+    token: secondLogin.token,
+  });
+  assert.equal(removedSelf.status, 200);
+  const removedSelfBody = await removedSelf.json();
+  assert.equal(removedSelfBody.signedOut, true);
+  assert.deepEqual(
+    removedSelfBody.passkeys.map((entry) => entry.id),
+    [thirdId],
+  );
+  assert.equal((await call(app.baseUrl, '/api/session', { token: secondLogin.token })).status, 401);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: thirdLogin.token })).status, 200);
+
+  // Invited member's join session is also bound to their join passkey.
+  const invite = await (
+    await call(app.baseUrl, '/api/invites', { method: 'POST', token: thirdLogin.token, body: {} })
+  ).json();
+  const joinOptions = await (
+    await call(app.baseUrl, '/api/join', {
+      method: 'POST',
+      origin: app.origin,
+      body: { inviteId: invite.id, name: 'Ada' },
+    })
+  ).json();
+  const adaFirst = authenticator();
+  const adaJoin = await (
+    await call(app.baseUrl, '/api/join/finish', {
+      method: 'POST',
+      origin: app.origin,
+      body: {
+        challengeId: joinOptions.challengeId,
+        credential: adaFirst.register(Buffer.from(joinOptions.options.challenge, 'base64url'), app.origin),
+      },
+    })
+  ).json();
+  const adaInitial = await (await call(app.baseUrl, '/api/passkeys', { token: adaJoin.token })).json();
+  const adaFirstId = adaInitial.passkeys[0].id;
+  const adaSecond = await addPasskey(app, adaJoin.token, authenticator(), 'Ada backup');
+  const adaSecondLogin = await signIn(app, adaSecond.device, 'Ada');
+
+  const removedAdaFirst = await call(app.baseUrl, `/api/passkeys/${adaFirstId}`, {
+    method: 'DELETE',
+    token: adaSecondLogin.token,
+  });
+  assert.equal(removedAdaFirst.status, 200);
+  assert.equal((await removedAdaFirst.json()).signedOut, false);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: adaJoin.token })).status, 401);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: adaSecondLogin.token })).status, 200);
+  assert.equal((await call(app.baseUrl, '/api/session', { token: thirdLogin.token })).status, 200);
+});
