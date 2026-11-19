@@ -184,10 +184,31 @@ sudo -H -u boffin git config --global --get user.email   # prints the copied ide
 
 The agent runs as the dedicated `boffin` account created in step 3, so it is installed and authenticated as that account. Install **only** the CLIs named in `<agents>`.
 
+Download each vendor installer over HTTPS (TLS 1.2+, no protocol downgrade on redirects) to a `boffin`-owned mode `0600` file. The download command prints the script and leaves the file in place. Read that output. Run the installer only if the script is that vendor's. If the download fails, the file is deleted. If you abort after reading it, delete the file and stop. Do not pipe `curl` to `bash`.
+
 ### Cursor (when `<agents>` includes `cursor`)
 
 ```bash
-sudo su - boffin -c 'curl https://cursor.com/install -fsS | bash'
+set -euo pipefail
+sudo -u boffin mkdir -p /home/boffin/.cache
+tmp=/home/boffin/.cache/cursor-install.sh
+sudo -u boffin install -m 600 /dev/null "$tmp"
+trap 'sudo -u boffin rm -f "$tmp"' EXIT
+sudo -u boffin curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o "$tmp" https://cursor.com/install
+trap - EXIT
+echo "$tmp"
+sudo -u boffin cat "$tmp"
+```
+
+Read the script above. Continue only if it is the Cursor installer. Otherwise run `sudo -u boffin rm -f /home/boffin/.cache/cursor-install.sh` and stop.
+
+Run it and delete it:
+
+```bash
+set -euo pipefail
+tmp=/home/boffin/.cache/cursor-install.sh
+trap 'sudo -u boffin rm -f "$tmp"' EXIT
+sudo -i -u boffin bash -- "$tmp"
 sudo su - boffin -c '~/.local/bin/agent --version'
 ```
 
@@ -205,7 +226,26 @@ If the operator has told you they use an API key instead, follow Cursor's curren
 The Grok installer also places an `agent` binary next to `grok`. **Do not put `/home/boffin/.grok/bin` on PATH** (including the systemd unit in step 6). Point `grok_bin` at `/home/boffin/.grok/bin/grok`. If the installer overwrites `/home/boffin/.local/bin/agent`, re-run the Cursor install above before continuing.
 
 ```bash
-sudo su - boffin -c 'curl -fsSL https://x.ai/cli/install.sh | bash'
+set -euo pipefail
+sudo -u boffin mkdir -p /home/boffin/.cache
+tmp=/home/boffin/.cache/grok-install.sh
+sudo -u boffin install -m 600 /dev/null "$tmp"
+trap 'sudo -u boffin rm -f "$tmp"' EXIT
+sudo -u boffin curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o "$tmp" https://x.ai/cli/install.sh
+trap - EXIT
+echo "$tmp"
+sudo -u boffin cat "$tmp"
+```
+
+Read the script above. Continue only if it is the Grok installer. Otherwise run `sudo -u boffin rm -f /home/boffin/.cache/grok-install.sh` and stop.
+
+Run it and delete it:
+
+```bash
+set -euo pipefail
+tmp=/home/boffin/.cache/grok-install.sh
+trap 'sudo -u boffin rm -f "$tmp"' EXIT
+sudo -i -u boffin bash -- "$tmp"
 sudo su - boffin -c '~/.grok/bin/grok --version'
 # Must still be Cursor's CLI when Cursor is enabled:
 sudo su - boffin -c '~/.local/bin/agent --version'
@@ -222,7 +262,26 @@ sudo su - boffin -c '~/.grok/bin/grok login --device-auth'   # prints a URL/code
 The OpenCode installer puts the binary in `/home/boffin/.opencode/bin/opencode` and adds that directory to the shell's `PATH`. Point `opencode_bin` at the real path so the service does not depend on `PATH` under systemd.
 
 ```bash
-sudo su - boffin -c 'curl -fsSL https://opencode.ai/install | bash'
+set -euo pipefail
+sudo -u boffin mkdir -p /home/boffin/.cache
+tmp=/home/boffin/.cache/opencode-install.sh
+sudo -u boffin install -m 600 /dev/null "$tmp"
+trap 'sudo -u boffin rm -f "$tmp"' EXIT
+sudo -u boffin curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o "$tmp" https://opencode.ai/install
+trap - EXIT
+echo "$tmp"
+sudo -u boffin cat "$tmp"
+```
+
+Read the script above. Continue only if it is the OpenCode installer. Otherwise run `sudo -u boffin rm -f /home/boffin/.cache/opencode-install.sh` and stop.
+
+Run it and delete it:
+
+```bash
+set -euo pipefail
+tmp=/home/boffin/.cache/opencode-install.sh
+trap 'sudo -u boffin rm -f "$tmp"' EXIT
+sudo -i -u boffin bash -- "$tmp"
 sudo su - boffin -c '~/.opencode/bin/opencode --version'
 ```
 

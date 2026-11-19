@@ -21,17 +21,52 @@ flowchart LR
 ## Requirements
 
 - **Node.js ≥ 20** (see `engines` in `package.json`). Boffin has no npm dependencies, so there is nothing to install.
-- **Cursor Agent CLI**, **Grok CLI**, and/or **OpenCode CLI** installed and authenticated for the user that will run Boffin:
+- **Cursor Agent CLI**, **Grok CLI**, and/or **OpenCode CLI** installed and authenticated for the user that will run Boffin. Download each installer over HTTPS (TLS 1.2+, no protocol downgrade) to a private temporary file, read it, and run it only if you answer yes. The file is removed if the download fails, you abort, or the installer finishes:
   ```bash
-  curl https://cursor.com/install -fsS | bash   # installs ~/.local/bin/agent
-  agent login                                    # or configure an API key per Cursor's docs
-  agent status                                   # verify you are signed in
-  curl -fsSL https://x.ai/cli/install.sh | bash # installs grok (also drops an `agent` symlink — keep Cursor's `~/.local/bin/agent`)
-  grok login --device-auth                       # headless/remote; follow the printed URL
-  grok --version
-  curl -fsSL https://opencode.ai/install | bash  # installs ~/.opencode/bin/opencode
-  opencode auth login                            # or set the provider's API key
-  opencode models                                # verify model access
+  # Cursor Agent CLI (installs ~/.local/bin/agent)
+  (
+    set -euo pipefail
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o "$tmp" https://cursor.com/install
+    if command -v less >/dev/null 2>&1; then less "$tmp"; else cat "$tmp"; fi
+    printf 'Run this installer? [y/N] '
+    read -r reply
+    case "$reply" in y|Y) bash -- "$tmp" ;; *) echo 'Aborted. Installer not run.' >&2; exit 1 ;; esac
+    rm -f "$tmp"
+    agent login                # or configure an API key per Cursor's docs
+    agent status               # verify you are signed in
+  )
+
+  # Grok CLI (installs grok; also drops an `agent` symlink — keep Cursor's ~/.local/bin/agent)
+  (
+    set -euo pipefail
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o "$tmp" https://x.ai/cli/install.sh
+    if command -v less >/dev/null 2>&1; then less "$tmp"; else cat "$tmp"; fi
+    printf 'Run this installer? [y/N] '
+    read -r reply
+    case "$reply" in y|Y) bash -- "$tmp" ;; *) echo 'Aborted. Installer not run.' >&2; exit 1 ;; esac
+    rm -f "$tmp"
+    grok login --device-auth   # headless/remote; follow the printed URL
+    grok --version
+  )
+
+  # OpenCode CLI (installs ~/.opencode/bin/opencode)
+  (
+    set -euo pipefail
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL -o "$tmp" https://opencode.ai/install
+    if command -v less >/dev/null 2>&1; then less "$tmp"; else cat "$tmp"; fi
+    printf 'Run this installer? [y/N] '
+    read -r reply
+    case "$reply" in y|Y) bash -- "$tmp" ;; *) echo 'Aborted. Installer not run.' >&2; exit 1 ;; esac
+    rm -f "$tmp"
+    opencode auth login        # or set the provider's API key
+    opencode models            # verify model access
+  )
   ```
 - **Git**, if the agent should commit its work in the working directory (recommended).
 - For production: a **Debian 13 (trixie)** server reached by a fully qualified hostname, with an account named after your GitHub username whose SSH public-key access and git identity are already configured, and which has `sudo` (details under [Deploying to production](#deploying-to-production)). Other hosts work for local use, but the deployment skill targets this environment.

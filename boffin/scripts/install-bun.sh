@@ -104,7 +104,7 @@ trap cleanup EXIT
 mkdir -p "$bin_dir"
 # latest/download redirects to releases/download/<tag>/, then to the file host.
 # The checksum list is published next to that tag, not on the file host.
-release_url=$(curl --silent --show-error --fail --output /dev/null --write-out '%{redirect_url}' "$bun_uri") ||
+release_url=$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 --silent --show-error --fail --output /dev/null --write-out '%{redirect_url}' "$bun_uri") ||
   error "Failed to resolve bun download URL \"$bun_uri\""
 case "$release_url" in
   "$github_repo"/releases/download/*/*)
@@ -118,10 +118,10 @@ case "$release_url" in
     fi
     ;;
 esac
-curl --fail --location --progress-bar --output "$zip_file" "$bun_uri" ||
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --progress-bar --output "$zip_file" "$bun_uri" ||
   error "Failed to download bun from \"$bun_uri\""
 sums_uri="${bun_uri%/*}/SHASUMS256.txt"
-curl --fail --location --silent --show-error --output "$sums_file" "$sums_uri" ||
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --silent --show-error --output "$sums_file" "$sums_uri" ||
   error "Failed to download checksums from \"$sums_uri\""
 expected=$(awk -v name="bun-${target}.zip" '
   {
