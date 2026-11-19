@@ -166,7 +166,10 @@ export class Conversation {
   }
 
   canReadMedia(personId, mediaId, isOwner = false) {
-    if (isOwner || this.isMember(personId)) {
+    if (isOwner) {
+      return Boolean(this.readMedia(mediaId));
+    }
+    if (this.isMember(personId) && itemsReferenceMediaId(this.items, mediaId)) {
       return Boolean(this.readMedia(mediaId));
     }
     for (const record of this.kept) {

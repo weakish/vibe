@@ -319,12 +319,21 @@ async function handleApi(req, res, url, context) {
     return sendJson(res, 200, { ok: true });
   }
   if (req.method === 'GET' && url.pathname === '/api/usage') {
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
     return handleUsageGet(res, context, url);
   }
   if (req.method === 'POST' && url.pathname === '/api/usage/refresh') {
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
     return handleUsageRefresh(res, context);
   }
   if (req.method === 'GET' && url.pathname === '/api/static-assets') {
+    if (!canEnter(person, conversation)) {
+      return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
+    }
     return handleStaticAssetsGet(res, context, person);
   }
   if (req.method === 'PUT' && url.pathname === '/api/static-assets') {

@@ -875,7 +875,7 @@ function resetGrokUsage() {
 }
 
 function requestGrokUsage({ fresh = false } = {}) {
-  if (!sessionToken) {
+  if (!sessionToken || !state.you?.inConversation) {
     return;
   }
   // A refresh owns the quota line until it finishes. Opening Settings (a
@@ -904,6 +904,11 @@ async function fetchGrokUsage(generation, fresh) {
   const response = await api(fresh ? '/api/usage?fresh=1' : '/api/usage');
   if (generation !== grokUsageGeneration) {
     response.body?.cancel()?.catch(() => {});
+    return;
+  }
+  if (response.status === 403) {
+    response.body?.cancel()?.catch(() => {});
+    resetGrokUsage();
     return;
   }
   if (!response.ok) {
@@ -990,7 +995,7 @@ function paintUsage() {
 }
 
 async function refreshGrokUsageFromServer() {
-  if (!sessionToken || grokUsageFetchInFlight) {
+  if (!sessionToken || !state.you?.inConversation || grokUsageFetchInFlight) {
     return;
   }
   grokUsageFetchInFlight = true;
@@ -1003,6 +1008,11 @@ async function refreshGrokUsageFromServer() {
     const response = await api('/api/usage/refresh', { method: 'POST' });
     if (generation !== grokUsageGeneration) {
       response.body?.cancel()?.catch(() => {});
+      return;
+    }
+    if (response.status === 403) {
+      response.body?.cancel()?.catch(() => {});
+      resetGrokUsage();
       return;
     }
     if (!response.ok) {
@@ -1502,6 +1512,9 @@ function applySessionIdentity(session) {
   state.canManage = Boolean(session.canManage);
   if (el.staticAssetsField) {
     el.staticAssetsField.hidden = !state.canManage;
+  }
+  if (!state.you?.inConversation) {
+    resetGrokUsage();
   }
   requestStaticAssets({ ifMissing: true });
 }

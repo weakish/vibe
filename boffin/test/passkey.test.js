@@ -980,3 +980,100 @@ test('passkey ceremonies reject Origin headers that do not match Host', async (t
   });
   assert.equal(badJoin.status, 400);
 });
+
+test('removed members cannot access usage or static-assets endpoints', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const owner = await registerOwner(app);
+  const invite = await (
+    await call(app.baseUrl, '/api/invites', { method: 'POST', token: owner.session.token, body: {} })
+  ).json();
+  const joinOptions = await (
+    await call(app.baseUrl, '/api/join', {
+      method: 'POST',
+      origin: app.origin,
+      body: { inviteId: invite.id, name: 'Ada' },
+    })
+  ).json();
+  const guest = authenticator();
+  const member = await (
+    await call(app.baseUrl, '/api/join/finish', {
+      method: 'POST',
+      origin: app.origin,
+      body: {
+        challengeId: joinOptions.challengeId,
+        credential: guest.register(Buffer.from(joinOptions.options.challenge, 'base64url'), app.origin),
+      },
+    })
+  ).json();
+
+  assert.equal((await call(app.baseUrl, '/api/usage', { token: member.token })).status, 200);
+  assert.equal((await call(app.baseUrl, '/api/usage/refresh', { method: 'POST', token: member.token })).status, 404);
+  assert.equal((await call(app.baseUrl, '/api/static-assets', { token: member.token })).status, 200);
+
+  const removed = await call(app.baseUrl, `/api/members/${member.you.id}`, {
+    method: 'DELETE',
+    token: owner.session.token,
+  });
+  assert.equal(removed.status, 200);
+
+  assert.equal((await call(app.baseUrl, '/api/usage', { token: member.token })).status, 403);
+  assert.equal((await call(app.baseUrl, '/api/usage/refresh', { method: 'POST', token: member.token })).status, 403);
+  assert.equal((await call(app.baseUrl, '/api/static-assets', { token: member.token })).status, 403);
+});
+
+test('active non-owner members can only read media from their active or kept conversations', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const owner = await registerOwner(app);
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const prior = app.conversation.media.save({ bytes: png, name: 'prior.png' });
+  const current = app.conversation.media.save({ bytes: png, name: 'current.png' });
+  const keptMine = app.conversation.media.save({ bytes: png, name: 'kept.png' });
+
+  // Prior conversation happened before Ada ever joined.
+  app.conversation.items.push({ id: 'prior-1', role: 'user', text: 'secret', attachments: [prior] });
+  app.conversation.reset();
+
+  // Invite Ada into conversation 2, add an image, then start conversation 3 and re-add Ada.
+  const invite = await (
+    await call(app.baseUrl, '/api/invites', { method: 'POST', token: owner.session.token, body: {} })
+  ).json();
+  const joinOptions = await (
+    await call(app.baseUrl, '/api/join', {
+      method: 'POST',
+      origin: app.origin,
+      body: { inviteId: invite.id, name: 'Ada' },
+    })
+  ).json();
+  const guest = authenticator();
+  const member = await (
+    await call(app.baseUrl, '/api/join/finish', {
+      method: 'POST',
+      origin: app.origin,
+      body: {
+        challengeId: joinOptions.challengeId,
+        credential: guest.register(Buffer.from(joinOptions.options.challenge, 'base64url'), app.origin),
+      },
+    })
+  ).json();
+
+  app.conversation.items.push({ id: 'kept-1', role: 'user', text: 'shared', attachments: [keptMine] });
+  app.conversation.reset();
+  const readded = await call(app.baseUrl, `/api/members/${member.you.id}`, {
+    method: 'POST',
+    token: owner.session.token,
+  });
+  assert.equal(readded.status, 200);
+  app.conversation.items.push({ id: 'current-1', role: 'user', text: 'now', attachments: [current] });
+
+  assert.equal((await call(app.baseUrl, `/api/media/${prior.id}`, { token: owner.session.token })).status, 200);
+  assert.equal((await call(app.baseUrl, `/api/media/${prior.id}`, { token: member.token })).status, 403);
+  assert.equal((await call(app.baseUrl, `/api/media/${keptMine.id}`, { token: member.token })).status, 200);
+  assert.equal((await call(app.baseUrl, `/api/media/${current.id}`, { token: member.token })).status, 200);
+});
