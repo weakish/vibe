@@ -370,6 +370,9 @@ export class Conversation {
   }
 
   setOwnerPasskey(credential) {
+    if (this.hasOwnerPasskey) {
+      throw new MembershipError('The password is no longer used.', 401);
+    }
     return this.addPasskey('owner', credential);
   }
 

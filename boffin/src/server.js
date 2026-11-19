@@ -726,6 +726,9 @@ async function handlePassword(req, res, context) {
   if (body === undefined) {
     return undefined;
   }
+  if (context.conversation.hasOwnerPasskey) {
+    return sendJson(res, 401, { error: PASSWORD_RETIRED });
+  }
   const username = typeof body?.username === 'string' ? body.username : '';
   const password = typeof body?.password === 'string' ? body.password : '';
   const userOk = timingSafeEqual(digest(username), context.expectedUser);
@@ -750,9 +753,15 @@ async function handlePassword(req, res, context) {
 }
 
 async function handleRegister(req, res, context) {
+  if (context.conversation.hasOwnerPasskey) {
+    return sendJson(res, 401, { error: PASSWORD_RETIRED }, { close: true });
+  }
   const body = await readBody(req, res, AUTH_BODY_BYTES);
   if (body === undefined) {
     return undefined;
+  }
+  if (context.conversation.hasOwnerPasskey) {
+    return sendJson(res, 401, { error: PASSWORD_RETIRED });
   }
   const pending = takeChallenge(context, body?.challengeId, 'owner');
   const verified = pending && verifyRegistration(body?.credential, pending);
@@ -769,6 +778,7 @@ async function handleRegister(req, res, context) {
     context.logger.error(`[boffin] could not save passkey: ${error.message}`);
     return sendJson(res, 500, { error: 'Internal server error.' });
   }
+  dropChallenges(context, 'owner');
   return sendJson(res, 200, finishSignIn(context, ownerPerson(context), passkey.id));
 }
 
@@ -1184,6 +1194,14 @@ function takeChallenge(context, id, kind) {
     return null;
   }
   return entry;
+}
+
+function dropChallenges(context, kind) {
+  for (const [key, entry] of context.challenges) {
+    if (entry.kind === kind) {
+      context.challenges.delete(key);
+    }
+  }
 }
 
 function finishSignIn(context, person, passkeyId = null) {

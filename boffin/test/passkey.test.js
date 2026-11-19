@@ -1170,3 +1170,60 @@ test('removing a passkey revokes every session signed in with it', async (t) => 
   assert.equal((await call(app.baseUrl, '/api/session', { token: adaSecondLogin.token })).status, 200);
   assert.equal((await call(app.baseUrl, '/api/session', { token: thirdLogin.token })).status, 200);
 });
+
+test('a second pending owner bootstrap challenge cannot register after enrollment', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  const firstStart = await call(app.baseUrl, '/api/auth/password', {
+    method: 'POST',
+    origin: app.origin,
+    body: { username: USER, password: PASS },
+  });
+  const secondStart = await call(app.baseUrl, '/api/auth/password', {
+    method: 'POST',
+    origin: app.origin,
+    body: { username: USER, password: PASS },
+  });
+  assert.equal(firstStart.status, 200);
+  assert.equal(secondStart.status, 200);
+  const firstOptions = await firstStart.json();
+  const secondOptions = await secondStart.json();
+
+  const firstDevice = authenticator();
+  const firstReg = await call(app.baseUrl, '/api/auth/register', {
+    method: 'POST',
+    origin: app.origin,
+    body: {
+      challengeId: firstOptions.challengeId,
+      credential: firstDevice.register(Buffer.from(firstOptions.options.challenge, 'base64url'), app.origin),
+    },
+  });
+  assert.equal(firstReg.status, 200);
+  const owner = await firstReg.json();
+
+  const secondDevice = authenticator();
+  const secondReg = await call(app.baseUrl, '/api/auth/register', {
+    method: 'POST',
+    origin: app.origin,
+    body: {
+      challengeId: secondOptions.challengeId,
+      credential: secondDevice.register(Buffer.from(secondOptions.options.challenge, 'base64url'), app.origin),
+    },
+  });
+  assert.equal(secondReg.status, 401);
+  assert.equal((await secondReg.json()).error, 'The password is no longer used.');
+
+  const listed = await (await call(app.baseUrl, '/api/passkeys', { token: owner.token })).json();
+  assert.equal(listed.passkeys.length, 1);
+
+  assert.throws(
+    () =>
+      app.conversation.setOwnerPasskey({
+        credentialId: 'extra-owner-credential',
+        publicKey: { alg: -7, jwk: {} },
+        signCount: 0,
+      }),
+    { status: 401, message: 'The password is no longer used.' },
+  );
+});
