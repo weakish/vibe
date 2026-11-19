@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -987,6 +989,91 @@ test('falls back to development when the release bundle is missing', async (t) =
   const page = await fetch(`${app.baseUrl}/`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /src="\/landing\.js"/);
+});
+
+test('release mode serves only manifest bundles and refuses non-regular files', async (t) => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-release-root-'));
+  t.after(() => fs.rmSync(projectRoot, { recursive: true, force: true }));
+  const dist = path.join(projectRoot, 'public', 'dist');
+  fs.mkdirSync(dist, { recursive: true });
+  fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>ok</title>');
+  fs.writeFileSync(path.join(dist, 'spec.html'), '<!doctype html><title>spec</title>');
+  fs.writeFileSync(path.join(dist, 'landing-111.js'), 'console.log("app");');
+  fs.writeFileSync(path.join(dist, 'spec-222.js'), 'console.log("spec");');
+  fs.writeFileSync(path.join(dist, 'styles-333.css'), 'body{}');
+  fs.writeFileSync(path.join(dist, 'manifest.json'), '{"secret":"no"}');
+  fs.writeFileSync(path.join(dist, 'stray.txt'), 'stray');
+
+  const app = await startServer({
+    projectRoot,
+    beforeStart: (dir) => {
+      fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'data', 'static-assets.json'),
+        JSON.stringify({
+          version: 1,
+          mode: 'release',
+          manifest: {
+            builtAt: '2026-01-01T00:00:00.000Z',
+            fingerprint: 'x',
+            app: '/dist/landing-111.js',
+            spec: '/dist/spec-222.js',
+            styles: '/dist/styles-333.css',
+          },
+        }),
+      );
+    },
+  });
+  t.after(() => app.close());
+
+  const bundle = await fetch(`${app.baseUrl}/dist/landing-111.js`);
+  assert.equal(bundle.status, 200);
+  assert.match(bundle.headers.get('cache-control'), /immutable/);
+  assert.equal((await fetch(`${app.baseUrl}/dist/manifest.json`)).status, 404);
+  assert.equal((await fetch(`${app.baseUrl}/dist/index.html`)).status, 404);
+  assert.equal((await fetch(`${app.baseUrl}/dist/stray.txt`)).status, 404);
+
+  // Replacing a served file with a symlink or directory returns 404 instead of reading or 500.
+  const target = path.join(projectRoot, 'outside.txt');
+  fs.writeFileSync(target, 'outside');
+  fs.unlinkSync(path.join(dist, 'spec-222.js'));
+  fs.symlinkSync(target, path.join(dist, 'spec-222.js'));
+  assert.equal((await fetch(`${app.baseUrl}/dist/spec-222.js`)).status, 404);
+
+  fs.unlinkSync(path.join(dist, 'styles-333.css'));
+  fs.mkdirSync(path.join(dist, 'styles-333.css'));
+  assert.equal((await fetch(`${app.baseUrl}/dist/styles-333.css`)).status, 404);
+
+  // A FIFO must 404 without blocking a libuv thread. A socket open fails with ENXIO.
+  fs.unlinkSync(path.join(dist, 'landing-111.js'));
+  execFileSync('mkfifo', [path.join(dist, 'landing-111.js')]);
+  const fifo = await fetch(`${app.baseUrl}/dist/landing-111.js`, { signal: AbortSignal.timeout(2000) });
+  assert.equal(fifo.status, 404);
+
+  fs.unlinkSync(path.join(dist, 'spec-222.js'));
+  const socketPath = path.join(dist, 'spec-222.js');
+  const socket = net.createServer();
+  await new Promise((resolve, reject) => {
+    socket.once('error', reject);
+    socket.listen(socketPath, resolve);
+  });
+  t.after(() => socket.close());
+  assert.equal((await fetch(`${app.baseUrl}/dist/spec-222.js`)).status, 404);
+
+  // The theme snippet is inlined, not served, so a symlink there must not be copied into the page.
+  fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><!-- theme-init --><title>ok</title>');
+  fs.writeFileSync(path.join(projectRoot, 'public', 'theme-init.js'), 'try { window.theme = 1; } catch (e) {}\n');
+  const themed = await fetch(`${app.baseUrl}/`);
+  assert.equal(themed.status, 200);
+  assert.match(await themed.text(), /window\.theme = 1/);
+
+  const secret = path.join(projectRoot, 'secret.txt');
+  fs.writeFileSync(secret, 'SECRET-THEME');
+  fs.unlinkSync(path.join(projectRoot, 'public', 'theme-init.js'));
+  fs.symlinkSync(secret, path.join(projectRoot, 'public', 'theme-init.js'));
+  const leaked = await fetch(`${app.baseUrl}/`);
+  assert.equal(leaked.status, 404);
+  assert.equal((await leaked.text()).includes('SECRET-THEME'), false);
 });
 
 test('hides Grok usage when that CLI is not enabled', async (t) => {

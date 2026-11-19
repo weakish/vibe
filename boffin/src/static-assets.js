@@ -98,7 +98,9 @@ export function isManifestStale(manifest, currentFingerprint) {
 }
 
 export function bundleFileNames(manifest) {
-  return [manifest.app, manifest.spec, manifest.styles].map((url) => path.basename(url));
+  return [manifest.app, manifest.spec, manifest.styles]
+    .filter((url) => typeof url === 'string')
+    .map((url) => path.basename(url));
 }
 
 export async function bundleIsComplete(projectRoot, manifest) {
@@ -107,7 +109,10 @@ export async function bundleIsComplete(projectRoot, manifest) {
   }
   for (const name of [...bundleFileNames(manifest), 'index.html', 'spec.html']) {
     try {
-      await fs.access(path.join(projectRoot, DIST_DIR, name));
+      const stat = await fs.lstat(path.join(projectRoot, DIST_DIR, name));
+      if (!stat.isFile()) {
+        return false;
+      }
     } catch {
       return false;
     }
@@ -188,12 +193,13 @@ export function resolveStaticFile(pathname, state) {
     }
     if (pathname.startsWith('/dist/')) {
       const suffix = pathname.slice('/dist/'.length);
-      if (!suffix || suffix.includes('..') || suffix.includes('/')) {
+      if (!suffix || suffix.includes('..') || suffix.includes('/') || suffix.includes('\\')) {
         return null;
       }
-      // Only content-hashed bundles are safe to cache forever; the HTML and manifest are rewritten in place.
-      const hashed = bundleFileNames(state.manifest).includes(suffix);
-      return { relativePath: path.join(DIST_DIR, suffix), cache: hashed ? 'immutable' : 'no-cache' };
+      if (!bundleFileNames(state.manifest).includes(suffix)) {
+        return null;
+      }
+      return { relativePath: path.join(DIST_DIR, suffix), cache: 'immutable' };
     }
   }
   return null;

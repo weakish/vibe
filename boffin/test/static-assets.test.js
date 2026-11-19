@@ -56,15 +56,18 @@ test('resolveStaticFile maps release routes onto dist files', () => {
     relativePath: 'public/dist/index.html',
     cache: 'no-cache',
   });
+  assert.deepEqual(resolveStaticFile('/spec', state), {
+    relativePath: 'public/dist/spec.html',
+    cache: 'no-cache',
+  });
   assert.deepEqual(resolveStaticFile('/dist/app.js', state), {
     relativePath: 'public/dist/app.js',
     cache: 'immutable',
   });
-  // Rewritten in place on every bundle, so never cached forever.
-  assert.deepEqual(resolveStaticFile('/dist/index.html', state), {
-    relativePath: 'public/dist/index.html',
-    cache: 'no-cache',
-  });
+  // Only manifest-listed bundles are served under /dist/.
+  assert.equal(resolveStaticFile('/dist/index.html', state), null);
+  assert.equal(resolveStaticFile('/dist/manifest.json', state), null);
+  assert.equal(resolveStaticFile('/dist/other.js', state), null);
   assert.equal(resolveStaticFile('/app.js', state), null);
 });
 
@@ -84,6 +87,9 @@ test('bundle is complete only when every manifest file and page is present', asy
     fs.writeFileSync(path.join(dist, name), '');
   }
   assert.equal(await bundleIsComplete(root, manifest), true);
+  fs.unlinkSync(path.join(dist, 'app.js'));
+  fs.symlinkSync(path.join(dist, 'spec.js'), path.join(dist, 'app.js'));
+  assert.equal(await bundleIsComplete(root, manifest), false);
 });
 
 // A temp project with the real public/ pages, and a fake bun whose --version and build steps run as given.

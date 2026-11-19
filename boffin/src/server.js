@@ -114,6 +114,10 @@ const STATIC_FILES = new Map([
 for (const { id } of LOCALES) {
   STATIC_FILES.set(`/locales/${id}.js`, `public/locales/${id}.js`);
 }
+// O_NOFOLLOW refuses a symlink at the final path component. O_NONBLOCK keeps a FIFO
+// from blocking open() and pinning a libuv thread before the regular-file check.
+const STATIC_OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0);
+
 const CONTENT_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
@@ -177,6 +181,7 @@ export function createServer({
   username,
   password = null,
   bunBin = DEFAULT_BUN_BIN,
+  projectRoot = PROJECT_ROOT,
   logger = console,
   grokUsage = createGrokUsage({
     grokEnabled: conversation.backends.ids.includes(GROK),
@@ -210,7 +215,7 @@ export function createServer({
     specFile,
     shoppingFile: shoppingListPathForState(conversation.stateFile),
     workdir: conversation.workdir,
-    projectRoot: PROJECT_ROOT,
+    projectRoot,
     staticAssetsState: defaultStaticAssetsState(),
     staticAssetsReady: null,
     bundlePromise: null,
@@ -258,10 +263,13 @@ async function handleRequest(req, res, context) {
   if (req.method === 'GET' || req.method === 'HEAD') {
     const bundled = resolveStaticFile(url.pathname, context.staticAssetsState);
     if (bundled) {
-      return sendStatic(req, res, bundled.relativePath, { cache: bundled.cache });
+      return sendStatic(req, res, bundled.relativePath, {
+        cache: bundled.cache,
+        projectRoot: context.projectRoot,
+      });
     }
     if (STATIC_FILES.has(url.pathname)) {
-      return sendStatic(req, res, STATIC_FILES.get(url.pathname));
+      return sendStatic(req, res, STATIC_FILES.get(url.pathname), { projectRoot: context.projectRoot });
     }
   }
   return sendJson(res, 404, { error: 'Not found.' });
@@ -1537,35 +1545,56 @@ async function handleStaticAssetsPut(req, res, context) {
   }
 }
 
-async function sendStatic(req, res, relativePath, { cache = 'no-cache' } = {}) {
-  const file = path.join(PROJECT_ROOT, relativePath);
+// Null means a symlink or other non-regular entry. ENOENT propagates to the caller.
+async function readRegularFile(file) {
   let handle;
-  let body;
-  let lastModified;
   try {
-    handle = await fs.open(file, 'r');
+    handle = await fs.open(file, STATIC_OPEN_FLAGS);
     const stat = await handle.stat();
-    body = await handle.readFile();
-    lastModified = stat.mtime;
+    if (!stat.isFile()) {
+      return null;
+    }
+    return { body: await handle.readFile(), mtime: stat.mtime };
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      return sendJson(res, 404, { error: 'Not found.' });
+    // ENXIO: a socket (or other node) cannot be opened as a file. Same answer as a symlink.
+    if (error.code === 'ELOOP' || error.code === 'EISDIR' || error.code === 'ENOTDIR' || error.code === 'ENXIO') {
+      return null;
     }
     throw error;
   } finally {
     await handle?.close();
   }
+}
+
+async function sendStatic(req, res, relativePath, { cache = 'no-cache', projectRoot = PROJECT_ROOT } = {}) {
+  const file = path.join(projectRoot, relativePath);
+  let opened;
+  try {
+    opened = await readRegularFile(file);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return sendJson(res, 404, { error: 'Not found.' });
+    }
+    throw error;
+  }
+  if (!opened) {
+    return sendJson(res, 404, { error: 'Not found.' });
+  }
+  let { body, mtime: lastModified } = opened;
   if (path.extname(file) === '.html') {
     // Hash the body that is sent. A hash taken at startup from public/*.html
     // rejects a release copy, or a snippet filled in on this request.
     let html = body.toString('utf8');
     if (html.includes(THEME_INIT_MARKER)) {
-      const scriptFile = path.join(PROJECT_ROOT, 'public', 'theme-init.js');
-      const [script, scriptStat] = await Promise.all([fs.readFile(scriptFile, 'utf8'), fs.stat(scriptFile)]);
-      html = renderThemeInit(html, script);
+      const scriptFile = path.join(projectRoot, 'public', 'theme-init.js');
+      const snippet = await readRegularFile(scriptFile);
+      if (!snippet) {
+        return sendJson(res, 404, { error: 'Not found.' });
+      }
+      html = renderThemeInit(html, snippet.body.toString('utf8'));
       body = Buffer.from(html);
-      if (scriptStat.mtime > lastModified) {
-        lastModified = scriptStat.mtime;
+      if (snippet.mtime > lastModified) {
+        lastModified = snippet.mtime;
       }
     }
     res.setHeader('Content-Security-Policy', contentSecurityPolicy(html));
