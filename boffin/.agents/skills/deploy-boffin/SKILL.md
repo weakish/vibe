@@ -5,7 +5,7 @@ description: Deploy Boffin (a Node.js chat web UI for the Cursor Agent CLI, Grok
 
 # Deploy Boffin to Debian trixie
 
-Deploy the Boffin repository (the repository root is the folder containing this skill at `.agents/skills/deploy-boffin/SKILL.md` — the directory with `package.json`, `src/index.js`, and `config.example.json`) to a Debian 13 (trixie) server. Read `README.md` at the repository root first for the architecture and security model; this skill is the executable procedure.
+Deploy the repository containing Boffin (the Boffin project directory is the `boffin/` folder containing this skill at `.agents/skills/deploy-boffin/SKILL.md` — the directory with `package.json`, `src/index.js`, and `config.example.json` inside the `vibe` monorepo) to a Debian 13 (trixie) server. Read `README.md` in the Boffin project directory first for the architecture and security model; this skill is the executable procedure.
 
 ## Assumptions — do not redo this setup
 
@@ -19,7 +19,7 @@ This skill is written for a deployment environment that is **already configured*
 Two different users are involved — do not conflate them:
 
 - **`<github-username>`** — the operator's own account. It is used **only for SSH**: logging in to administer the server, and git-over-SSH operations (the `deploy` remote) when deploying or upgrading the Boffin source. It is *not* the account Boffin runs as, not the agent account, and not the Boffin web-login username.
-- **`boffin`** — a dedicated, unprivileged service account created in step 3. The Boffin service and the chosen CLI(s) run as `boffin`, the agent's credentials and commits live in `/home/boffin`, and `/srv/boffin` is owned exclusively by `boffin:boffin`. You never SSH in as `boffin` (no key is installed for it); you reach it via `sudo -u boffin` / `sudo su - boffin` from the operator's SSH login, and git-over-SSH pushes/fetches run `git-upload-pack` / `git-receive-pack` as `boffin` via a narrow `sudoers` rule so git never runs inside `/srv/boffin` as `<github-username>`.
+- **`boffin`** — a dedicated, unprivileged service account created in step 3. The Boffin service and the chosen CLI(s) run as `boffin`, the agent's credentials and commits live in `/home/boffin`, and `/srv/boffin` (the deployed monorepo checkout, with Boffin at `/srv/boffin/boffin`) is owned exclusively by `boffin:boffin`. You never SSH in as `boffin` (no key is installed for it); you reach it via `sudo -u boffin` / `sudo su - boffin` from the operator's SSH login, and git-over-SSH pushes/fetches run `git-upload-pack` / `git-receive-pack` as `boffin` via a narrow `sudoers` rule so git never runs inside `/srv/boffin` as `<github-username>`.
 
 Architecture you are building:
 
@@ -27,7 +27,7 @@ Architecture you are building:
 Browser ──443/TLS──▶ Caddy ──127.0.0.1:8080 + X-Forwarded-For──▶ Boffin (systemd, user boffin)
                                                                       │ spawns agent --force, grok --always-approve, and/or opencode --auto
                                                                       ▼
-                          Cursor, Grok, and/or OpenCode CLI (user boffin) ──edits/commits──▶ /srv/boffin
+                          Cursor, Grok, and/or OpenCode CLI (user boffin) ──edits──▶ /srv/boffin/boffin (commits in repo /srv/boffin)
 Operator ──ssh <github-username>@<hostname>──▶ administer via sudo; push/fetch over SSH (remote git runs as boffin via sudo)
 ```
 
@@ -41,7 +41,7 @@ If the operator has not already supplied them in the request, ask for:
 | The **deployment server hostname** | `<hostname>` | A fully qualified hostname (e.g. `boffin.example.com`) used for **both** SSH (`ssh <github-username>@<hostname>`) and the deployed service (`https://<hostname>`). It must resolve to the server. Passkeys bind to this hostname, so confirm it is final — changing it later orphans all passkeys. |
 | Which **agent(s)** to install | `<agents>` | Any combination of `cursor`, `grok`, and `opencode` (for example `cursor`, `grok`, `opencode`, or any two). Written to `config.json` as a `"agents"` array. If they have not named one, ask — do not silently pick. **Do not ask for a model.** Cursor always uses Composer 2.5 (`composer-2.5`), Grok always uses Grok 4.7 High (`grok-4.7/high`), and OpenCode always uses Big Pickle (`opencode/big-pickle`). The owner can pick a model (and agent, when more than one is enabled) when starting a new chat in the app. |
 
-Derived, do not ask separately: SSH target `<github-username>@<hostname>`, service URL `https://<hostname>`, service account `boffin`, Cursor binary `/home/boffin/.local/bin/agent`, Grok binary `/home/boffin/.grok/bin/grok`, OpenCode binary `/home/boffin/.opencode/bin/opencode`, workdir `/srv/boffin`, Boffin web-login username `boffin`.
+Derived, do not ask separately: SSH target `<github-username>@<hostname>`, service URL `https://<hostname>`, service account `boffin`, Cursor binary `/home/boffin/.local/bin/agent`, Grok binary `/home/boffin/.grok/bin/grok`, OpenCode binary `/home/boffin/.opencode/bin/opencode`, repo checkout `/srv/boffin`, workdir `/srv/boffin/boffin`, Boffin web-login username `boffin`.
 
 Default unless the operator volunteers otherwise: deploy the current local checkout `HEAD` (committed content only — `git push` ignores uncommitted and untracked files).
 
@@ -88,13 +88,13 @@ If Node ever reports < 20, stop and install a supported Node.js (e.g. the NodeSo
 **Bundled static assets (optional, for slow client links):** Boffin serves unbundled files by default so agent edits to `public/` show up after refresh. The owner can switch to **release** in Settings, which runs `bun build` on the server and serves hashed bundles from `public/dist/`. Install Bun for the `boffin` user before using that mode:
 
 ```bash
-sudo -u boffin bash /srv/boffin/scripts/install-bun.sh
+sudo -u boffin bash /srv/boffin/boffin/scripts/install-bun.sh
 sudo -u boffin /home/boffin/.bun/bin/bun --version
 ```
 
 That script downloads the same GitHub release zip as `bun.sh/install`, but extracts with `unzip` when available and otherwise with `python3` (no `unzip` Debian package required if `python3` is already on the system).
 
-Set `"bun_bin": "/home/boffin/.bun/bin/bun"` in `config.json` (step 5). The service PATH in step 6 includes `/home/boffin/.bun/bin`, so an unset `bun_bin` still runs `bun`. After pushing UI changes you expect to stay stable for a while, the owner switches to **release** once in the browser. That updates the running process. The other way is `sudo -u boffin node scripts/bundle-static.mjs` from `/srv/boffin`, then write `data/static-assets.json` and restart. The script only fills `public/dist/` and does not change the mode the process has already loaded. The state file must be version 1, and the object in `public/dist/manifest.json` must be nested under `manifest`:
+Set `"bun_bin": "/home/boffin/.bun/bin/bun"` in `config.json` (step 5). The service PATH in step 6 includes `/home/boffin/.bun/bin`, so an unset `bun_bin` still runs `bun`. After pushing UI changes you expect to stay stable for a while, the owner switches to **release** once in the browser. That updates the running process. The other way is `sudo -u boffin node scripts/bundle-static.mjs` from `/srv/boffin/boffin`, then write `data/static-assets.json` and restart. The script only fills `public/dist/` and does not change the mode the process has already loaded. The state file must be version 1, and the object in `public/dist/manifest.json` must be nested under `manifest`:
 
 ```json
 {
@@ -120,7 +120,7 @@ Create the service account (no SSH key is installed for `boffin` — all SSH sta
 sudo useradd --create-home --shell /bin/bash boffin
 ```
 
-Create the working directory owned exclusively by `boffin:boffin` (`0750`), initialize the repository as `boffin`, and allow pushes into its checked-out branch:
+Create the monorepo checkout owned exclusively by `boffin:boffin` (`0750`), initialize the repository as `boffin`, and allow pushes into its checked-out branch. That push creates the Boffin workdir at `/srv/boffin/boffin`:
 
 ```bash
 # On the server, over SSH as <github-username>:
@@ -155,8 +155,8 @@ Verify on the server that the push landed and every file stays owned by `boffin:
 
 ```bash
 # On the server:
-sudo -u boffin ls /srv/boffin
-sudo -u boffin stat -c '%U:%G' /srv/boffin/src/index.js   # expect: boffin:boffin
+sudo -u boffin ls /srv/boffin/boffin
+sudo -u boffin stat -c '%U:%G' /srv/boffin/boffin/src/index.js   # expect: boffin:boffin
 ```
 
 Confirm with the operator before pushing if the checkout has uncommitted changes they expected to be deployed — those do not transfer. `config.json` and `data/` are git-ignored, so they stay out of the repo and out of the agent's commits; untracked files on the server never block a push unless a pushed commit adds a file with the same path.
@@ -296,7 +296,7 @@ Credentials land in `/home/boffin`, which is why the systemd unit in step 6 sets
 
 ## Step 5 — Boffin configuration
 
-Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u boffin install -m 600 /dev/null /srv/boffin/config.json`, edit it as root or via `sudo -e`, then verify ownership and mode with `sudo ls -l /srv/boffin/config.json` — `/srv/boffin` is mode `0750`, so the operator cannot `ls` it directly; fix with `sudo chown boffin:boffin /srv/boffin/config.json && sudo chmod 600 /srv/boffin/config.json` if needed). Per `src/config.js`, the config lives in the working directory and the server is started as `node src/index.js <workdir>`. Based on `config.example.json`:
+Create `/srv/boffin/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u boffin install -m 600 /dev/null /srv/boffin/boffin/config.json`, edit it as root or via `sudo -e`, then verify ownership and mode with `sudo ls -l /srv/boffin/boffin/config.json` — `/srv/boffin` is mode `0750`, so the operator cannot `ls` it directly; fix with `sudo chown boffin:boffin /srv/boffin/boffin/config.json && sudo chmod 600 /srv/boffin/boffin/config.json` if needed). Per `src/config.js`, the config lives in the working directory and the server is started as `node src/index.js <workdir>`. Based on `config.example.json`:
 
 ```json
 {
@@ -319,7 +319,7 @@ Create `/srv/boffin/config.json` owned by `boffin`, mode `0600` (e.g. `sudo -u b
 
 - Set `"agents"` from `<agents>` using any combination of `"cursor"`, `"grok"`, and `"opencode"`. Always write `"model": "composer-2.5"`, `"grok_model": "grok-4.7/high"`, and `"opencode_model": "opencode/big-pickle"` — do not ask for a model. Omit `agent_bin` only when Cursor is not installed; omit `grok_bin` only when Grok is not installed; omit `opencode_bin` only when OpenCode is not installed. Set `"bun_bin"` to `/home/boffin/.bun/bin/bun` when Bun is installed for release mode. Use absolute paths to avoid PATH surprises under systemd. The web-login `username` is the literal `boffin` — the GitHub username plays no role here.
 - Generate the password on the server (e.g. `openssl rand -base64 24`), put it only in this file, and report it to the operator once at handover.
-- **What the password is for:** it is only the bootstrap credential for first-time owner passkey enrollment. Once an owner passkey exists, the server answers "The password is no longer used" and sign-in is passkey-only; remove `"password"` from `/srv/boffin/config.json` in step 8 so the plaintext secret does not stay on disk (and cannot reactivate password login if `data/state.json` is lost). Whoever enrolls first becomes the owner, so the operator must enroll as the very first action after step 7 — from the moment Caddy is live, the service is publicly reachable (enrollment is still gated by this password and per-client rate limits, but do not leave it unenrolled).
+- **What the password is for:** it is only the bootstrap credential for first-time owner passkey enrollment. Once an owner passkey exists, the server answers "The password is no longer used" and sign-in is passkey-only; remove `"password"` from `/srv/boffin/boffin/config.json` in step 8 so the plaintext secret does not stay on disk (and cannot reactivate password login if `data/state.json` is lost). Whoever enrolls first becomes the owner, so the operator must enroll as the very first action after step 7 — from the moment Caddy is live, the service is publicly reachable (enrollment is still gated by this password and per-client rate limits, but do not leave it unenrolled).
 
 ## Step 6 — systemd service
 
@@ -334,11 +334,11 @@ Wants=network-online.target
 [Service]
 User=boffin
 Group=boffin
-WorkingDirectory=/srv/boffin
+WorkingDirectory=/srv/boffin/boffin
 Environment=HOME=/home/boffin
 Environment=PATH=/home/boffin/.local/bin:/home/boffin/.bun/bin:/usr/local/bin:/usr/bin:/bin
 # Do not prepend /home/boffin/.grok/bin — that directory's `agent` would shadow Cursor.
-ExecStart=/usr/bin/node /srv/boffin/src/index.js /srv/boffin
+ExecStart=/usr/bin/node /srv/boffin/boffin/src/index.js /srv/boffin/boffin
 Restart=on-failure
 RestartSec=3
 
@@ -401,7 +401,7 @@ Do not hand over until all of these pass:
 - [ ] Compression: `curl -sI -H 'Accept-Encoding: gzip' https://<hostname>/app.js` includes `content-encoding: gzip` or `zstd` and an ETag. `curl -sI http://127.0.0.1:8080/app.js` includes an ETag and no `content-encoding`.
 - [ ] Service: `systemctl is-enabled boffin caddy` both report enabled; `journalctl -u boffin` is clean; `systemctl show -p User boffin` confirms the service runs as `boffin`.
 - [ ] **Operator enrolls the owner passkey immediately:** open `https://<hostname>`, sign in with username `boffin` and the generated password, create the owner passkey. Then confirm a fresh browser session signs in with the passkey and the password is now refused ("The password is no longer used").
-- [ ] **Remove the retired bootstrap password:** delete the `"password"` key from `/srv/boffin/config.json`, restart `boffin` (`sudo systemctl restart boffin`), confirm `journalctl -u boffin` is clean, and confirm passkey sign-in still works.
+- [ ] **Remove the retired bootstrap password:** delete the `"password"` key from `/srv/boffin/boffin/config.json`, restart `boffin` (`sudo systemctl restart boffin`), confirm `journalctl -u boffin` is clean, and confirm passkey sign-in still works.
 - [ ] Agent: the operator sends a trivial chat message (e.g. "say hi") and gets a streamed reply — this exercises Caddy streaming, the systemd service, and the `boffin`-user CLI login in one shot. If more than one agent is enabled, start a new chat as owner and confirm each enabled agent (Cursor, Grok, OpenCode) can be selected.
 - [ ] Agent git: on the server, `sudo -u boffin git -C /srv/boffin status` and `sudo -H -u boffin git config --global --get user.email` work with no "dubious ownership" error, the latter printing the identity copied in step 3.
 - [ ] Persistence across reboot — optionally prove with a reboot if the operator accepts a few minutes of downtime.
@@ -449,12 +449,12 @@ sudo systemctl daemon-reload
 3. Rejected because the **working directory is dirty** ("refusing to update checked out branch" / unstaged or uncommitted changes): this is intentional — nothing was overwritten, and a chat may be in progress. Wait for any running chat to finish, then settle the agent's edits **as `boffin`** over SSH: `sudo -u boffin git -C /srv/boffin status` (and `diff` if dirty). Either commit them (`sudo -H -u boffin git -C /srv/boffin commit -am ...`, then go to step 1) or — only with the operator's explicit approval — discard them (`sudo -u boffin git -C /srv/boffin checkout -- .`). Never force the push.
 4. `ssh <github-username>@<hostname> sudo systemctl restart boffin`. Code changes, yours or the agent's, take effect only on restart; while chatting, the agent itself cannot restart the service for you.
 5. If `config.example.json` gained new keys in an update, merge them into the server's `config.json` by hand — it is git-ignored and is never updated by a push. Unknown keys in `config.json` make the server refuse to start, so also remove keys an update drops. `config.json` stays owned by `boffin`, mode `0600`.
-6. On every update, if `/srv/boffin/config.json` still has a `"password"` key, remove that key only when the state file shows an enrolled owner passkey. Do not print `config.json` or the state file. The state file is `state_file` from the config, or `data/state.json` when that key is absent. Resolve it the way `src/config.js` does: expand a leading `~` to the `boffin` user's home, then resolve against `/srv/boffin` (the default path is `/srv/boffin/data/state.json`). Read it as `boffin`. An owner passkey is a `passkeys` entry with `"personId": "owner"`. When `passkeys` is absent, a legacy `ownerPasskey` object counts instead. A member passkey does not count. Leave `"password"` in place when no owner passkey is enrolled — removing it then makes the server refuse to start. Before editing, copy the file to `/home/boffin/config.json.update-bak` as `boffin`, mode `0600` (not under `/srv/boffin`: `config.json.bak` is not git-ignored). Edit `config.json` as `boffin` and leave it owned by `boffin`, mode `0600`. If this step or step 5 changed `config.json`, on the server run `sudo systemctl restart boffin` and `journalctl -u boffin -n 50`, and expect the listening line from the "Step 6 — systemd service" section. If that line is absent, copy the backup back over `config.json` as `boffin`, restart again, delete the backup, and stop. If the listening line is present, delete the backup.
+6. On every update, if `/srv/boffin/boffin/config.json` still has a `"password"` key, remove that key only when the state file shows an enrolled owner passkey. Do not print `config.json` or the state file. The state file is `state_file` from the config, or `data/state.json` when that key is absent. Resolve it the way `src/config.js` does: expand a leading `~` to the `boffin` user's home, then resolve against `/srv/boffin/boffin` (the default path is `/srv/boffin/boffin/data/state.json`). Read it as `boffin`. An owner passkey is a `passkeys` entry with `"personId": "owner"`. When `passkeys` is absent, a legacy `ownerPasskey` object counts instead. A member passkey does not count. Leave `"password"` in place when no owner passkey is enrolled — removing it then makes the server refuse to start. Before editing, copy the file to `/home/boffin/config.json.update-bak` as `boffin`, mode `0600` (not under `/srv/boffin`: `config.json.bak` is not git-ignored). Edit `config.json` as `boffin` and leave it owned by `boffin`, mode `0600`. If this step or step 5 changed `config.json`, on the server run `sudo systemctl restart boffin` and `journalctl -u boffin -n 50`, and expect the listening line from the "Step 6 — systemd service" section. If that line is absent, copy the backup back over `config.json` as `boffin`, restart again, delete the backup, and stop. If the listening line is present, delete the backup.
 7. On the server, if the `<hostname>` site block in `/etc/caddy/Caddyfile` has no `Strict-Transport-Security` header, add the line `header Strict-Transport-Security "max-age=31536000"` inside that block only. The Caddyfile is not updated by a git push. Do not rewrite or remove any other line. If you add the line, run `caddy validate --config /etc/caddy/Caddyfile` and, only if validation succeeds, `sudo systemctl reload caddy`.
 
 ## Rollback and troubleshooting
 
-- **Bad agent edit broke the service:** the agent is allowed to modify Boffin's own source in `/srv/boffin`; a bad edit can crash the service on restart. Recover on the server as `boffin`: `sudo -u boffin git -C /srv/boffin log --oneline -5`, then `sudo -u boffin git -C /srv/boffin reset --hard <good-commit>` (or `git revert <bad-commit>`), then `sudo systemctl restart boffin`. Uncommitted breakage: `sudo -u boffin git -C /srv/boffin checkout -- .`; also remove stray untracked files with `sudo -u boffin git -C /srv/boffin clean -fd -e config.json -e data` only after checking `status` (ignored files such as `config.json` and `data/` are kept by default).
+- **Bad agent edit broke the service:** the agent is allowed to modify Boffin's own source in `/srv/boffin/boffin`; a bad edit can crash the service on restart. Recover on the server as `boffin`: `sudo -u boffin git -C /srv/boffin log --oneline -5`, then `sudo -u boffin git -C /srv/boffin reset --hard <good-commit>` (or `git revert <bad-commit>`), then `sudo systemctl restart boffin`. Uncommitted breakage: `sudo -u boffin git -C /srv/boffin checkout -- .`; also remove stray untracked files with `sudo -u boffin git -C /srv/boffin clean -fd -e config.json -e data` only after checking `status` (ignored files such as `config.json` and `data/` are kept by default).
 - **Chats fail with agent auth errors:** the Cursor, Grok, or OpenCode login (as `boffin`) expired. On the server, re-run the matching login from step 4, then `sudo systemctl restart boffin`.
 - **Certificate issuance fails:** DNS for `<hostname>` does not point at the server yet, or the pre-configured firewall blocks 80/443. Check `journalctl -u caddy` and DNS yourself; firewall changes are the operator's, outside this skill — do not install or reconfigure `ufw`/provider rules to fix it.
 - **Everyone shares one rate-limit budget / instant 429s:** the proxy is not sending the header, or Boffin is not behind loopback Caddy. Confirm the Caddyfile `header_up` line from step 7 and that `host` is still `127.0.0.1` in `config.json`. Boffin ignores `X-Forwarded-For` from non-loopback peers by design, so direct exposure cannot be spoofed but collapses all clients into the peer's bucket. A local process (including the agent) can set the header itself over loopback — accepted, since it can already read `config.json`.
