@@ -20,6 +20,7 @@ test('resolves the shopping list beside the state file', () => {
   assert.equal(shoppingListPathForState(stateFile), '/srv/boffin/data/shopping-list.json');
   assert.equal(shoppingListRelativePath('/srv/boffin', stateFile), 'data/shopping-list.json');
   assert.match(shoppingListPrompt('data/shopping-list.json'), /data\/shopping-list\.json/);
+  assert.match(shoppingListPrompt('data/shopping-list.json'), /necessary to buy/);
   assert.match(shoppingListPrompt('data/shopping-list.json'), /already bought/);
 });
 

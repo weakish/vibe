@@ -105,8 +105,14 @@ const el = {
   exportDialog: document.getElementById('export-dialog'),
   exportDialogTitle: document.getElementById('export-dialog-title'),
   exportDialogCancel: document.getElementById('export-dialog-cancel'),
-  filesMenu: document.getElementById('files-menu'),
-  filesDialog: document.getElementById('files-dialog'),
+  viewMenuHost: document.getElementById('view-menu-host'),
+  viewOpen: document.getElementById('view-open'),
+  viewPanel: document.getElementById('view-panel'),
+  viewChat: document.getElementById('view-chat'),
+  viewShopping: document.getElementById('view-shopping'),
+  viewFiles: document.getElementById('view-files'),
+  viewOverview: document.getElementById('view-overview'),
+  filesView: document.getElementById('files-view'),
   filesTitle: document.getElementById('files-title'),
   filesStatus: document.getElementById('files-status'),
   filesConversationHeading: document.getElementById('files-conversation-heading'),
@@ -116,31 +122,11 @@ const el = {
   filesWorkdirHeading: document.getElementById('files-workdir-heading'),
   filesWorkdirList: document.getElementById('files-workdir-list'),
   filesWorkdirEmpty: document.getElementById('files-workdir-empty'),
-  filesClose: document.getElementById('files-close'),
-  overviewMenu: document.getElementById('overview-menu'),
-  overviewDialog: document.getElementById('overview-dialog'),
+  overviewView: document.getElementById('overview-view'),
   overviewTitle: document.getElementById('overview-title'),
   overviewStatus: document.getElementById('overview-status'),
   overviewEmpty: document.getElementById('overview-empty'),
-  overviewTopicSection: document.getElementById('overview-topic-section'),
-  overviewTopicHeading: document.getElementById('overview-topic-heading'),
-  overviewTopic: document.getElementById('overview-topic'),
-  overviewRequestsSection: document.getElementById('overview-requests-section'),
-  overviewRequestsHeading: document.getElementById('overview-requests-heading'),
-  overviewRequestsList: document.getElementById('overview-requests-list'),
-  overviewResponsesSection: document.getElementById('overview-responses-section'),
-  overviewResponsesHeading: document.getElementById('overview-responses-heading'),
-  overviewResponsesList: document.getElementById('overview-responses-list'),
-  overviewWorkSection: document.getElementById('overview-work-section'),
-  overviewWorkHeading: document.getElementById('overview-work-heading'),
-  overviewWorkList: document.getElementById('overview-work-list'),
-  overviewMaterialsSection: document.getElementById('overview-materials-section'),
-  overviewMaterialsHeading: document.getElementById('overview-materials-heading'),
-  overviewMaterialsList: document.getElementById('overview-materials-list'),
-  overviewIssuesSection: document.getElementById('overview-issues-section'),
-  overviewIssuesHeading: document.getElementById('overview-issues-heading'),
-  overviewIssuesList: document.getElementById('overview-issues-list'),
-  overviewClose: document.getElementById('overview-close'),
+  overviewStory: document.getElementById('overview-story'),
   invite: document.getElementById('invite'),
   people: document.getElementById('people'),
   passkeys: document.getElementById('passkeys'),
@@ -174,7 +160,6 @@ const el = {
   conversationEntries: document.getElementById('conversation-entries'),
   specLink: document.getElementById('spec-link'),
   shopping: document.getElementById('shopping'),
-  shoppingOpen: document.getElementById('shopping-open'),
   shoppingStatus: document.getElementById('shopping-status'),
   shoppingWantedHeading: document.getElementById('shopping-wanted-heading'),
   shoppingWantedList: document.getElementById('shopping-wanted-list'),
@@ -182,10 +167,6 @@ const el = {
   shoppingBoughtSection: document.getElementById('shopping-bought-section'),
   shoppingBoughtHeading: document.getElementById('shopping-bought-heading'),
   shoppingBoughtList: document.getElementById('shopping-bought-list'),
-  shoppingAddForm: document.getElementById('shopping-add-form'),
-  shoppingAddLabel: document.getElementById('shopping-add-label'),
-  shoppingAddInput: document.getElementById('shopping-add-input'),
-  shoppingAddSubmit: document.getElementById('shopping-add-submit'),
   newChat: document.getElementById('new-chat'),
   language: document.getElementById('language'),
   languageFlag: document.getElementById('language-flag'),
@@ -429,8 +410,14 @@ function applyChrome() {
   el.language?.setAttribute('aria-label', msg('language'));
   el.settings.setAttribute('aria-label', msg('settings'));
   el.newChat.setAttribute('aria-label', msg('newChat'));
-  if (el.shoppingOpen) {
-    el.shoppingOpen.setAttribute('aria-label', msg('shopping'));
+  if (el.viewOpen) {
+    el.viewOpen.setAttribute('aria-label', msg('filesView'));
+  }
+  if (el.viewChat) {
+    el.viewChat.textContent = msg('specBack');
+    el.viewShopping.textContent = msg('shopping');
+    el.viewFiles.textContent = msg('files');
+    el.viewOverview.textContent = msg('overview');
   }
   el.themeLabel.textContent = msg('theme');
   el.sizeLabel.textContent = msg('size');
@@ -469,30 +456,16 @@ function applyChrome() {
     }
   }
   el.exportDialogCancel.textContent = msg('cancel');
-  if (el.filesMenu) {
-    el.filesMenu.textContent = msg('files');
-  }
   if (el.filesTitle) {
     el.filesTitle.textContent = msg('filesTitle');
     el.filesConversationHeading.textContent = msg('filesConversation');
     el.filesWorkdirHeading.textContent = msg('filesWorkdir');
     el.filesConversationEmpty.textContent = msg('filesEmpty');
     el.filesWorkdirEmpty.textContent = msg('filesEmpty');
-    el.filesClose.textContent = msg('cancel');
-  }
-  if (el.overviewMenu) {
-    el.overviewMenu.textContent = msg('overview');
   }
   if (el.overviewTitle) {
     el.overviewTitle.textContent = msg('overviewTitle');
-    el.overviewTopicHeading.textContent = msg('overviewTopic');
-    el.overviewRequestsHeading.textContent = msg('overviewRequests');
-    el.overviewResponsesHeading.textContent = msg('overviewResponses');
-    el.overviewWorkHeading.textContent = msg('overviewWork');
-    el.overviewMaterialsHeading.textContent = msg('overviewMaterials');
-    el.overviewIssuesHeading.textContent = msg('overviewIssues');
     el.overviewEmpty.textContent = msg('overviewEmpty');
-    el.overviewClose.textContent = msg('cancel');
   }
   el.people.textContent = msg('people');
   el.passkeys.textContent = msg('passkeys');
@@ -1254,6 +1227,7 @@ function setLanguageOpen(open) {
   el.language?.setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open) {
     setSettingsOpen(false);
+    setViewOpen(false);
     setDemoLanguageOpen(false);
     setDemoSettingsOpen(false);
     setLandingLanguageOpen(false);
@@ -1269,12 +1243,29 @@ function setSettingsOpen(open) {
   }
   if (open) {
     setLanguageOpen(false);
+    setViewOpen(false);
     setDemoLanguageOpen(false);
     setDemoSettingsOpen(false);
     setLandingLanguageOpen(false);
     setLandingSettingsOpen(false);
     requestStaticAssets();
     requestGrokUsage({ fresh: true });
+  }
+}
+
+function setViewOpen(open) {
+  if (!el.viewPanel) {
+    return;
+  }
+  el.viewPanel.hidden = !open;
+  el.viewOpen?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setLanguageOpen(false);
+    setSettingsOpen(false);
+    setDemoLanguageOpen(false);
+    setDemoSettingsOpen(false);
+    setLandingLanguageOpen(false);
+    setLandingSettingsOpen(false);
   }
 }
 
@@ -1286,8 +1277,12 @@ function isSettingsTarget(node) {
   return Boolean(node && el.settings) && (el.settings.contains(node) || el.settingsPanel.contains(node));
 }
 
+function isViewTarget(node) {
+  return Boolean(node && el.viewOpen) && (el.viewOpen.contains(node) || el.viewPanel?.contains(node));
+}
+
 function isAppChromeMenuTarget(node) {
-  return isLanguageTarget(node) || isSettingsTarget(node);
+  return isLanguageTarget(node) || isSettingsTarget(node) || isViewTarget(node);
 }
 
 function isDemoLanguageTarget(node) {
@@ -1314,9 +1309,15 @@ function onSettingsClick() {
   setSettingsOpen(opening);
 }
 
+function onViewClick() {
+  const opening = el.viewPanel.hidden;
+  setViewOpen(opening);
+}
+
 function closeAppChromeMenus() {
   setLanguageOpen(false);
   setSettingsOpen(false);
+  setViewOpen(false);
 }
 
 function closeLandingAndDemoMenus() {
@@ -1371,9 +1372,14 @@ function onDocumentKeyDown(event) {
     el.settings.focus();
     return;
   }
-  if (state.shopping) {
-    hideShopping();
-    el.shoppingOpen?.focus();
+  if (el.viewPanel && !el.viewPanel.hidden) {
+    setViewOpen(false);
+    el.viewOpen?.focus();
+    return;
+  }
+  if (state.view && state.view !== 'chat') {
+    setActiveView('chat');
+    el.viewOpen?.focus();
   }
 }
 
@@ -1685,32 +1691,19 @@ function captureAppElements() {
   el.exportDialog = document.getElementById('export-dialog');
   el.exportDialogTitle = document.getElementById('export-dialog-title');
   el.exportDialogCancel = document.getElementById('export-dialog-cancel');
-  el.filesMenu = document.getElementById('files-menu');
-  el.overviewMenu = document.getElementById('overview-menu');
-  el.overviewDialog = document.getElementById('overview-dialog');
+  el.viewMenuHost = document.getElementById('view-menu-host');
+  el.viewOpen = document.getElementById('view-open');
+  el.viewPanel = document.getElementById('view-panel');
+  el.viewChat = document.getElementById('view-chat');
+  el.viewShopping = document.getElementById('view-shopping');
+  el.viewFiles = document.getElementById('view-files');
+  el.viewOverview = document.getElementById('view-overview');
+  el.overviewView = document.getElementById('overview-view');
   el.overviewTitle = document.getElementById('overview-title');
   el.overviewStatus = document.getElementById('overview-status');
   el.overviewEmpty = document.getElementById('overview-empty');
-  el.overviewTopicSection = document.getElementById('overview-topic-section');
-  el.overviewTopicHeading = document.getElementById('overview-topic-heading');
-  el.overviewTopic = document.getElementById('overview-topic');
-  el.overviewRequestsSection = document.getElementById('overview-requests-section');
-  el.overviewRequestsHeading = document.getElementById('overview-requests-heading');
-  el.overviewRequestsList = document.getElementById('overview-requests-list');
-  el.overviewResponsesSection = document.getElementById('overview-responses-section');
-  el.overviewResponsesHeading = document.getElementById('overview-responses-heading');
-  el.overviewResponsesList = document.getElementById('overview-responses-list');
-  el.overviewWorkSection = document.getElementById('overview-work-section');
-  el.overviewWorkHeading = document.getElementById('overview-work-heading');
-  el.overviewWorkList = document.getElementById('overview-work-list');
-  el.overviewMaterialsSection = document.getElementById('overview-materials-section');
-  el.overviewMaterialsHeading = document.getElementById('overview-materials-heading');
-  el.overviewMaterialsList = document.getElementById('overview-materials-list');
-  el.overviewIssuesSection = document.getElementById('overview-issues-section');
-  el.overviewIssuesHeading = document.getElementById('overview-issues-heading');
-  el.overviewIssuesList = document.getElementById('overview-issues-list');
-  el.overviewClose = document.getElementById('overview-close');
-  el.filesDialog = document.getElementById('files-dialog');
+  el.overviewStory = document.getElementById('overview-story');
+  el.filesView = document.getElementById('files-view');
   el.filesTitle = document.getElementById('files-title');
   el.filesStatus = document.getElementById('files-status');
   el.filesConversationHeading = document.getElementById('files-conversation-heading');
@@ -1720,7 +1713,6 @@ function captureAppElements() {
   el.filesWorkdirHeading = document.getElementById('files-workdir-heading');
   el.filesWorkdirList = document.getElementById('files-workdir-list');
   el.filesWorkdirEmpty = document.getElementById('files-workdir-empty');
-  el.filesClose = document.getElementById('files-close');
   el.people = document.getElementById('people');
   el.passkeys = document.getElementById('passkeys');
   el.passkeysDialog = document.getElementById('passkeys-dialog');
@@ -1744,7 +1736,6 @@ function captureAppElements() {
   el.conversationEntries = document.getElementById('conversation-entries');
   el.specLink = document.getElementById('spec-link');
   el.shopping = document.getElementById('shopping');
-  el.shoppingOpen = document.getElementById('shopping-open');
   el.shoppingStatus = document.getElementById('shopping-status');
   el.shoppingWantedHeading = document.getElementById('shopping-wanted-heading');
   el.shoppingWantedList = document.getElementById('shopping-wanted-list');
@@ -1752,10 +1743,6 @@ function captureAppElements() {
   el.shoppingBoughtSection = document.getElementById('shopping-bought-section');
   el.shoppingBoughtHeading = document.getElementById('shopping-bought-heading');
   el.shoppingBoughtList = document.getElementById('shopping-bought-list');
-  el.shoppingAddForm = document.getElementById('shopping-add-form');
-  el.shoppingAddLabel = document.getElementById('shopping-add-label');
-  el.shoppingAddInput = document.getElementById('shopping-add-input');
-  el.shoppingAddSubmit = document.getElementById('shopping-add-submit');
   el.newChat = document.getElementById('new-chat');
   el.language = document.getElementById('language');
   el.languageFlag = document.getElementById('language-flag');
@@ -1972,28 +1959,23 @@ function bindAppEvents() {
     el.exportDialog.close();
   });
   el.language?.addEventListener('click', onLanguageClick);
-  el.shoppingOpen.addEventListener('click', () => {
+  el.viewOpen?.addEventListener('click', onViewClick);
+  el.viewChat?.addEventListener('click', () => {
     closeAppChromeMenus();
-    if (state.shopping) {
-      hideShopping();
-    } else {
-      void openShopping();
-    }
+    setActiveView('chat');
   });
-  el.shoppingAddForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void addShoppingItem();
-  });
-  el.filesMenu.addEventListener('click', () => {
+  el.viewShopping?.addEventListener('click', () => {
     closeAppChromeMenus();
-    void openFiles();
+    setActiveView('shopping');
   });
-  el.filesClose.addEventListener('click', () => el.filesDialog.close());
-  el.overviewMenu.addEventListener('click', () => {
+  el.viewFiles?.addEventListener('click', () => {
     closeAppChromeMenus();
-    void openOverview();
+    setActiveView('files');
   });
-  el.overviewClose.addEventListener('click', () => el.overviewDialog.close());
+  el.viewOverview?.addEventListener('click', () => {
+    closeAppChromeMenus();
+    setActiveView('overview');
+  });
   el.settings.addEventListener('click', onSettingsClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
   el.newChat.addEventListener('click', newChat);
@@ -2248,9 +2230,9 @@ function showChat(session) {
   renderPeopleLine();
   el.newChat.hidden = !state.canManage;
   el.people.hidden = !state.canManage;
-  el.filesMenu.hidden = false;
-  el.overviewMenu.hidden = false;
-  el.shoppingOpen.hidden = false;
+  if (el.viewMenuHost) {
+    el.viewMenuHost.hidden = false;
+  }
   el.passkeys.hidden = false;
   rebindInviteNames(el.transcript, false);
   scheduleRender();
@@ -2261,17 +2243,16 @@ function showConversationList(conversations) {
   state.listing = true;
   state.items = [];
   state.busy = false;
-  hideShopping();
-  el.shoppingOpen.hidden = true;
+  hideViews();
+  if (el.viewMenuHost) {
+    el.viewMenuHost.hidden = true;
+  }
   el.messages.hidden = true;
   el.input.closest('.composer').hidden = true;
   el.conversationList.hidden = false;
   el.peopleLine.hidden = true;
   el.newChat.hidden = true;
   el.people.hidden = true;
-  el.filesMenu.hidden = true;
-  el.overviewMenu.hidden = true;
-  el.shoppingOpen.hidden = true;
   el.passkeys.hidden = false;
   el.staticAssetsField.hidden = true;
   el.conversationListTitle.textContent = msg('conversationList');
@@ -3651,9 +3632,9 @@ async function logOut({ revokeServer = true } = {}) {
   state.busy = false;
   state.stopping = false;
   state.listing = false;
-  hideShopping();
-  if (el.shoppingOpen) {
-    el.shoppingOpen.hidden = true;
+  hideViews();
+  if (el.viewMenuHost) {
+    el.viewMenuHost.hidden = true;
   }
   state.items = [];
   state.nodes.clear();
@@ -4558,10 +4539,6 @@ function paintShoppingChrome() {
   el.shoppingWantedHeading.textContent = msg('shoppingWanted');
   el.shoppingBoughtHeading.textContent = msg('shoppingBought');
   el.shoppingEmpty.textContent = msg('shoppingEmpty');
-  el.shoppingAddLabel.textContent = msg('shoppingItem');
-  el.shoppingAddInput.placeholder = msg('shoppingItem');
-  el.shoppingAddInput.setAttribute('aria-label', msg('shoppingItem'));
-  el.shoppingAddSubmit.textContent = msg('shoppingAdd');
   renderShoppingItems();
 }
 
@@ -4580,15 +4557,33 @@ function stopShoppingPoll() {
   }
 }
 
-function hideShopping() {
-  state.shopping = false;
+function syncViewButtons(active) {
+  const map = [
+    ['chat', el.viewChat],
+    ['shopping', el.viewShopping],
+    ['files', el.viewFiles],
+    ['overview', el.viewOverview],
+  ];
+  for (const [key, button] of map) {
+    if (button) {
+      button.setAttribute('aria-pressed', key === active ? 'true' : 'false');
+    }
+  }
+}
+
+function hideViews() {
+  state.view = 'chat';
   stopShoppingPoll();
   if (el.shopping) {
     el.shopping.hidden = true;
   }
-  if (el.shoppingOpen) {
-    el.shoppingOpen.setAttribute('aria-pressed', 'false');
+  if (el.filesView) {
+    el.filesView.hidden = true;
   }
+  if (el.overviewView) {
+    el.overviewView.hidden = true;
+  }
+  syncViewButtons('chat');
   if (!state.listing && el.messages) {
     el.messages.hidden = false;
     const composer = el.input?.closest('.composer');
@@ -4598,21 +4593,48 @@ function hideShopping() {
   }
 }
 
+function setActiveView(view) {
+  if (state.listing) {
+    return;
+  }
+  state.view = view;
+  syncViewButtons(view);
+  stopShoppingPoll();
+  if (el.messages) {
+    el.messages.hidden = view !== 'chat';
+  }
+  const composer = el.input?.closest('.composer');
+  if (composer) {
+    composer.hidden = view !== 'chat';
+  }
+  if (el.shopping) {
+    el.shopping.hidden = view !== 'shopping';
+  }
+  if (el.filesView) {
+    el.filesView.hidden = view !== 'files';
+  }
+  if (el.overviewView) {
+    el.overviewView.hidden = view !== 'overview';
+  }
+  if (view === 'shopping') {
+    void openShopping();
+  } else if (view === 'files') {
+    void openFiles();
+  } else if (view === 'overview') {
+    void openOverview();
+  }
+}
+
 async function openShopping() {
   if (state.listing || !el.shopping) {
     return;
   }
-  state.shopping = true;
-  el.messages.hidden = true;
-  el.input.closest('.composer').hidden = true;
-  el.shopping.hidden = false;
-  el.shoppingOpen.setAttribute('aria-pressed', 'true');
   setShoppingStatus('');
   paintShoppingChrome();
   await loadShoppingList();
   stopShoppingPoll();
   shoppingPoll = setInterval(() => {
-    if (document.visibilityState === 'hidden' || shoppingBusy || !state.shopping) {
+    if (document.visibilityState === 'hidden' || shoppingBusy || state.view !== 'shopping') {
       return;
     }
     void loadShoppingList({ quiet: true });
@@ -4709,31 +4731,6 @@ function shoppingRow(item) {
   return row;
 }
 
-async function addShoppingItem() {
-  const name = el.shoppingAddInput.value.trim();
-  if (!name) {
-    el.shoppingAddInput.focus();
-    return;
-  }
-  const exists = shoppingItems.some((item) => item.name.toLowerCase() === name.toLowerCase() && !item.bought);
-  if (exists) {
-    el.shoppingAddInput.value = '';
-    return;
-  }
-  await saveShoppingItems([
-    ...shoppingItems,
-    {
-      name,
-      wantedBy: state.you?.name || '',
-      bought: false,
-      boughtBy: '',
-      note: '',
-    },
-  ]);
-  el.shoppingAddInput.value = '';
-  el.shoppingAddInput.focus();
-}
-
 async function saveShoppingItems(items) {
   shoppingBusy = true;
   setShoppingStatus('');
@@ -4776,7 +4773,6 @@ async function openFiles() {
     } else {
       el.filesWorkdirSection.hidden = true;
     }
-    el.filesDialog.showModal();
   } catch (error) {
     if (error instanceof SessionEndedError) {
       return;
@@ -4785,7 +4781,7 @@ async function openFiles() {
       handleFailure(error);
       return;
     }
-    setStatus(() => error.message || msg('filesOpenFailed'));
+    setFilesStatus(error.message || msg('filesOpenFailed'));
   }
 }
 
@@ -4798,30 +4794,21 @@ function setOverviewStatus(message) {
   el.overviewStatus.hidden = !text;
 }
 
-function overviewRow(who, text) {
-  const row = document.createElement('li');
-  row.className = 'files-row';
-  const meta = document.createElement('div');
-  meta.className = 'files-meta';
-  if (who) {
-    const title = document.createElement('strong');
-    title.textContent = who;
-    tintMember(title, who);
-    meta.append(title);
+function renderOverviewStory(story) {
+  if (!el.overviewStory) {
+    return;
   }
-  const detail = document.createElement('span');
-  detail.className = 'overview-text';
-  detail.textContent = text;
-  meta.append(detail);
-  row.append(meta);
-  return row;
-}
-
-function renderOverviewSection(section, list, entries, render) {
-  list.replaceChildren();
-  section.hidden = entries.length === 0;
-  for (const entry of entries) {
-    list.append(render(entry));
+  el.overviewStory.replaceChildren();
+  const paragraphs = String(story ?? '')
+    .trim()
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  el.overviewStory.hidden = paragraphs.length === 0;
+  for (const text of paragraphs) {
+    const p = document.createElement('p');
+    p.textContent = text;
+    el.overviewStory.append(p);
   }
 }
 
@@ -4834,40 +4821,7 @@ async function openOverview() {
     }
     const body = await response.json();
     el.overviewEmpty.hidden = !body.empty;
-    if (body.topic) {
-      el.overviewTopicSection.hidden = false;
-      el.overviewTopic.replaceChildren();
-      if (body.topic.author) {
-        const who = document.createElement('strong');
-        who.textContent = body.topic.author;
-        tintMember(who, body.topic.author);
-        el.overviewTopic.append(who);
-      }
-      const text = document.createElement('p');
-      text.textContent = body.topic.text;
-      el.overviewTopic.append(text);
-    } else {
-      el.overviewTopicSection.hidden = true;
-    }
-    renderOverviewSection(el.overviewRequestsSection, el.overviewRequestsList, body.requests ?? [], (entry) =>
-      overviewRow(entry.author, entry.text),
-    );
-    renderOverviewSection(el.overviewResponsesSection, el.overviewResponsesList, body.responses ?? [], (entry) =>
-      overviewRow('', entry.text),
-    );
-    renderOverviewSection(el.overviewWorkSection, el.overviewWorkList, body.work ?? [], (entry) =>
-      overviewRow(entry.name, entry.summary),
-    );
-    renderOverviewSection(
-      el.overviewMaterialsSection,
-      el.overviewMaterialsList,
-      body.materials ?? [],
-      (name) => overviewRow('', name),
-    );
-    renderOverviewSection(el.overviewIssuesSection, el.overviewIssuesList, body.issues ?? [], (entry) =>
-      overviewRow('', entry.text),
-    );
-    el.overviewDialog.showModal();
+    renderOverviewStory(body.empty ? '' : body.story);
   } catch (error) {
     if (error instanceof SessionEndedError) {
       return;
@@ -4876,7 +4830,7 @@ async function openOverview() {
       handleFailure(error);
       return;
     }
-    setStatus(() => error.message || msg('overviewOpenFailed'));
+    setOverviewStatus(error.message || msg('overviewOpenFailed'));
   }
 }
 

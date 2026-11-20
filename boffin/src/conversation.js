@@ -27,7 +27,8 @@ import {
   safeFileName,
   sniffImage,
 } from './media.js';
-import { shoppingListPrompt, shoppingListRelativePath } from './shopping-list.js';
+import { clearOverviewStory, overviewPathForState, overviewPrompt, overviewRelativePath } from './overview.js';
+import { shoppingListPathForState, shoppingListPrompt, shoppingListRelativePath } from './shopping-list.js';
 
 const STATE_VERSION = 1;
 // A file written as a run starts can get an mtime a few milliseconds before Date.now().
@@ -516,6 +517,7 @@ export class Conversation {
     this.invites = [];
     this.activeId = randomUUID();
     this.startedAt = at;
+    clearOverviewStory(overviewPathForState(this.stateFile));
   }
 
   #remember(at, personIds, agent = this.agent, model = this.model) {
@@ -785,7 +787,12 @@ export class Conversation {
   // state_file is not always under data/. The state file holds passkeys. The media directory is this store's own copies.
   #isPrivateOutput(full) {
     const resolved = canonicalPath(full);
-    if (resolved === canonicalPath(this.stateFile) || resolved === canonicalPath(`${this.stateFile}.tmp`)) {
+    if (
+      resolved === canonicalPath(this.stateFile) ||
+      resolved === canonicalPath(`${this.stateFile}.tmp`) ||
+      resolved === canonicalPath(shoppingListPathForState(this.stateFile)) ||
+      resolved === canonicalPath(overviewPathForState(this.stateFile))
+    ) {
       return true;
     }
     const media = canonicalPath(path.join(path.dirname(this.stateFile), 'media'));
@@ -977,7 +984,11 @@ function canonicalPaths(files) {
 function agentPrompt(text, stored, author, workdir, stateFile) {
   const body = stored.length === 0 ? text : `${text || 'Please look at the attached files.'}\n\nAttached files:\n${stored.map((file) => `- ${file.path}`).join('\n')}`;
   const named = author ? `${author}: ${body}` : body;
-  return `${named}\n\n${shoppingListPrompt(shoppingListRelativePath(workdir, stateFile))}`;
+  return (
+    `${named}\n\n` +
+    `${shoppingListPrompt(shoppingListRelativePath(workdir, stateFile))}\n\n` +
+    `${overviewPrompt(overviewRelativePath(workdir, stateFile))}`
+  );
 }
 
 function chooseAgent(saved, backends) {

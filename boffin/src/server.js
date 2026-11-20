@@ -15,7 +15,7 @@ import { MAX_SPEC_CHARS, DEFAULT_SPEC } from '../shared/default-spec.js';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from '../shared/limits.js';
 import { AttachmentError, parseAttachments } from './attachments.js';
 import { listConversationFiles, listWorkdirFiles, readStashFile, readWorkdirFileForOwner } from './file-view.js';
-import { buildConversationOverview } from './overview.js';
+import { buildConversationOverview, overviewPathForState, readOverviewStory } from './overview.js';
 import { GROK } from './backends.js';
 import { ConfigError, DEFAULT_BUN_BIN } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
@@ -222,6 +222,7 @@ export function createServer({
     refreshGrokUsage: refreshGrokUsageOverride ?? grokUsage.refresh,
     specFile,
     shoppingFile: shoppingListPathForState(conversation.stateFile),
+    overviewFile: overviewPathForState(conversation.stateFile),
     workdir: conversation.workdir,
     projectRoot,
     staticAssetsState: defaultStaticAssetsState(),
@@ -662,12 +663,18 @@ function handleFilesList(res, conversation, person) {
   return sendJson(res, 200, body);
 }
 
-function handleOverview(res, context, person) {
+async function handleOverview(res, context, person) {
   const { conversation } = context;
   if (!canEnter(person, conversation)) {
     return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
   }
-  return sendJson(res, 200, buildConversationOverview({ items: conversation.items }));
+  let story = '';
+  try {
+    story = await readOverviewStory(context.overviewFile);
+  } catch (error) {
+    context.logger.error(`[boffin] could not read overview: ${error.message}`);
+  }
+  return sendJson(res, 200, buildConversationOverview({ items: conversation.items, story }));
 }
 
 function sendStashFile(res, conversation, relativePath) {

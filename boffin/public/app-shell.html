@@ -73,28 +73,33 @@
                 <button type="button" class="menu-action" id="export-epub" disabled>EPUB</button>
                 <button type="button" class="menu-action" id="export-print" disabled>Print / PDF</button>
               </div>
-              <button type="button" class="menu-action" id="files-menu" hidden>Files</button>
-              <button type="button" class="menu-action" id="overview-menu" hidden>Overview</button>
               <button type="button" class="menu-action" id="people" hidden>Members</button>
               <button type="button" class="menu-action" id="passkeys" hidden>Passkeys</button>
               <button type="button" class="menu-action" id="log-out">Log out</button>
               <a class="menu-action" id="spec-link" href="/spec">Spec</a>
             </div>
           </div>
-          <button type="button" class="icon-button" id="shopping-open" hidden aria-pressed="false" aria-label="Shopping list">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M6.5 7h14l-1.6 8.2a2 2 0 0 1-2 1.6H9.4a2 2 0 0 1-2-1.6L5.2 4.5H3"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <circle cx="10" cy="20" r="1.4" fill="currentColor" />
-              <circle cx="17" cy="20" r="1.4" fill="currentColor" />
-            </svg>
-          </button>
+          <div class="menu-host" id="view-menu-host" hidden>
+            <button
+              type="button"
+              class="icon-button"
+              id="view-open"
+              aria-expanded="false"
+              aria-controls="view-panel"
+              aria-label="View"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path d="M9 4v16" fill="none" stroke="currentColor" stroke-width="1.8" />
+              </svg>
+            </button>
+            <div class="menu-panel menu-panel-compact" id="view-panel" hidden>
+              <button type="button" class="menu-action" id="view-chat" aria-pressed="true">Chat</button>
+              <button type="button" class="menu-action" id="view-shopping" aria-pressed="false">Shopping list</button>
+              <button type="button" class="menu-action" id="view-files" aria-pressed="false">Files</button>
+              <button type="button" class="menu-action" id="view-overview" aria-pressed="false">Overview</button>
+            </div>
+          </div>
           <button type="button" class="icon-button" id="new-chat" aria-label="New chat">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -150,19 +155,28 @@
           <h2 id="shopping-bought-heading">Bought</h2>
           <ul class="shopping-list" id="shopping-bought-list"></ul>
         </section>
-        <form class="shopping-add" id="shopping-add-form">
-          <label class="visually-hidden" for="shopping-add-input" id="shopping-add-label">Item</label>
-          <input
-            id="shopping-add-input"
-            type="text"
-            maxlength="200"
-            autocomplete="off"
-            spellcheck="true"
-            enterkeyhint="done"
-            placeholder="Item"
-          />
-          <button type="submit" class="primary-button" id="shopping-add-submit">Add</button>
-        </form>
+      </main>
+
+      <main class="files-view" id="files-view" hidden>
+        <h2 id="files-title">Files</h2>
+        <p class="status" id="files-status" role="status" hidden></p>
+        <section class="files-section" id="files-conversation-section">
+          <h3 id="files-conversation-heading">This conversation</h3>
+          <ul class="files-list" id="files-conversation-list"></ul>
+          <p class="files-empty" id="files-conversation-empty" hidden></p>
+        </section>
+        <section class="files-section" id="files-workdir-section" hidden>
+          <h3 id="files-workdir-heading">Working directory</h3>
+          <ul class="files-list" id="files-workdir-list"></ul>
+          <p class="files-empty" id="files-workdir-empty" hidden></p>
+        </section>
+      </main>
+
+      <main class="overview-view" id="overview-view" hidden>
+        <h2 id="overview-title">Overview</h2>
+        <p class="status" id="overview-status" role="status" hidden></p>
+        <p class="files-empty" id="overview-empty" hidden></p>
+        <article class="overview-story" id="overview-story" hidden></article>
       </main>
 
       <main class="messages" id="messages">
@@ -236,57 +250,6 @@
           <button type="button" class="menu-action" data-export-format="print">Print / PDF</button>
           <button type="button" class="ghost-button" id="export-dialog-cancel">Cancel</button>
         </div>
-      </div>
-    </dialog>
-
-    <dialog class="sheet files-sheet" id="overview-dialog" aria-labelledby="overview-title">
-      <div class="login-card">
-        <h2 id="overview-title">Overview</h2>
-        <p class="status-line" id="overview-status" role="status" hidden></p>
-        <p class="files-empty" id="overview-empty" hidden></p>
-        <div class="files-section" id="overview-topic-section" hidden>
-          <h3 id="overview-topic-heading">Topic</h3>
-          <div class="overview-topic" id="overview-topic"></div>
-        </div>
-        <div class="files-section" id="overview-requests-section" hidden>
-          <h3 id="overview-requests-heading">Requests</h3>
-          <ul class="files-list" id="overview-requests-list"></ul>
-        </div>
-        <div class="files-section" id="overview-responses-section" hidden>
-          <h3 id="overview-responses-heading">Responses</h3>
-          <ul class="files-list" id="overview-responses-list"></ul>
-        </div>
-        <div class="files-section" id="overview-work-section" hidden>
-          <h3 id="overview-work-heading">Work done</h3>
-          <ul class="files-list" id="overview-work-list"></ul>
-        </div>
-        <div class="files-section" id="overview-materials-section" hidden>
-          <h3 id="overview-materials-heading">Files</h3>
-          <ul class="files-list" id="overview-materials-list"></ul>
-        </div>
-        <div class="files-section" id="overview-issues-section" hidden>
-          <h3 id="overview-issues-heading">Issues</h3>
-          <ul class="files-list" id="overview-issues-list"></ul>
-        </div>
-        <button type="button" class="ghost-button" id="overview-close">Close</button>
-      </div>
-    </dialog>
-
-    <dialog class="sheet files-sheet" id="files-dialog" aria-labelledby="files-title">
-      <div class="login-card">
-        <h2 id="files-title">Files</h2>
-        <p class="status-line" id="files-status" role="status" hidden></p>
-        <div class="files-section" id="files-conversation-section">
-          <h3 id="files-conversation-heading">This conversation</h3>
-          <ul class="files-list" id="files-conversation-list"></ul>
-          <p class="files-empty" id="files-conversation-empty" hidden></p>
-        </div>
-        <div class="files-section" id="files-workdir-section" hidden>
-          <h3 id="files-workdir-heading">Working directory</h3>
-          <ul class="files-list" id="files-workdir-list"></ul>
-          <p class="files-empty" id="files-workdir-empty" hidden></p>
-        </div>
-        <button type="button" class="ghost-button" id="files-close">Close</button>
       </div>
     </dialog>
 

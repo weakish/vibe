@@ -26,9 +26,11 @@ export function shoppingListPrompt(relativePath) {
   return (
     `Shopping list: ${relativePath} is version-1 JSON ` +
     `{"version":1,"items":[{"id":"<uuid>","name":"...","wantedBy":"...","bought":false,"boughtBy":"","note":""}]}. ` +
-    `If the sender wants to buy something, add it (wantedBy is their name) unless that name is already on the list. ` +
+    `Whenever someone mentions they want or plan to buy something, or you think it is necessary to buy something for them ` +
+    `(for example, they asked about or plan to do something and do not currently have the gear or supplies needed), ` +
+    `add it (wantedBy is their name, and note can briefly say why) unless it is already on the list. ` +
     `If they already bought something, set bought true and boughtBy to their name. ` +
-    `Do not invent items. Leave the file unchanged when this message is not about buying.`
+    `Leave the file unchanged when nothing needs to be bought or updated.`
   );
 }
 

@@ -523,8 +523,16 @@ test('serves the web app without requiring credentials', async (t) => {
   assert.match(appShell, /<button type="button" class="menu-action" id="log-out">/);
   assert.match(appShell, /id="passkey-label"/);
   assert.match(appShell, /id="new-chat"/);
-  assert.match(appShell, /id="shopping-open"/);
+  assert.match(appShell, /id="view-open"/);
+  assert.match(appShell, /id="view-panel"/);
+  assert.match(appShell, /id="view-chat"/);
+  assert.match(appShell, /id="view-shopping"/);
+  assert.match(appShell, /id="view-files"/);
+  assert.match(appShell, /id="view-overview"/);
   assert.match(appShell, /id="shopping"/);
+  assert.doesNotMatch(appShell, /id="shopping-add-form"/);
+  assert.match(appShell, /id="files-view"/);
+  assert.match(appShell, /id="overview-view"/);
 
   const demoShell = await (await api(app.baseUrl, '/demo-shell.html', { credentials: null })).text();
   assert.match(demoShell, /id="demo-input"/);
@@ -1238,12 +1246,10 @@ test('summarizes the conversation content over GET /api/overview', async (t) => 
   assert.equal(owner.status, 200);
   const body = await owner.json();
   assert.equal(body.empty, false);
-  assert.equal(body.topic.author, 'tester');
-  assert.match(body.topic.text, /attach the logo/);
-  assert.equal(body.requests.length, 1);
-  assert.ok(body.responses.length >= 1);
-  assert.ok(body.materials.includes('notes.txt'));
-  assert.ok(body.materials.includes('shot.png'));
+  assert.match(body.story, /tester/);
+  assert.match(body.story, /attach the logo/);
+  assert.match(body.story, /notes\.txt/);
+  assert.match(body.story, /shot\.png/);
 
   const unauthenticated = await api(app.baseUrl, '/api/overview', { credentials: null });
   assert.equal(unauthenticated.status, 401);
