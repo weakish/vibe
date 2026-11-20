@@ -136,6 +136,7 @@ const SERVER_ERRORS = new Map([
   ['Grok usage refresh failed.', 'grokUsageRefreshFailed'],
   ['That agent is not available.', 'unknownAgent'],
   ['That model is not available.', 'unknownModel'],
+  ['That thinking effort is not available.', 'unknownThinking'],
   ['Update is not available.', 'updateNotAvailable'],
   ['An update is already in progress.', 'updateInProgress'],
   ['Could not fast-forward to the remote branch.', 'updateNotFastForward'],

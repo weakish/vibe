@@ -82,6 +82,7 @@ For Pi it runs \`pi\` (or \`pi_bin\` from the config). The arguments are:
 - \`--mode json\`
 - \`--approve\`, so Pi loads the workdir's project resources (JSON mode skips them when trust has not been saved)
 - \`--model\` and the Pi model id when the chosen model is not \`default\`
+- \`--thinking\` and the chosen thinking effort when set (omitted when left empty so Pi uses its configured default)
 - \`--session-id\` and the session id on follow-up turns
 - \`--\` and then \`@<path>\` for each attached image, followed by the sender's name, a colon, a space, and the message (with a leading space when the prompt starts with \`@\`), so a message that starts with a dash or \`@\` is not treated as a flag or file reference. After the message, the prompt includes a shopping list instruction with the path of the JSON file.
 

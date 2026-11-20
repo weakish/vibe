@@ -8,9 +8,11 @@ import {
   CURSOR,
   DEFAULT_CURSOR_MODEL,
   GROK,
+  PI,
   catalogFor,
   defaultModelId,
   findModel,
+  normalizePiThinking,
   resolveBackends,
   spawnPlan,
 } from './backends.js';
@@ -64,6 +66,7 @@ const STATE_KEYS = new Set([
   'coverKey',
   'agent',
   'model',
+  'thinking',
 ]);
 const SAVE_FAILURE_TEXT = 'Could not save this conversation. It will be lost when the server restarts.';
 
@@ -140,6 +143,7 @@ export class Conversation {
     const choice = chooseAgent(saved, this.backends);
     this.agent = choice.agent;
     this.model = choice.model;
+    this.thinking = choice.thinking;
     this.chatId = choice.dropChatId ? null : saved.chatId;
     this.items = saved.items;
     this.activeId = saved.activeId;
@@ -168,6 +172,7 @@ export class Conversation {
     return {
       agent: this.agent,
       model: this.model,
+      thinking: this.thinking,
       agents: catalogFor(this.backends),
       project: path.basename(this.workdir),
       busy: this.busy,
@@ -576,7 +581,7 @@ export class Conversation {
     });
   }
 
-  #applyChoice({ agent, model } = {}) {
+  #applyChoice({ agent, model, thinking } = {}) {
     const nextAgent = agent === undefined || agent === '' || agent === null ? this.backends.ids[0] : agent;
     if (!this.backends.ids.includes(nextAgent)) {
       throw new ChoiceError('That agent is not available.');
@@ -586,8 +591,16 @@ export class Conversation {
     if (!findModel(nextAgent, nextModel)) {
       throw new ChoiceError('That model is not available.');
     }
+    let nextThinking = null;
+    if (nextAgent === PI) {
+      nextThinking = normalizePiThinking(thinking);
+      if (nextThinking === undefined) {
+        throw new ChoiceError('That thinking effort is not available.');
+      }
+    }
     this.agent = nextAgent;
     this.model = nextModel;
+    this.thinking = nextThinking;
   }
 
   // Copies the arrays membership code mutates in place. items is replaced, not edited, by reset.
@@ -595,6 +608,7 @@ export class Conversation {
     return {
       agent: this.agent,
       model: this.model,
+      thinking: this.thinking,
       chatId: this.chatId,
       items: this.items,
       activeId: this.activeId,
@@ -670,6 +684,7 @@ export class Conversation {
       const plan = spawnPlan({
         agent: this.agent,
         model: this.model,
+        thinking: this.thinking,
         force: this.force,
         resumeId: this.chatId,
         prompt: agentPrompt(text, stored, author, this.workdir, this.stateFile),
@@ -931,6 +946,7 @@ export class Conversation {
         version: STATE_VERSION,
         agent: this.agent,
         model: this.model,
+        thinking: this.thinking,
         chatId: this.chatId,
         items: this.items,
         activeId: this.activeId,
@@ -1045,9 +1061,12 @@ function chooseAgent(saved, backends) {
   const sameAgent = savedAgent === null ? agent === CURSOR : savedAgent === agent;
   const model =
     sameAgent && findModel(agent, saved.model) ? saved.model : defaultModelId(agent, backends);
+  const thinking =
+    sameAgent && agent === PI ? (normalizePiThinking(saved.thinking) ?? null) : null;
   return {
     agent,
     model,
+    thinking,
     dropChatId: savedAgent === null ? agent !== CURSOR : savedAgent !== agent,
   };
 }
@@ -1061,9 +1080,13 @@ function readRoster(file, data, { fresh = false } = {}) {
   if (data.model !== undefined && typeof data.model !== 'string') {
     throw new StateError(`State file ${file} has an invalid model.`);
   }
+  if (data.thinking !== undefined && data.thinking !== null && typeof data.thinking !== 'string') {
+    throw new StateError(`State file ${file} has an invalid thinking level.`);
+  }
   return {
     agent: data.agent,
     model: data.model,
+    thinking: data.thinking ?? null,
     chatId: data.chatId,
     items: data.items,
     activeId,

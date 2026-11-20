@@ -762,6 +762,7 @@ async function handleReset(req, res, conversation) {
     conversation.reset(new Date().toISOString(), {
       agent: body?.agent,
       model: body?.model,
+      thinking: body?.thinking,
     });
   } catch (error) {
     if (error instanceof BusyError) {

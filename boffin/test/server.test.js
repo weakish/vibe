@@ -324,6 +324,33 @@ test('offers Pi and accepts its model when starting a new chat', async (t) => {
   });
   assert.equal(bad.status, 400);
   assert.equal((await bad.json()).error, 'That model is not available.');
+
+  const withThinking = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'pi', model: 'opencode-go/beam-free', thinking: 'HIGH' },
+  });
+  assert.equal(withThinking.status, 200);
+  assert.equal(app.conversation.model, 'opencode-go/beam-free');
+  assert.equal(app.conversation.thinking, 'high');
+
+  const updatedSession = await (await api(app.baseUrl, '/api/session')).json();
+  assert.equal(updatedSession.model, 'opencode-go/beam-free');
+  assert.equal(updatedSession.thinking, 'high');
+
+  const emptyDefaults = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'pi', model: '', thinking: '' },
+  });
+  assert.equal(emptyDefaults.status, 200);
+  assert.equal(app.conversation.model, 'default');
+  assert.equal(app.conversation.thinking, null);
+
+  const badThinking = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'pi', model: 'default', thinking: 'extreme' },
+  });
+  assert.equal(badThinking.status, 400);
+  assert.equal((await badThinking.json()).error, 'That thinking effort is not available.');
 });
 
 test('returns 500 when a new chat cannot be saved', async (t) => {

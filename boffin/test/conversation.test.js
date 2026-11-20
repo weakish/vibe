@@ -661,6 +661,31 @@ test('persists the chosen agent and model across restarts', async () => {
   assert.equal(restored.model, 'grok-4.7/medium');
 });
 
+test('persists Pi model and thinking effort across restarts and passes --thinking', async () => {
+  const { stateFile } = tempStateFile();
+  const { runAgent, calls } = scriptedRunner([
+    { type: 'session', version: 3, id: 'pi-sess-think' },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  const conversation = makeConversation(runAgent, stateFile, { agents: ['pi'], piBin: 'pi-test' });
+  conversation.reset(new Date().toISOString(), {
+    agent: 'pi',
+    model: 'opencode-go/beam-free',
+    thinking: 'high',
+  });
+
+  const restored = makeConversation(runAgent, stateFile, { agents: ['pi'], piBin: 'pi-test' });
+  assert.equal(restored.agent, 'pi');
+  assert.equal(restored.model, 'opencode-go/beam-free');
+  assert.equal(restored.thinking, 'high');
+
+  await restored.start('check', () => {});
+  assert.ok(calls[0].args.includes('--model'));
+  assert.equal(calls[0].args[calls[0].args.indexOf('--model') + 1], 'opencode-go/beam-free');
+  assert.ok(calls[0].args.includes('--thinking'));
+  assert.equal(calls[0].args[calls[0].args.indexOf('--thinking') + 1], 'high');
+});
+
 test('kept log records the agent that ended, not the new chat', async () => {
   const { stateFile } = tempStateFile();
   const { runAgent } = scriptedRunner([init('cursor-chat'), reply('ok'), done('ok')]);

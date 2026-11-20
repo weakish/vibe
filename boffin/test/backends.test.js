@@ -9,6 +9,7 @@ import {
   buildPiArgs,
   catalogFor,
   findModel,
+  normalizePiThinking,
   parseAgents,
   resolveBackends,
   spawnPlan,
@@ -162,4 +163,44 @@ test('omits --model for Pi default and escapes a leading-@ prompt', () => {
   });
   assert.equal(plan.binKey, 'pi');
   assert.deepEqual(plan.args, ['--mode', 'json', '--approve', '--', ' @note hi']);
+});
+
+test('normalizes Pi thinking effort and passes --thinking when set', () => {
+  assert.equal(normalizePiThinking(undefined), null);
+  assert.equal(normalizePiThinking(null), null);
+  assert.equal(normalizePiThinking('   '), null);
+  assert.equal(normalizePiThinking(' HIGH '), 'high');
+  assert.equal(normalizePiThinking('extreme'), undefined);
+
+  const defaultModelWithThinking = spawnPlan({
+    agent: 'pi',
+    model: DEFAULT_PI_MODEL,
+    thinking: 'high',
+    resumeId: null,
+    prompt: 'hi',
+    imagePaths: [],
+    cwd: '/tmp',
+  });
+  assert.deepEqual(defaultModelWithThinking.args, ['--mode', 'json', '--approve', '--thinking', 'high', '--', 'hi']);
+
+  const namedModelWithThinking = spawnPlan({
+    agent: 'pi',
+    model: 'opencode-go/beam-free',
+    thinking: 'medium',
+    resumeId: null,
+    prompt: 'hi',
+    imagePaths: [],
+    cwd: '/tmp',
+  });
+  assert.deepEqual(namedModelWithThinking.args, [
+    '--mode',
+    'json',
+    '--approve',
+    '--model',
+    'opencode-go/beam-free',
+    '--thinking',
+    'medium',
+    '--',
+    'hi',
+  ]);
 });

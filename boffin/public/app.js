@@ -267,6 +267,10 @@ const el = {
   newChatModelField: document.getElementById('new-chat-model-field'),
   newChatModelLabel: document.getElementById('new-chat-model-label'),
   newChatModel: document.getElementById('new-chat-model'),
+  newChatModelInput: document.getElementById('new-chat-model-input'),
+  newChatThinkingField: document.getElementById('new-chat-thinking-field'),
+  newChatThinkingLabel: document.getElementById('new-chat-thinking-label'),
+  newChatThinkingInput: document.getElementById('new-chat-thinking-input'),
   newChatExport: document.getElementById('new-chat-export'),
   newChatClear: document.getElementById('new-chat-clear'),
   newChatCancel: document.getElementById('new-chat-cancel'),
@@ -512,6 +516,7 @@ function applyChrome() {
   el.newChatBody.textContent = msg('confirmNewChat');
   el.newChatAgentLabel.textContent = msg('agentLabel');
   el.newChatModelLabel.textContent = msg('modelLabel');
+  el.newChatThinkingLabel.textContent = msg('thinkingLabel');
   syncAgentPicker();
   syncModelPicker();
   el.newChatExport.textContent = msg('newChatExport');
@@ -1971,6 +1976,10 @@ function captureAppElements() {
   el.newChatModelField = document.getElementById('new-chat-model-field');
   el.newChatModelLabel = document.getElementById('new-chat-model-label');
   el.newChatModel = document.getElementById('new-chat-model');
+  el.newChatModelInput = document.getElementById('new-chat-model-input');
+  el.newChatThinkingField = document.getElementById('new-chat-thinking-field');
+  el.newChatThinkingLabel = document.getElementById('new-chat-thinking-label');
+  el.newChatThinkingInput = document.getElementById('new-chat-thinking-input');
   el.newChatExport = document.getElementById('new-chat-export');
   el.newChatClear = document.getElementById('new-chat-clear');
   el.newChatCancel = document.getElementById('new-chat-cancel');
@@ -2182,12 +2191,7 @@ function bindAppEvents() {
   el.newChatModel.addEventListener('click', onModelPickerClick);
   el.newChatAgent.addEventListener('keydown', (event) => {
     onPickerKey(event, state.draftAgent, (option) => option.dataset.agent, (option) => {
-      if (option.dataset.agent !== state.draftAgent) {
-        state.draftAgent = option.dataset.agent;
-        state.draftModel = defaultModelFor(state.draftAgent);
-        syncAgentPicker();
-        fillModelPicker();
-      }
+      selectDraftAgent(option.dataset.agent);
     });
   });
   el.newChatModel.addEventListener('keydown', (event) => {
@@ -2419,6 +2423,7 @@ function showChat(session) {
   applySessionIdentity(session);
   state.agent = session.agent ?? 'cursor';
   state.model = session.model ?? '';
+  state.thinking = session.thinking ?? '';
   state.agents = Array.isArray(session.agents) ? session.agents : [];
   state.busy = Boolean(session.busy);
   state.items = session.items ?? [];
@@ -2809,9 +2814,17 @@ async function newChat() {
     }
   }
   try {
+    const body =
+      state.draftAgent === 'pi'
+        ? {
+            agent: state.draftAgent,
+            model: el.newChatModelInput.value.trim() || 'default',
+            thinking: el.newChatThinkingInput.value.trim().toLowerCase() || null,
+          }
+        : { agent: state.draftAgent, model: state.draftModel };
     const response = await api('/api/new', {
       method: 'POST',
-      body: { agent: state.draftAgent, model: state.draftModel },
+      body,
     });
     if (!response.ok) {
       throw new RequestError(await readServerError(response), response.status);
@@ -2859,8 +2872,14 @@ function prepareNewChatPickers() {
   const catalog = agentCatalog();
   const fallback = catalog[0]?.id ?? 'cursor';
   state.draftAgent = agentEntry(state.agent)?.id ?? fallback;
-  const models = agentEntry(state.draftAgent)?.models ?? [];
-  state.draftModel = models.some((entry) => entry.id === state.model) ? state.model : defaultModelFor(state.draftAgent);
+  if (state.draftAgent === 'pi') {
+    state.draftModel = state.agent === 'pi' && state.model ? state.model : defaultModelFor('pi');
+    state.draftThinking = state.agent === 'pi' ? (state.thinking ?? '') : '';
+  } else {
+    const models = agentEntry(state.draftAgent)?.models ?? [];
+    state.draftModel = models.some((entry) => entry.id === state.model) ? state.model : defaultModelFor(state.draftAgent);
+    state.draftThinking = '';
+  }
   el.newChatAgentField.hidden = catalog.length < 2;
   fillAgentPicker();
   fillModelPicker();
@@ -2890,6 +2909,15 @@ function syncAgentPicker() {
 }
 
 function fillModelPicker() {
+  const isPi = state.draftAgent === 'pi';
+  el.newChatModel.hidden = isPi;
+  el.newChatModelInput.hidden = !isPi;
+  el.newChatThinkingField.hidden = !isPi;
+  if (isPi) {
+    el.newChatModelInput.value = state.draftModel && state.draftModel !== 'default' ? state.draftModel : '';
+    el.newChatThinkingInput.value = state.draftThinking || '';
+    return;
+  }
   el.newChatModel.replaceChildren();
   for (const entry of agentEntry(state.draftAgent)?.models ?? []) {
     const option = document.createElement('button');
@@ -2913,11 +2941,21 @@ function syncModelPicker() {
 
 function onAgentPickerClick(event) {
   const option = event.target.closest('.theme-option');
-  if (!option || option.dataset.agent === state.draftAgent) {
+  if (!option) {
     return;
   }
-  state.draftAgent = option.dataset.agent;
-  state.draftModel = defaultModelFor(state.draftAgent);
+  selectDraftAgent(option.dataset.agent);
+}
+
+// Choosing an agent in the dialog loads that agent's defaults. The values from
+// the live session are copied only when the dialog opens.
+function selectDraftAgent(agentId) {
+  if (agentId === state.draftAgent) {
+    return;
+  }
+  state.draftAgent = agentId;
+  state.draftModel = defaultModelFor(agentId);
+  state.draftThinking = '';
   syncAgentPicker();
   fillModelPicker();
 }

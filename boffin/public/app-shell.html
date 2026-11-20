@@ -299,6 +299,35 @@
         <div class="menu-field" id="new-chat-model-field">
           <span id="new-chat-model-label">Model</span>
           <div class="theme-picker" id="new-chat-model" role="radiogroup" aria-labelledby="new-chat-model-label"></div>
+          <input
+            id="new-chat-model-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="opencode-go/beam-free"
+            aria-labelledby="new-chat-model-label"
+            hidden
+          />
+        </div>
+        <div class="menu-field" id="new-chat-thinking-field" hidden>
+          <label id="new-chat-thinking-label" for="new-chat-thinking-input">Thinking effort</label>
+          <input
+            id="new-chat-thinking-input"
+            type="text"
+            list="new-chat-thinking-options"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="high"
+          />
+          <datalist id="new-chat-thinking-options">
+            <option value="off"></option>
+            <option value="minimal"></option>
+            <option value="low"></option>
+            <option value="medium"></option>
+            <option value="high"></option>
+            <option value="xhigh"></option>
+            <option value="max"></option>
+          </datalist>
         </div>
         <div class="sheet-actions">
           <button type="button" class="primary-button" id="new-chat-export" data-action="export">Export log and start</button>

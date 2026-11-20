@@ -31,6 +31,21 @@ const CATALOG = {
 // may carry a thinking suffix (openai/gpt-5.6:high) or punctuation such as the
 // colon in Amazon Bedrock's amazon.nova-lite-v1:0.
 const PI_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[^\s]+$/;
+export const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+export function normalizePiThinking(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return PI_THINKING_LEVELS.includes(normalized) ? normalized : undefined;
+}
 
 export function parseAgents(value) {
   if (value === undefined) {
@@ -103,7 +118,7 @@ export function catalogFor(backends) {
   });
 }
 
-export function spawnPlan({ agent, model, force, resumeId, prompt, imagePaths = [], cwd }) {
+export function spawnPlan({ agent, model, thinking = null, force, resumeId, prompt, imagePaths = [], cwd }) {
   const spec = findModel(agent, model);
   if (!spec) {
     throw new Error(`Unknown model ${model} for ${agent}.`);
@@ -112,7 +127,7 @@ export function spawnPlan({ agent, model, force, resumeId, prompt, imagePaths = 
     return { binKey: GROK, args: buildGrokArgs({ spec, force, resumeId, prompt, cwd }) };
   }
   if (agent === PI) {
-    return { binKey: PI, args: buildPiArgs({ spec, resumeId, prompt, imagePaths }) };
+    return { binKey: PI, args: buildPiArgs({ spec, thinking, resumeId, prompt, imagePaths }) };
   }
   return { binKey: CURSOR, args: buildCursorArgs({ spec, force, resumeId, prompt, imagePaths }) };
 }
@@ -167,10 +182,13 @@ export function buildGrokArgs({ spec, force, resumeId, prompt, cwd }) {
 // `--approve` loads the workdir's project resources; JSON mode otherwise skips
 // them when Pi's trust default is ask. `--session-id` resumes the session or
 // creates it when the earlier run left none on disk.
-export function buildPiArgs({ spec, resumeId, prompt, imagePaths = [] }) {
+export function buildPiArgs({ spec, thinking = null, resumeId, prompt, imagePaths = [] }) {
   const args = ['--mode', 'json', '--approve'];
   if (spec.cli) {
     args.push('--model', spec.cli);
+  }
+  if (thinking) {
+    args.push('--thinking', thinking);
   }
   if (resumeId) {
     args.push('--session-id', resumeId);
