@@ -2615,7 +2615,7 @@ async function newChat() {
 
 let settleNewChatChoice = null;
 
-const AGENT_LABELS = { cursor: 'agentCursor', grok: 'agentGrok' };
+const AGENT_LABELS = { cursor: 'agentCursor', grok: 'agentGrok', pi: 'agentPi' };
 
 function agentCatalog() {
   return Array.isArray(state.agents) ? state.agents : [];

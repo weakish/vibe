@@ -281,3 +281,196 @@ test('ignores unknown event types and malformed shapes', () => {
   assert.deepEqual(eventToOps(null, state), []);
   assert.deepEqual(eventToOps({ type: 'assistant', message: { content: 42 } }, state), []);
 });
+
+test('maps Pi session, streamed text deltas, tool executions, and settlement', () => {
+  const { items, state } = replay([
+    { type: 'session', version: 3, id: 'pi-sess-1', cwd: '/srv/boffin' },
+    { type: 'agent_start' },
+    { type: 'turn_start' },
+    { type: 'message_start', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } },
+    { type: 'message_end', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } },
+    { type: 'message_start', message: { role: 'assistant', content: [], stopReason: 'pending' } },
+    { type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Checking ' } },
+    { type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'files.' } },
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Checking files.' },
+          { type: 'toolCall', id: 'call_1', name: 'bash', arguments: { command: 'ls -la' } },
+        ],
+        stopReason: 'toolUse',
+      },
+    },
+    { type: 'tool_execution_start', toolCallId: 'call_1', toolName: 'bash', args: { command: 'ls -la' } },
+    {
+      type: 'tool_execution_update',
+      toolCallId: 'call_1',
+      toolName: 'bash',
+      args: { command: 'ls -la' },
+      partialResult: { content: [{ type: 'text', text: 'total 4' }] },
+    },
+    {
+      type: 'tool_execution_end',
+      toolCallId: 'call_1',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'total 4' }], isError: false },
+      isError: false,
+    },
+    { type: 'message_start', message: { role: 'assistant', content: [], stopReason: 'pending' } },
+    { type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'All good.' } },
+    {
+      type: 'message_end',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'All good.' }], stopReason: 'stop' },
+    },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: false },
+  ]);
+
+  assert.equal(state.chatId, 'pi-sess-1');
+  assert.equal(state.sawResult, true);
+  assert.deepEqual(
+    items.map((item) => [item.role, item.text ?? item.summary, item.status]),
+    [
+      ['assistant', 'Checking files.', undefined],
+      ['tool', 'ls -la', 'done'],
+      ['assistant', 'All good.', undefined],
+    ],
+  );
+});
+
+test('marks a failed Pi tool execution as an error and extracts tool images', () => {
+  const { items } = replay([
+    { type: 'tool_execution_start', toolCallId: 'call_1', toolName: 'bash', args: { command: 'false' } },
+    {
+      type: 'tool_execution_end',
+      toolCallId: 'call_1',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'Command exited with code 1' }], isError: true },
+      isError: true,
+    },
+    { type: 'tool_execution_start', toolCallId: 'call_2', toolName: 'read', args: { path: 'pic.png' } },
+    {
+      type: 'tool_execution_end',
+      toolCallId: 'call_2',
+      toolName: 'read',
+      result: { content: [{ type: 'image', data: 'abc', mimeType: 'image/png' }] },
+      isError: false,
+    },
+  ]);
+
+  assert.equal(items[0].name, 'Bash');
+  assert.equal(items[0].summary, 'false');
+  assert.equal(items[0].status, 'error');
+  assert.equal(items[1].name, 'Read');
+  assert.equal(items[1].summary, 'pic.png');
+  assert.equal(items[1].status, 'done');
+  assert.deepEqual(items[1].images, [{ name: 'image', data: 'abc', filePath: '' }]);
+});
+
+test('reports a Pi provider error on finishOps and clears it when an auto-retry succeeds', () => {
+  const failed = createRunState();
+  for (const event of [
+    { type: 'session', version: 3, id: 'pi-sess-2' },
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [],
+        stopReason: 'error',
+        errorMessage: '429: Free usage limit reached.',
+      },
+    },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: false },
+  ]) {
+    eventToOps(event, failed);
+  }
+  assert.equal(failed.sawResult, false);
+  assert.deepEqual(
+    finishOps({ error: null, code: 0, signal: null, stderr: '' }, failed).map((op) => op.item.text),
+    ['429: Free usage limit reached.'],
+  );
+
+  const retried = replay([
+    {
+      type: 'message_end',
+      message: { role: 'assistant', content: [], stopReason: 'error', errorMessage: '529 overloaded' },
+    },
+    { type: 'agent_end', messages: [], willRetry: true },
+    { type: 'auto_retry_start', attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: '529 overloaded' },
+    { type: 'message_start', message: { role: 'assistant', content: [], stopReason: 'pending' } },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'Recovered' }], stopReason: 'stop' } },
+    { type: 'auto_retry_end', success: true, attempt: 1 },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  assert.equal(retried.state.sawResult, true);
+  assert.deepEqual(finishOps({ error: null, code: 0, signal: null, stderr: '' }, retried.state), []);
+  assert.deepEqual(
+    retried.items.map((item) => [item.role, item.text]),
+    [['assistant', 'Recovered']],
+  );
+
+  const lengthStopped = replay([
+    {
+      type: 'message_end',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'Part' }], stopReason: 'length' },
+    },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  assert.equal(lengthStopped.state.sawResult, true);
+  assert.deepEqual(
+    lengthStopped.items.filter((item) => item.role === 'notice').map((item) => item.text),
+    ['The agent stopped (max tokens).'],
+  );
+});
+
+test('does not close a Pi run on agent_end, and keeps an abort message', () => {
+  const continued = replay([
+    {
+      type: 'message_end',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'Part' }], stopReason: 'length' },
+    },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'message_start', message: { role: 'assistant', content: [], stopReason: 'pending' } },
+    {
+      type: 'message_end',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'Continued' }], stopReason: 'stop' },
+    },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  assert.equal(continued.state.sawResult, true);
+  assert.deepEqual(
+    continued.items.map((item) => [item.role, item.text]),
+    [
+      ['assistant', 'Part'],
+      ['assistant', 'Continued'],
+    ],
+  );
+
+  const aborted = createRunState();
+  for (const event of [
+    {
+      type: 'message_end',
+      message: {
+        role: 'assistant',
+        content: [],
+        stopReason: 'aborted',
+        errorMessage: 'Interrupted by extension.',
+      },
+    },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: true },
+  ]) {
+    eventToOps(event, aborted);
+  }
+  assert.equal(aborted.sawResult, false);
+  assert.deepEqual(
+    finishOps({ error: null, code: 0, signal: null, stderr: '' }, aborted).map((op) => op.item.text),
+    ['Interrupted by extension.'],
+  );
+});

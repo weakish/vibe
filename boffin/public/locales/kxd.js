@@ -13,6 +13,7 @@ export default {
     agentLabel: 'Ejan',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
+    agentPi: 'Pi',
     modelLabel: 'Model',
     unknownAgent: 'Ejan itu inda tasadia.',
     unknownModel: 'Model itu inda tasadia.',

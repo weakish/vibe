@@ -615,6 +615,42 @@ test('spawns Grok for a new chat and does not resume a Cursor session id', async
   assert.equal(conversation.model, 'grok-4.7/high');
 });
 
+test('spawns Pi for a new chat and resumes its session id', async () => {
+  const { stateFile } = tempStateFile();
+  const { runAgent, calls } = scriptedRunner([
+    { type: 'session', version: 3, id: 'pi-sess-9' },
+    { type: 'message_start', message: { role: 'assistant', content: [], stopReason: 'pending' } },
+    { type: 'message_update', assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Hi' } },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }], stopReason: 'stop' } },
+    { type: 'agent_end', messages: [], willRetry: false },
+    { type: 'agent_settled', aborted: false },
+  ]);
+  const conversation = makeConversation(runAgent, stateFile, { agents: ['pi'], piBin: 'pi-test' });
+
+  await conversation.start('first', () => {});
+  await conversation.start('second', () => {});
+
+  assert.equal(conversation.chatId, 'pi-sess-9');
+  const [first, second] = calls;
+  assert.equal(first.bin, 'pi-test');
+  assert.ok(first.args.includes('--approve'));
+  assert.ok(!first.args.includes('--model'));
+  assert.ok(!first.args.includes('--session-id'));
+  assert.deepEqual(
+    second.args.slice(second.args.indexOf('--session-id'), second.args.indexOf('--session-id') + 2),
+    ['--session-id', 'pi-sess-9'],
+  );
+  assert.deepEqual(
+    conversation.items.map((item) => [item.role, item.text]),
+    [
+      ['user', 'first'],
+      ['assistant', 'Hi'],
+      ['user', 'second'],
+      ['assistant', 'Hi'],
+    ],
+  );
+});
+
 test('persists the chosen agent and model across restarts', async () => {
   const { stateFile } = tempStateFile();
   const conversation = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['cursor', 'grok'] });
@@ -639,7 +675,7 @@ test('kept log records the agent that ended, not the new chat', async () => {
   assert.equal(saved.kept[0].model, 'composer-2.5');
 });
 
-test('does not resume a legacy Cursor chat id on Grok', () => {
+test('does not resume a legacy Cursor chat id on Grok or Pi', () => {
   const { stateFile } = tempStateFile();
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
   fs.writeFileSync(stateFile, JSON.stringify({ version: 1, chatId: 'cursor-1', items: [] }));
@@ -648,6 +684,11 @@ test('does not resume a legacy Cursor chat id on Grok', () => {
   assert.equal(grokOnly.agent, 'grok');
   assert.equal(grokOnly.chatId, null);
 
+  fs.writeFileSync(stateFile, JSON.stringify({ version: 1, chatId: 'cursor-1', items: [] }));
+  const piOnly = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['pi'] });
+  assert.equal(piOnly.agent, 'pi');
+  assert.equal(piOnly.chatId, null);
+
   fs.writeFileSync(
     stateFile,
     JSON.stringify({ version: 1, agent: 'grok', model: 'grok-4.7/low', chatId: 'sess-9', items: [] }),
@@ -655,6 +696,15 @@ test('does not resume a legacy Cursor chat id on Grok', () => {
   const restored = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['grok'] });
   assert.equal(restored.chatId, 'sess-9');
   assert.equal(restored.model, 'grok-4.7/low');
+
+  fs.writeFileSync(
+    stateFile,
+    JSON.stringify({ version: 1, agent: 'grok', model: 'grok-4.7/high', chatId: 'sess-9', items: [] }),
+  );
+  const switched = makeConversation(scriptedRunner([]).runAgent, stateFile, { agents: ['pi'] });
+  assert.equal(switched.agent, 'pi');
+  assert.equal(switched.model, 'default');
+  assert.equal(switched.chatId, null);
 });
 
 test('treats a kept log without agent or model as a Cursor Composer 2.5 chat', () => {

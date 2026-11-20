@@ -105,9 +105,11 @@ export class Conversation {
   constructor({
     model,
     grokModel,
+    piModel,
     workdir,
     agentBin,
     grokBin,
+    piBin,
     force,
     agents,
     stateFile,
@@ -118,8 +120,10 @@ export class Conversation {
       agents,
       model,
       grokModel,
+      piModel,
       agentBin,
       grokBin,
+      piBin,
       force,
     });
     if (!this.backends) {

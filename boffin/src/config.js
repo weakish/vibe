@@ -7,7 +7,10 @@ import {
   DEFAULT_CURSOR_MODEL,
   DEFAULT_GROK_BIN,
   DEFAULT_GROK_MODEL,
+  DEFAULT_PI_BIN,
+  DEFAULT_PI_MODEL,
   GROK,
+  PI,
   findModel,
   parseAgents,
 } from './backends.js';
@@ -17,9 +20,11 @@ const KNOWN_KEYS = new Set([
   'port',
   'model',
   'grok_model',
+  'pi_model',
   'agents',
   'agent_bin',
   'grok_bin',
+  'pi_bin',
   'force',
   'username',
   'password',
@@ -124,11 +129,15 @@ function materialize(raw, workdir, env) {
 
   const model = requiredString(raw, 'model');
   const grokModel = optionalString(raw, 'grok_model', DEFAULT_GROK_MODEL);
+  const piModel = optionalString(raw, 'pi_model', DEFAULT_PI_MODEL);
   if (!findModel(CURSOR, model)) {
     throw new ConfigError(`"${model}" is not a first-party Cursor model.`);
   }
   if (!findModel(GROK, grokModel)) {
     throw new ConfigError(`"${grokModel}" is not a first-party Grok model.`);
+  }
+  if (!findModel(PI, piModel)) {
+    throw new ConfigError(`"${piModel}" is not "default" or a Pi provider/model id.`);
   }
 
   return {
@@ -137,9 +146,11 @@ function materialize(raw, workdir, env) {
     workdir,
     model,
     grokModel,
+    piModel,
     agents: readAgents(raw),
     agentBin: optionalString(raw, 'agent_bin', 'agent'),
     grokBin: optionalString(raw, 'grok_bin', DEFAULT_GROK_BIN),
+    piBin: optionalString(raw, 'pi_bin', DEFAULT_PI_BIN),
     bunBin: optionalString(raw, 'bun_bin', DEFAULT_BUN_BIN),
     force: optionalBoolean(raw, 'force', true),
     username,
@@ -213,7 +224,7 @@ function readAgents(raw) {
   }
   const ids = parseAgents(raw.agents);
   if (!ids) {
-    throw new ConfigError('"agents" must be a non-empty array of "cursor" and/or "grok".');
+    throw new ConfigError('"agents" must be a non-empty array of "cursor", "grok", and/or "pi".');
   }
   return ids;
 }

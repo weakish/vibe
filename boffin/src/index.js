@@ -17,9 +17,11 @@ function main() {
     conversation = new Conversation({
       model: config.model,
       grokModel: config.grokModel,
+      piModel: config.piModel,
       workdir: config.workdir,
       agentBin: config.agentBin,
       grokBin: config.grokBin,
+      piBin: config.piBin,
       force: config.force,
       agents: config.agents,
       stateFile: config.stateFile,

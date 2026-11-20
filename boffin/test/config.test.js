@@ -40,8 +40,10 @@ test('applies defaults and resolves paths relative to the workdir', () => {
   assert.equal(config.stateFile, path.join(workdir, 'state/chat.json'));
   assert.equal(config.model, 'composer-2.5');
   assert.equal(config.grokModel, 'grok-4.7/high');
+  assert.equal(config.piModel, 'default');
   assert.equal(config.agentBin, 'agent');
   assert.equal(config.grokBin, 'grok');
+  assert.equal(config.piBin, 'pi');
   assert.equal(config.bunBin, 'bun');
   assert.equal(config.force, true);
   assert.equal(config.host, '0.0.0.0');
@@ -133,14 +135,19 @@ test('requires a model', () => {
   assert.throws(() => loadConfig(workdir, {}), /"model" must be a non-empty string/);
 });
 
-test('defaults agents to cursor and accepts cursor, grok, or both', () => {
+test('defaults agents to cursor and accepts cursor, grok, pi, or a combination', () => {
   const workdir = writeConfig();
   assert.deepEqual(loadConfig(workdir, {}).agents, ['cursor']);
   assert.equal(loadConfig(workdir, {}).grokModel, 'grok-4.7/high');
+  assert.equal(loadConfig(workdir, {}).piModel, 'default');
   assert.equal(loadConfig(workdir, {}).grokBin, 'grok');
+  assert.equal(loadConfig(workdir, {}).piBin, 'pi');
 
-  const all = writeConfig({ agents: ['cursor', 'grok'] });
-  assert.deepEqual(loadConfig(all, {}).agents, ['cursor', 'grok']);
+  const all = writeConfig({ agents: ['cursor', 'grok', 'pi'], pi_model: 'openai/gpt-5.6:high', pi_bin: '/usr/local/bin/pi' });
+  const loaded = loadConfig(all, {});
+  assert.deepEqual(loaded.agents, ['cursor', 'grok', 'pi']);
+  assert.equal(loaded.piModel, 'openai/gpt-5.6:high');
+  assert.equal(loaded.piBin, '/usr/local/bin/pi');
 });
 
 test('rejects unknown agents and third-party models', () => {
@@ -148,6 +155,7 @@ test('rejects unknown agents and third-party models', () => {
   assert.throws(() => loadConfig(writeConfig({ agents: ['opencode'] }), {}), /"agents" must be/);
   assert.throws(() => loadConfig(writeConfig({ model: 'gpt-5' }), {}), /first-party Cursor model/);
   assert.throws(() => loadConfig(writeConfig({ grok_model: 'mystery' }), {}), /first-party Grok model/);
+  assert.throws(() => loadConfig(writeConfig({ pi_model: 'mystery' }), {}), /Pi provider\/model id/);
 });
 
 test('rejects usernames that contain a colon', () => {

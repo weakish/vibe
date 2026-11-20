@@ -294,6 +294,37 @@ test('lets the owner pick a first-party model when starting a new chat', async (
   assert.equal((await bad.json()).error, 'That agent is not available.');
 });
 
+test('offers Pi and accepts its model when starting a new chat', async (t) => {
+  const app = await startServer({
+    conversation: { agents: ['cursor', 'pi'], piBin: FAKE_AGENT },
+  });
+  t.after(() => app.close());
+
+  const session = await (await api(app.baseUrl, '/api/session')).json();
+  assert.deepEqual(
+    session.agents.map((entry) => entry.id),
+    ['cursor', 'pi'],
+  );
+  const pi = session.agents[1];
+  assert.equal(pi.defaultModel, 'default');
+  assert.ok(pi.models.some((entry) => entry.id === 'default'));
+
+  const ok = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'pi', model: 'openai/gpt-5.6:high' },
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(app.conversation.agent, 'pi');
+  assert.equal(app.conversation.model, 'openai/gpt-5.6:high');
+
+  const bad = await api(app.baseUrl, '/api/new', {
+    method: 'POST',
+    body: { agent: 'pi', model: 'not-a-model' },
+  });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error, 'That model is not available.');
+});
+
 test('returns 500 when a new chat cannot be saved', async (t) => {
   const app = await startServer();
   t.after(() => app.close());

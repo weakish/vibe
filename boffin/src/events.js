@@ -33,18 +33,40 @@ export function eventToOps(event, state) {
   switch (event?.type) {
     case 'system':
       return onSystem(event, state);
+    case 'session':
+      return onPiSession(event, state);
     case 'assistant':
       return onAssistant(event, state);
+    case 'message_start':
+      return onPiMessageStart(event, state);
+    case 'message_update':
+      return onPiMessageUpdate(event, state);
+    case 'message_end':
+      return onPiMessageEnd(event, state);
     case 'tool_call':
       return event.subtype ? onToolCall(event, state) : onGrokTool(event, state);
     case 'tool_call_update':
       return onGrokTool(event, state);
+    case 'tool_execution_start':
+      return onPiToolStart(event, state);
+    case 'tool_execution_update':
+      return onPiToolUpdate(event, state);
+    case 'tool_execution_end':
+      return onPiToolEnd(event, state);
     case 'result':
       return onResult(event, state);
     case 'text':
       return onGrokText(event, state);
     case 'end':
       return onGrokEnd(event, state);
+    case 'agent_end':
+      return onPiAgentEnd(event, state);
+    case 'agent_settled':
+      return onPiAgentSettled(event, state);
+    case 'auto_retry_start':
+      return onPiAutoRetryStart(state);
+    case 'auto_retry_end':
+      return onPiAutoRetryEnd(event, state);
     case 'error':
       return onGrokError(event, state);
     case 'boffin_error':
@@ -111,6 +133,123 @@ function onSystem(event, state) {
     state.chatId = event.session_id;
   }
   return [];
+}
+
+function onPiSession(event, state) {
+  const id = firstString(event.id);
+  if (id) {
+    state.chatId = id;
+  }
+  return [];
+}
+
+function onPiMessageStart(event, state) {
+  if (event.message?.role === 'assistant') {
+    state.segmentId = null;
+    state.agentError = null;
+  }
+  return [];
+}
+
+function onPiMessageUpdate(event, state) {
+  const inner = event.assistantMessageEvent;
+  if (!inner || typeof inner !== 'object') {
+    return [];
+  }
+  if (inner.type === 'text_delta') {
+    return appendSegmentText(state, typeof inner.delta === 'string' ? inner.delta : '');
+  }
+  return [];
+}
+
+// Pi's `message_end` carries the authoritative assistant message and terminal stopReason.
+// Tool-use turns (`toolUse`) and pending messages continue. A terminal reason waits for
+// `agent_settled`: `agent_end` is only one low-level loop, and Pi may still retry,
+// compact, or run a follow-up.
+function onPiMessageEnd(event, state) {
+  const message = event.message;
+  if (!message || message.role !== 'assistant') {
+    return [];
+  }
+  const ops = onAssistant({ message }, state);
+  const reason = normalizeReason(message.stopReason);
+  state.piStopReason = reason;
+  if (reason === 'error') {
+    state.agentError = firstString(message.errorMessage) || 'The agent stopped (error).';
+  } else if (reason === 'aborted') {
+    state.agentError = firstString(message.errorMessage) || 'The agent stopped (cancelled).';
+  }
+  return ops;
+}
+
+function onPiToolStart(event, state) {
+  const rawId = event.toolCallId ?? event.tool_call_id;
+  return upsertTool(state, {
+    callId: rawId == null || rawId === '' ? null : String(rawId),
+    name: typeof event.toolName === 'string' && event.toolName.trim() ? labelFor(event.toolName) : '',
+    summary: summarize(event.args),
+    status: 'running',
+    images: [],
+  });
+}
+
+function onPiToolUpdate(event, state) {
+  const rawId = event.toolCallId ?? event.tool_call_id;
+  return upsertTool(state, {
+    callId: rawId == null || rawId === '' ? null : String(rawId),
+    name: typeof event.toolName === 'string' && event.toolName.trim() ? labelFor(event.toolName) : '',
+    summary: summarize(event.args),
+    status: 'running',
+    images: imageParts(event.partialResult?.content),
+  });
+}
+
+function onPiToolEnd(event, state) {
+  const rawId = event.toolCallId ?? event.tool_call_id;
+  const failed = event.isError === true || event.result?.isError === true;
+  return upsertTool(state, {
+    callId: rawId == null || rawId === '' ? null : String(rawId),
+    name: typeof event.toolName === 'string' && event.toolName.trim() ? labelFor(event.toolName) : '',
+    summary: summarize(event.args),
+    status: failed ? 'error' : 'done',
+    images: imageParts(event.result?.content),
+  });
+}
+
+function onPiAutoRetryStart(state) {
+  state.agentError = null;
+  return [];
+}
+
+function onPiAutoRetryEnd(event, state) {
+  if (event.success === true) {
+    state.agentError = null;
+    state.piStopReason = null;
+  } else if (firstString(event.finalError)) {
+    state.agentError = firstString(event.finalError);
+  }
+  return [];
+}
+
+function onPiAgentEnd(event, state) {
+  if (event.willRetry === true) {
+    state.agentError = null;
+  }
+  return [];
+}
+
+function onPiAgentSettled(event, state) {
+  if (event.aborted === true) {
+    if (!state.agentError) {
+      state.agentError = 'The agent stopped (cancelled).';
+    }
+    return [];
+  }
+  const reason = state.piStopReason;
+  if (reason === 'tool_use' || reason === 'tooluse' || reason === 'pending') {
+    return [];
+  }
+  return finishStep(state, reason);
 }
 
 // With --stream-partial-output, assistant messages come in three shapes:
@@ -205,8 +344,7 @@ function onToolCall(event, state) {
   return [];
 }
 
-function onGrokText(event, state) {
-  const text = firstString(event.data, event.text);
+function appendSegmentText(state, text) {
   if (!text) {
     return [];
   }
@@ -218,6 +356,10 @@ function onGrokText(event, state) {
   ops.push({ op: 'append', id: state.segmentId, text });
   state.sawText = true;
   return ops;
+}
+
+function onGrokText(event, state) {
+  return appendSegmentText(state, firstString(event.data, event.text));
 }
 
 function onGrokEnd(event, state) {
