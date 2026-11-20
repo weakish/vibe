@@ -178,6 +178,9 @@ const el = {
   staticAssets: document.getElementById('static-assets'),
   staticAssetsLabel: document.getElementById('static-assets-label'),
   staticAssetsStatus: document.getElementById('static-assets-status'),
+  updateField: document.getElementById('update-field'),
+  updateApp: document.getElementById('update-app'),
+  updateStatus: document.getElementById('update-status'),
   theme: document.getElementById('theme'),
   themeLabel: document.getElementById('theme-label'),
   size: document.getElementById('size'),
@@ -330,6 +333,12 @@ let staticAssetsRefresh = null;
 let staticAssetsGeneration = 0;
 // False until the server has confirmed the mode, so the picker never shows a guess.
 let staticAssetsLoaded = false;
+let updateEnabled = false;
+let updateLoaded = false;
+let updateBusy = false;
+let updateRefresh = null;
+let updateGeneration = 0;
+let renderUpdateStatus = () => '';
 let grokUsage = null;
 let grokUsageLoaded = false;
 let grokUsageRefresh = null;
@@ -435,6 +444,11 @@ function applyChrome() {
   syncLocalePicker(el.locale);
   syncStaticAssetsPicker();
   paintStaticAssetsStatus();
+  if (el.updateApp) {
+    el.updateApp.textContent = msg('updateApp');
+  }
+  syncUpdateControl();
+  paintUpdateStatus();
   el.exportLabel.textContent = msg('exportLog');
   el.exportJson.textContent = msg('exportJson');
   el.exportMarkdown.textContent = msg('exportMarkdown');
@@ -1188,6 +1202,152 @@ function onStaticAssetsKey(event) {
   setStaticAssetsMode(options[next].dataset.staticAssets).catch(handleFailure);
 }
 
+function resetUpdateControl() {
+  updateGeneration += 1;
+  updateRefresh = null;
+  updateEnabled = false;
+  updateLoaded = false;
+  updateBusy = false;
+  renderUpdateStatus = () => '';
+  if (el.updateField) {
+    el.updateField.hidden = true;
+  }
+  syncUpdateControl();
+  paintUpdateStatus();
+}
+
+function syncUpdateControl() {
+  if (!el.updateApp) {
+    return;
+  }
+  el.updateApp.disabled = !state.canManage || !updateLoaded || !updateEnabled || updateBusy || state.busy;
+}
+
+function setUpdateStatus(message) {
+  renderUpdateStatus = typeof message === 'function' ? message : () => message || '';
+  paintUpdateStatus();
+}
+
+function paintUpdateStatus() {
+  if (!el.updateStatus) {
+    return;
+  }
+  if (!state.canManage) {
+    el.updateStatus.hidden = true;
+    return;
+  }
+  const text = updateBusy ? renderUpdateStatus() || msg('updateRunning') : renderUpdateStatus();
+  el.updateStatus.textContent = text;
+  el.updateStatus.hidden = !text;
+}
+
+function requestUpdateControl({ ifMissing = false } = {}) {
+  if (!state.canManage || updateBusy) {
+    return;
+  }
+  if (ifMissing && updateLoaded) {
+    return;
+  }
+  if (updateRefresh) {
+    return;
+  }
+  const generation = updateGeneration;
+  const request = fetchUpdateControl(generation).finally(() => {
+    if (updateRefresh === request) {
+      updateRefresh = null;
+    }
+  });
+  updateRefresh = request;
+  request.catch(handleFailure);
+}
+
+async function fetchUpdateControl(generation) {
+  const response = await api('/api/update');
+  if (generation !== updateGeneration) {
+    response.body?.cancel()?.catch(() => {});
+    return;
+  }
+  if (!response.ok) {
+    throw new RequestError(await readServerError(response), response.status);
+  }
+  const body = await response.json();
+  if (generation !== updateGeneration) {
+    return;
+  }
+  updateEnabled = Boolean(body.enabled);
+  updateBusy = Boolean(body.updating);
+  updateLoaded = true;
+  syncUpdateControl();
+  paintUpdateStatus();
+}
+
+async function waitForRestartAndReload(previousBoot) {
+  for (;;) {
+    await sleep(POLL_INTERVAL_MS);
+    try {
+      const response = await fetch('/api/auth/status', { cache: 'no-store' });
+      const boot = response.headers.get('X-Boffin-Boot');
+      // The process that answered the update is still shutting down until this changes.
+      if (response.ok && boot && previousBoot && boot !== previousBoot) {
+        window.location.reload();
+        return;
+      }
+    } catch {
+      // Server is still restarting.
+    }
+  }
+}
+
+async function runRepoUpdate() {
+  if (!state.canManage || !updateLoaded || !updateEnabled || updateBusy || state.busy) {
+    return;
+  }
+  updateGeneration += 1;
+  updateBusy = true;
+  setUpdateStatus(() => msg('updateRunning'));
+  syncUpdateControl();
+  let response;
+  try {
+    response = await api('/api/update', { method: 'POST', body: {} });
+  } catch (error) {
+    updateBusy = false;
+    syncUpdateControl();
+    if (error instanceof AuthError || error instanceof SessionEndedError) {
+      throw error;
+    }
+    setUpdateStatus(() => msg('cannotReach'));
+    return;
+  }
+  const body = await response.json().catch(() => ({}));
+  if (body.restart) {
+    const head = body.head || '';
+    setUpdateStatus(() =>
+      response.ok ? msg('updateRestarting', { head }) : translateError(locale, body.error) || msg('updateFailed'),
+    );
+    setStatus(() => msg('updateRestarting', { head }));
+    await waitForRestartAndReload(response.headers.get('X-Boffin-Boot'));
+    return;
+  }
+  if (!response.ok) {
+    updateBusy = false;
+    syncUpdateControl();
+    setUpdateStatus(() => translateError(locale, body.error) || msg('updateFailed'));
+    return;
+  }
+  updateBusy = false;
+  syncUpdateControl();
+  if (body.updated) {
+    const head = body.head || '';
+    setUpdateStatus(() => msg('updateDone', { head }));
+    return;
+  }
+  setUpdateStatus(() => msg('updateUpToDate'));
+}
+
+function onUpdateAppClick() {
+  runRepoUpdate().catch(handleFailure);
+}
+
 function setDemoLanguageOpen(open) {
   if (!el.demoLanguagePanel) {
     return;
@@ -1249,6 +1409,7 @@ function setSettingsOpen(open) {
     setLandingLanguageOpen(false);
     setLandingSettingsOpen(false);
     requestStaticAssets();
+    requestUpdateControl();
     requestGrokUsage({ fresh: true });
   }
 }
@@ -1420,6 +1581,7 @@ function forgetSession() {
   }
   removeLegacyAccessToken();
   resetStaticAssets();
+  resetUpdateControl();
   resetGrokUsage();
 }
 
@@ -1521,10 +1683,14 @@ function applySessionIdentity(session) {
   if (el.staticAssetsField) {
     el.staticAssetsField.hidden = !state.canManage;
   }
+  if (el.updateField) {
+    el.updateField.hidden = !state.canManage;
+  }
   if (!state.you?.inConversation) {
     resetGrokUsage();
   }
   requestStaticAssets({ ifMissing: true });
+  requestUpdateControl({ ifMissing: true });
 }
 
 function tintMember(node, name) {
@@ -1754,6 +1920,9 @@ function captureAppElements() {
   el.staticAssets = document.getElementById('static-assets');
   el.staticAssetsLabel = document.getElementById('static-assets-label');
   el.staticAssetsStatus = document.getElementById('static-assets-status');
+  el.updateField = document.getElementById('update-field');
+  el.updateApp = document.getElementById('update-app');
+  el.updateStatus = document.getElementById('update-status');
   el.theme = document.getElementById('theme');
   el.themeLabel = document.getElementById('theme-label');
   el.size = document.getElementById('size');
@@ -1976,6 +2145,7 @@ function bindAppEvents() {
     setActiveView('overview');
   });
   el.settings.addEventListener('click', onSettingsClick);
+  el.updateApp?.addEventListener('click', onUpdateAppClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
   el.newChat.addEventListener('click', newChat);
   el.newChatDialog.addEventListener('click', onNewChatDialogClick);
@@ -2255,6 +2425,9 @@ function showConversationList(conversations) {
   el.people.hidden = true;
   el.passkeys.hidden = false;
   el.staticAssetsField.hidden = true;
+  if (el.updateField) {
+    el.updateField.hidden = true;
+  }
   el.conversationListTitle.textContent = msg('conversationList');
   el.conversationEntries.replaceChildren();
   for (const conversation of conversations) {
@@ -2323,6 +2496,9 @@ function showClosedConversation(closed) {
   el.newChat.hidden = true;
   el.people.hidden = true;
   el.peopleLine.hidden = true;
+  if (el.updateField) {
+    el.updateField.hidden = !state.canManage;
+  }
   if (el.viewMenuHost) {
     el.viewMenuHost.hidden = false;
   }
@@ -3689,6 +3865,7 @@ function updateComposer() {
   el.send.disabled = state.busy ? state.stopping : preparing > 0 || !hasDraft;
   el.typing.hidden = !state.busy;
   el.newChat.disabled = state.busy;
+  syncUpdateControl();
 }
 
 function autoGrow(field = el.input) {

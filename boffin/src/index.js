@@ -31,6 +31,11 @@ function main() {
       username: config.username,
       password: config.password,
       bunBin: config.bunBin,
+      repoUrl: config.repoUrl,
+      repoBranch: config.repoBranch,
+      onRestart: () => {
+        void shutdown(1);
+      },
     });
   } catch (error) {
     if (error instanceof ConfigError || error instanceof StateError) {
@@ -58,14 +63,14 @@ function main() {
   });
 
   let shuttingDown = false;
-  const shutdown = async () => {
+  const shutdown = async (defaultExitCode = 0) => {
     if (shuttingDown) {
       return;
     }
     shuttingDown = true;
     const forceExit = setTimeout(() => process.exit(1), SHUTDOWN_TIMEOUT_MS);
     forceExit.unref();
-    let exitCode = 0;
+    let exitCode = defaultExitCode;
     try {
       await conversation.stop();
     } catch (error) {

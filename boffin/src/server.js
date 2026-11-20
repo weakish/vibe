@@ -20,9 +20,15 @@ import { AttachmentError, parseAttachments } from './attachments.js';
 import { listConversationFiles, listWorkdirFiles, readStashFile, readWorkdirFileForOwner } from './file-view.js';
 import { buildConversationOverview, overviewPathForState, readOverviewStory } from './overview.js';
 import { GROK } from './backends.js';
-import { ConfigError, DEFAULT_BUN_BIN } from './config.js';
+import { ConfigError, DEFAULT_BUN_BIN, DEFAULT_REPO_BRANCH } from './config.js';
 import { BusyError, ChoiceError, MembershipError, checkedPasskeyLabel } from './conversation.js';
 import { GROK_USAGE_REFRESH_FAILED, createGrokUsage } from './grok-usage.js';
+import {
+  UPDATE_IN_PROGRESS,
+  UpdateError,
+  inspectRepoUpdate,
+  pullRepoUpdate,
+} from './repo-update.js';
 import {
   MAX_SHOPPING_ITEMS,
   MAX_SHOPPING_NAME,
@@ -90,6 +96,8 @@ export const SHOPPING_BODY_BYTES =
   MAX_SHOPPING_ITEMS * ((MAX_SHOPPING_NAME + MAX_SHOPPING_NOTE + MAX_SHOPPING_WHO * 2) * 6 + 256) + 64;
 const HEARTBEAT_MS = 15000;
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Distinguishes this process from the one systemd starts after an update.
+const BOOT_ID = randomUUID();
 // Only these exact paths are served, so request paths never reach the file system directly.
 const STATIC_FILES = new Map([
   ['/', 'public/index.html'],
@@ -192,6 +200,12 @@ export function createServer({
   username,
   password = null,
   bunBin = DEFAULT_BUN_BIN,
+  repoUrl = null,
+  repoBranch = DEFAULT_REPO_BRANCH,
+  gitBin = 'git',
+  onRestart = null,
+  inspectRepoUpdate: inspectRepoUpdateOverride,
+  pullRepoUpdate: pullRepoUpdateOverride,
   projectRoot = PROJECT_ROOT,
   logger = console,
   grokUsage = createGrokUsage({
@@ -220,6 +234,25 @@ export function createServer({
     expectedUser,
     expectedPassword,
     bunBin,
+    repoUrl,
+    repoBranch,
+    gitBin,
+    onRestart,
+    inspectRepoUpdate:
+      inspectRepoUpdateOverride ??
+      (() => inspectRepoUpdate({ workdir: conversation.workdir, repoUrl, gitBin })),
+    pullRepoUpdate:
+      pullRepoUpdateOverride ??
+      (() =>
+        pullRepoUpdate({
+          workdir: conversation.workdir,
+          projectRoot,
+          repoUrl,
+          repoBranch,
+          gitBin,
+          logger,
+        })),
+    updatePromise: null,
     logger,
     readGrokUsage: readGrokUsageOverride ?? grokUsage.read,
     refreshGrokUsage: refreshGrokUsageOverride ?? grokUsage.refresh,
@@ -268,6 +301,7 @@ async function handleRequest(req, res, context) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     res.setHeader(name, value);
   }
+  res.setHeader('X-Boffin-Boot', BOOT_ID);
   const url = new URL(req.url ?? '/', 'http://localhost');
   if (url.pathname.startsWith('/api/')) {
     return handleApi(req, res, url, context);
@@ -379,6 +413,18 @@ async function handleApi(req, res, url, context) {
       return sendJson(res, 403, { error: OWNER_ONLY });
     }
     return handleStaticAssetsPut(req, res, context);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/update') {
+    if (!person.owner) {
+      return sendJson(res, 403, { error: OWNER_ONLY });
+    }
+    return handleUpdateGet(res, context);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/update') {
+    if (!person.owner) {
+      return sendJson(res, 403, { error: OWNER_ONLY });
+    }
+    return handleUpdatePost(req, res, context);
   }
   const logId = /^\/api\/logs\/([0-9a-f-]{36})$/.exec(url.pathname);
   if (req.method === 'GET' && logId) {
@@ -1617,29 +1663,7 @@ async function handleStaticAssetsPut(req, res, context) {
     await trackStaticAssetsChange(context, switchStaticAssetsToDev(context));
     return sendJson(res, 200, { mode: 'dev', stale: false, bundling: false, builtAt: null });
   }
-  const bundlePromise = trackStaticAssetsChange(
-    context,
-    bundleStaticAssets({
-      projectRoot: context.projectRoot,
-      bunBin: context.bunBin,
-      logger: context.logger,
-      afterPublish: async (manifest) => {
-        const previous = context.staticAssetsState;
-        await writeStaticAssetsState(context.workdir, { mode: 'release', manifest });
-        try {
-          await context.reloadStaticAssets();
-        } catch (error) {
-          await writeStaticAssetsState(context.workdir, {
-            mode: previous.mode,
-            manifest: previous.manifest,
-          }).catch((revertError) => {
-            context.logger.error(`[boffin] could not restore static assets state: ${revertError.message}`);
-          });
-          throw error;
-        }
-      },
-    }),
-  );
+  const bundlePromise = trackStaticAssetsChange(context, rebuildReleaseStaticAssets(context));
   try {
     const manifest = await bundlePromise;
     return sendJson(res, 200, {
@@ -1654,6 +1678,100 @@ async function handleStaticAssetsPut(req, res, context) {
     }
     throw error;
   }
+}
+
+function rebuildReleaseStaticAssets(context) {
+  return bundleStaticAssets({
+    projectRoot: context.projectRoot,
+    bunBin: context.bunBin,
+    logger: context.logger,
+    afterPublish: async (manifest) => {
+      const previous = context.staticAssetsState;
+      await writeStaticAssetsState(context.workdir, { mode: 'release', manifest });
+      try {
+        await context.reloadStaticAssets();
+      } catch (error) {
+        await writeStaticAssetsState(context.workdir, {
+          mode: previous.mode,
+          manifest: previous.manifest,
+        }).catch((revertError) => {
+          context.logger.error(`[boffin] could not restore static assets state: ${revertError.message}`);
+        });
+        throw error;
+      }
+    },
+  });
+}
+
+async function handleUpdateGet(res, context) {
+  const info = await context.inspectRepoUpdate();
+  return sendJson(res, 200, {
+    enabled: Boolean(info.enabled),
+    updating: Boolean(context.updatePromise),
+  });
+}
+
+async function handleUpdatePost(req, res, context) {
+  const body = await readBody(req, res, SMALL_BODY_BYTES);
+  if (body === undefined) {
+    return undefined;
+  }
+  if (context.updatePromise) {
+    return sendJson(res, 409, { error: UPDATE_IN_PROGRESS });
+  }
+  if (context.conversation.snapshot().busy) {
+    return sendJson(res, 409, { error: 'The agent is still working on the previous message.' });
+  }
+  if (context.bundlePromise) {
+    return sendJson(res, 409, { error: BUNDLE_IN_PROGRESS });
+  }
+  let outcome = null;
+  let tracked;
+  tracked = (async () => {
+    outcome = await context.pullRepoUpdate();
+    if (outcome.updated && outcome.rebuildBundle && context.staticAssetsState.mode === 'release') {
+      await trackStaticAssetsChange(context, rebuildReleaseStaticAssets(context));
+    }
+    return outcome;
+  })().finally(() => {
+    if (context.updatePromise === tracked) {
+      context.updatePromise = null;
+    }
+  });
+  context.updatePromise = tracked;
+  try {
+    outcome = await tracked;
+  } catch (error) {
+    if (error instanceof UpdateError) {
+      return sendJson(res, error.status, { error: error.message });
+    }
+    if (error instanceof BundleError) {
+      // The tree already matches the fetch. Leaving this process up would
+      // keep serving the previous server code.
+      scheduleRepoRestart(res, context, outcome);
+      return sendJson(res, 500, {
+        error: error.message,
+        restart: Boolean(outcome?.restart),
+        head: outcome?.head ?? '',
+      });
+    }
+    throw error;
+  }
+  scheduleRepoRestart(res, context, outcome);
+  return sendJson(res, 200, {
+    updated: Boolean(outcome.updated),
+    restart: Boolean(outcome.restart),
+    head: outcome.head ?? '',
+  });
+}
+
+function scheduleRepoRestart(res, context, outcome) {
+  if (!outcome?.restart || typeof context.onRestart !== 'function') {
+    return;
+  }
+  res.once('finish', () => {
+    context.onRestart();
+  });
 }
 
 // Null means a symlink or other non-regular entry. ENOENT propagates to the caller.

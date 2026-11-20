@@ -45,6 +45,8 @@ test('applies defaults and resolves paths relative to the workdir', () => {
   assert.equal(config.grokBin, 'grok');
   assert.equal(config.piBin, 'pi');
   assert.equal(config.bunBin, 'bun');
+  assert.equal(config.repoUrl, null);
+  assert.equal(config.repoBranch, 'main');
   assert.equal(config.force, true);
   assert.equal(config.host, '0.0.0.0');
   assert.equal(config.port, 8080);
@@ -193,4 +195,27 @@ test('allows omitting password from config.json while still validating explicit 
 test('validates port and force types', () => {
   assert.throws(() => loadConfig(writeConfig({ port: 70000 }), {}), /port number/);
   assert.throws(() => loadConfig(writeConfig({ force: 'yes' }), {}), /true or false/);
+});
+
+test('validates optional repo_url and repo_branch settings', () => {
+  const workdir = writeConfig({
+    repo_url: 'https://origin.cursor.com/weakish/vibe.git',
+    repo_branch: 'release/1.0',
+  });
+  const config = loadConfig(workdir, {});
+  assert.equal(config.repoUrl, 'https://origin.cursor.com/weakish/vibe.git');
+  assert.equal(config.repoBranch, 'release/1.0');
+
+  assert.throws(
+    () => loadConfig(writeConfig({ repo_url: 'git@github.com:weakish/vibe.git' }), {}),
+    /public https:\/\/ repository URL/,
+  );
+  assert.throws(
+    () => loadConfig(writeConfig({ repo_url: 'https://token@origin.cursor.com/weakish/vibe.git' }), {}),
+    /public https:\/\/ repository URL/,
+  );
+  assert.throws(
+    () => loadConfig(writeConfig({ repo_branch: '-bad' }), {}),
+    /valid git branch name/,
+  );
 });

@@ -14,6 +14,7 @@ import {
   findModel,
   parseAgents,
 } from './backends.js';
+import { isPublicHttpsRepoUrl, isValidRepoBranch } from './repo-update.js';
 
 const KNOWN_KEYS = new Set([
   'host',
@@ -30,6 +31,8 @@ const KNOWN_KEYS = new Set([
   'password',
   'state_file',
   'bun_bin',
+  'repo_url',
+  'repo_branch',
 ]);
 const MIN_PASSWORD_LENGTH = 8;
 const PLACEHOLDER_USERNAME = 'your-username';
@@ -37,6 +40,7 @@ const PLACEHOLDER_PASSWORD_PREFIX = 'replace-with-';
 const DEFAULT_MODEL = DEFAULT_CURSOR_MODEL;
 const DEFAULT_USERNAME = 'boffin';
 export const DEFAULT_BUN_BIN = 'bun';
+export const DEFAULT_REPO_BRANCH = 'main';
 
 export class ConfigError extends Error {
   constructor(message) {
@@ -139,6 +143,14 @@ function materialize(raw, workdir, env) {
   if (!findModel(PI, piModel)) {
     throw new ConfigError(`"${piModel}" is not "default" or a Pi provider/model id.`);
   }
+  const repoUrl = raw.repo_url === undefined ? null : requiredString(raw, 'repo_url');
+  if (repoUrl !== null && !isPublicHttpsRepoUrl(repoUrl)) {
+    throw new ConfigError('"repo_url" must be a public https:// repository URL without credentials.');
+  }
+  const repoBranch = optionalString(raw, 'repo_branch', DEFAULT_REPO_BRANCH);
+  if (!isValidRepoBranch(repoBranch)) {
+    throw new ConfigError('"repo_branch" is not a valid git branch name.');
+  }
 
   return {
     host: optionalString(raw, 'host', '0.0.0.0'),
@@ -152,6 +164,8 @@ function materialize(raw, workdir, env) {
     grokBin: optionalString(raw, 'grok_bin', DEFAULT_GROK_BIN),
     piBin: optionalString(raw, 'pi_bin', DEFAULT_PI_BIN),
     bunBin: optionalString(raw, 'bun_bin', DEFAULT_BUN_BIN),
+    repoUrl,
+    repoBranch,
     force: optionalBoolean(raw, 'force', true),
     username,
     password,

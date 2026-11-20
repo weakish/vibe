@@ -21,6 +21,7 @@ import {
   SPEC_BODY_BYTES,
   createServer,
 } from '../src/server.js';
+import { UPDATE_NOT_FAST_FORWARD, UpdateError } from '../src/repo-update.js';
 
 const FAKE_AGENT = fileURLToPath(new URL('../fixtures/fake-agent.js', import.meta.url));
 const USER = 'tester';
@@ -1306,4 +1307,49 @@ test('resets shopping and overview on new chat while keeping closed conversation
     const cacheFile = path.join(path.dirname(app.conversation.stateFile), 'exports', `${keptId}.${ext}`);
     assert.equal(fs.existsSync(cacheFile), true);
   }
+});
+
+test('serves /api/update for the owner and triggers onRestart only when server code changed', async (t) => {
+  let restarted = 0;
+  let nextOutcome = { updated: true, restart: false, rebuildBundle: false, head: 'abc1234' };
+  const app = await startServer({
+    inspectRepoUpdate: async () => ({ enabled: true, repoRoot: '/repo', repoUrl: 'https://example.com/a/b.git' }),
+    pullRepoUpdate: async () => {
+      if (nextOutcome instanceof Error) {
+        throw nextOutcome;
+      }
+      return nextOutcome;
+    },
+    onRestart: () => {
+      restarted += 1;
+    },
+  });
+  t.after(() => app.close());
+
+  assert.equal((await api(app.baseUrl, '/api/update', { credentials: null })).status, 401);
+  const status = await api(app.baseUrl, '/api/update');
+  assert.equal(status.status, 200);
+  assert.deepEqual(await status.json(), { enabled: true, updating: false });
+  const boot = status.headers.get('x-boffin-boot');
+  assert.equal(typeof boot, 'string');
+  assert.ok(boot);
+  const authStatus = await api(app.baseUrl, '/api/auth/status', { credentials: null });
+  assert.equal(authStatus.headers.get('x-boffin-boot'), boot);
+
+  const publicOnly = await api(app.baseUrl, '/api/update', { method: 'POST', body: {} });
+  assert.equal(publicOnly.status, 200);
+  assert.deepEqual(await publicOnly.json(), { updated: true, restart: false, head: 'abc1234' });
+  assert.equal(restarted, 0);
+
+  nextOutcome = { updated: true, restart: true, rebuildBundle: false, head: 'def5678' };
+  const serverUpdate = await api(app.baseUrl, '/api/update', { method: 'POST', body: {} });
+  assert.equal(serverUpdate.status, 200);
+  assert.deepEqual(await serverUpdate.json(), { updated: true, restart: true, head: 'def5678' });
+  assert.equal(restarted, 1);
+
+  nextOutcome = new UpdateError(409, UPDATE_NOT_FAST_FORWARD);
+  const conflict = await api(app.baseUrl, '/api/update', { method: 'POST', body: {} });
+  assert.equal(conflict.status, 409);
+  assert.deepEqual(await conflict.json(), { error: UPDATE_NOT_FAST_FORWARD });
+  assert.equal(restarted, 1);
 });

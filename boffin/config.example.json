@@ -9,6 +9,7 @@
   "grok_bin": "grok",
   "pi_bin": "pi",
   "bun_bin": "bun",
+  "repo_branch": "main",
   "force": true,
   "username": "your-username",
   "password": "replace-with-a-strong-password",

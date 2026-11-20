@@ -106,6 +106,8 @@ Notes:
 | `grok_bin` | `grok` | Path to the Grok CLI. In production this is `/home/boffin/.grok/bin/grok`. Do not put `~/.grok/bin` on `PATH`: that directory also contains `agent`, which would shadow Cursor's CLI. |
 | `pi_bin` | `pi` | Path to the Pi CLI. In production this is `/home/boffin/.local/bin/pi`. |
 | `bun_bin` | `bun` | Bun executable used when the owner switches static assets to **release** (bundled) mode. |
+| `repo_url` | *(optional; falls back to git `remote.origin.url`)* | Public `https://` repository URL used by the owner's **Update** button in Settings. |
+| `repo_branch` | `main` | Branch pulled by the **Update** button in Settings. |
 | `force` | `true` | Auto-approve: `--force` for Cursor, `--always-approve` for Grok (Pi runs tool calls without approval prompts; Boffin still passes `--approve` so Pi loads project resources). |
 | `username` | *(required\*)* | Bootstrap username for first passkey enrollment. Must not contain a colon. |
 | `password` | *(required until enrolled\*)* | Bootstrap password, at least 8 characters. May be removed from `config.json` once an owner passkey is saved in `state_file`. Keep `config.json` at mode `0600`. |

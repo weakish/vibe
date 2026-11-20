@@ -136,6 +136,10 @@ const SERVER_ERRORS = new Map([
   ['Grok usage refresh failed.', 'grokUsageRefreshFailed'],
   ['That agent is not available.', 'unknownAgent'],
   ['That model is not available.', 'unknownModel'],
+  ['Update is not available.', 'updateNotAvailable'],
+  ['An update is already in progress.', 'updateInProgress'],
+  ['Could not fast-forward to the remote branch.', 'updateNotFastForward'],
+  ['Could not update from the repository.', 'updateFailed'],
 ]);
 
 export function resolveLocale(requested = []) {
