@@ -382,7 +382,8 @@ async function handleApi(req, res, url, context) {
 
   const { conversation } = context;
   if (req.method === 'GET' && url.pathname === '/api/session') {
-    return sendSession(res, context, person, url.searchParams.get('open') === 'active');
+    const open = url.searchParams.get('open');
+    return sendSession(res, context, person, open === 'active', open === 'list');
   }
   if (req.method === 'DELETE' && url.pathname === '/api/session') {
     if (!dropSession(req, context)) {
@@ -1231,11 +1232,13 @@ async function handleJoinFinish(req, res, context) {
   return sendJson(res, 200, finishSignIn(context, person, joined.passkeyId));
 }
 
-function sendSession(res, context, person, openActive) {
+function sendSession(res, context, person, openActive, openList) {
   if (openActive && !canEnter(person, context.conversation)) {
     return sendJson(res, 403, { error: NOT_IN_CONVERSATION });
   }
-  const list = person.owner || openActive || context.conversation.homeFor(person.personId) === 'chat';
+  const list =
+    person.owner ||
+    (!openList && (openActive || context.conversation.homeFor(person.personId) === 'chat'));
   return sendJson(res, 200, sessionPayload(context, person, !list, null));
 }
 
@@ -1391,8 +1394,9 @@ function sendKeptLog(res, context, person, recordId, format) {
 
 function sessionPayload(context, person, listed, token) {
   const { conversation } = context;
+  const conversations = person.owner ? [] : conversation.listFor(person.personId);
   const body = listed
-    ? { you: publicYou(person, conversation), home: 'list', conversations: conversation.listFor(person.personId) }
+    ? { you: publicYou(person, conversation), home: 'list', conversations }
     : {
         ...conversation.snapshot(),
         you: publicYou(person, conversation),
@@ -1401,6 +1405,7 @@ function sessionPayload(context, person, listed, token) {
         alumni: person.owner ? conversation.alumni() : [],
         home: 'chat',
         canManage: person.owner,
+        canSwitchConversation: conversations.length > 1,
       };
   if (token) {
     body.token = token;

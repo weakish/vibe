@@ -157,6 +157,7 @@ const el = {
   conversationList: document.getElementById('conversation-list'),
   conversationListTitle: document.getElementById('conversation-list-title'),
   conversationEntries: document.getElementById('conversation-entries'),
+  conversationSwitch: document.getElementById('conversation-switch'),
   specLink: document.getElementById('spec-link'),
   shopping: document.getElementById('shopping'),
   shoppingStatus: document.getElementById('shopping-status'),
@@ -297,6 +298,7 @@ const state = {
   draftModel: '',
   you: null,
   canManage: false,
+  canSwitchConversation: false,
   people: [],
   alumni: [],
   invites: [],
@@ -418,6 +420,10 @@ function applyChrome() {
   el.language?.setAttribute('aria-label', msg('language'));
   el.settings.setAttribute('aria-label', msg('settings'));
   el.newChat.setAttribute('aria-label', msg('newChat'));
+  if (el.conversationSwitch) {
+    el.conversationSwitch.setAttribute('aria-label', msg('conversationList'));
+    el.conversationSwitch.title = msg('conversationList');
+  }
   if (el.viewOpen) {
     el.viewOpen.setAttribute('aria-label', msg('filesView'));
   }
@@ -1642,11 +1648,20 @@ function responseStatusText(raw, status) {
   return () => (raw ? translateError(locale, raw) : msg('requestFailed', { status }));
 }
 
-async function loadSession() {
+async function loadSession({ open } = {}) {
   const request = ++sessionRequest;
+  const openMode =
+    open ??
+    (state.closed ? 'list' : state.you && !state.you.owner && !state.listing ? 'active' : '');
+  const route =
+    openMode === 'active'
+      ? '/api/session?open=active'
+      : openMode === 'list'
+        ? '/api/session?open=list'
+        : '/api/session';
   let response;
   try {
-    response = await api('/api/session');
+    response = await api(route);
   } catch (error) {
     if (request !== sessionRequest) {
       return null;
@@ -1656,6 +1671,10 @@ async function loadSession() {
   if (request !== sessionRequest) {
     response.body?.cancel()?.catch(() => {});
     return null;
+  }
+  if (response.status === 403 && openMode === 'active') {
+    response.body?.cancel()?.catch(() => {});
+    return loadSession({ open: 'list' });
   }
   if (!response.ok) {
     throw new RequestError(await readServerError(response), response.status);
@@ -1680,6 +1699,11 @@ async function loadSession() {
 function applySessionIdentity(session) {
   state.you = session.you ?? null;
   state.canManage = Boolean(session.canManage);
+  if (typeof session.canSwitchConversation === 'boolean') {
+    state.canSwitchConversation = session.canSwitchConversation;
+  } else if (Array.isArray(session.conversations)) {
+    state.canSwitchConversation = session.conversations.length > 1;
+  }
   if (el.staticAssetsField) {
     el.staticAssetsField.hidden = !state.canManage;
   }
@@ -1899,6 +1923,7 @@ function captureAppElements() {
   el.conversationList = document.getElementById('conversation-list');
   el.conversationListTitle = document.getElementById('conversation-list-title');
   el.conversationEntries = document.getElementById('conversation-entries');
+  el.conversationSwitch = document.getElementById('conversation-switch');
   el.specLink = document.getElementById('spec-link');
   el.shopping = document.getElementById('shopping');
   el.shoppingStatus = document.getElementById('shopping-status');
@@ -2147,6 +2172,9 @@ function bindAppEvents() {
   el.settings.addEventListener('click', onSettingsClick);
   el.updateApp?.addEventListener('click', onUpdateAppClick);
   el.usageRefresh?.addEventListener('click', onUsageRefreshClick);
+  el.conversationSwitch?.addEventListener('click', () => {
+    switchConversation().catch(handleFailure);
+  });
   el.newChat.addEventListener('click', newChat);
   el.newChatDialog.addEventListener('click', onNewChatDialogClick);
   el.newChatDialog.addEventListener('cancel', onNewChatDialogCancel);
@@ -2378,6 +2406,7 @@ async function exportDemo() {
 
 function showChat(session) {
   state.listing = false;
+  state.closed = null;
   el.conversationList.hidden = true;
   if (state.shopping) {
     el.messages.hidden = true;
@@ -2399,6 +2428,9 @@ function showChat(session) {
   renderPeopleLine();
   el.newChat.hidden = !state.canManage;
   el.people.hidden = !state.canManage;
+  if (el.conversationSwitch) {
+    el.conversationSwitch.hidden = !state.canSwitchConversation;
+  }
   if (el.viewMenuHost) {
     el.viewMenuHost.hidden = false;
   }
@@ -2411,11 +2443,15 @@ function showChat(session) {
 function showConversationList(conversations) {
   state.listing = true;
   state.closed = null;
+  state.canSwitchConversation = conversations.length > 1;
   state.items = [];
   state.busy = false;
   hideViews();
   if (el.viewMenuHost) {
     el.viewMenuHost.hidden = true;
+  }
+  if (el.conversationSwitch) {
+    el.conversationSwitch.hidden = true;
   }
   el.messages.hidden = true;
   el.input.closest('.composer').hidden = true;
@@ -2464,6 +2500,12 @@ function showConversationList(conversations) {
   updateComposer();
 }
 
+async function switchConversation() {
+  closeAppChromeMenus();
+  setStatus('');
+  await loadSession({ open: 'list' });
+}
+
 async function openConversation(conversation) {
   if (!conversation.active) {
     const response = await api(`/api/conversations/${encodeURIComponent(conversation.id)}`);
@@ -2498,6 +2540,9 @@ function showClosedConversation(closed) {
   el.peopleLine.hidden = true;
   if (el.updateField) {
     el.updateField.hidden = !state.canManage;
+  }
+  if (el.conversationSwitch) {
+    el.conversationSwitch.hidden = false;
   }
   if (el.viewMenuHost) {
     el.viewMenuHost.hidden = false;
@@ -3946,9 +3991,14 @@ async function logOut({ revokeServer = true } = {}) {
   state.busy = false;
   state.stopping = false;
   state.listing = false;
+  state.closed = null;
+  state.canSwitchConversation = false;
   hideViews();
   if (el.viewMenuHost) {
     el.viewMenuHost.hidden = true;
+  }
+  if (el.conversationSwitch) {
+    el.conversationSwitch.hidden = true;
   }
   state.items = [];
   state.nodes.clear();
@@ -4349,7 +4399,7 @@ async function bootstrap() {
   if (sessionToken) {
     try {
       await ensureAppShell();
-      const session = await loadSession();
+      const session = await loadSession({ open: '' });
       if (!session) {
         return;
       }
@@ -5341,7 +5391,7 @@ el.peopleDialog.addEventListener('close', () => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || !sessionToken || state.streaming || state.following) {
+  if (document.hidden || !sessionToken || state.streaming || state.following || state.closed) {
     return;
   }
   ensureAppShell()
@@ -5349,7 +5399,7 @@ document.addEventListener('visibilitychange', () => {
       if (!state.listing) {
         requestGrokUsage();
       }
-      return loadSession();
+      return loadSession({ open: state.listing ? 'list' : 'active' });
     })
     .then((session) => {
       if (session?.busy && !state.listing) {

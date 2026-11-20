@@ -524,6 +524,7 @@ test('serves the web app without requiring credentials', async (t) => {
   assert.match(appShell, /<button type="button" class="menu-action" id="log-out">/);
   assert.match(appShell, /id="passkey-label"/);
   assert.match(appShell, /id="new-chat"/);
+  assert.match(appShell, /id="conversation-switch" hidden/);
   assert.match(appShell, /id="view-open"/);
   assert.match(appShell, /id="view-panel"/);
   assert.match(appShell, /id="view-chat"/);

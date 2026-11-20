@@ -355,6 +355,7 @@ test('an invitation passkey joins, and a removed person exports only the earlier
   assert.equal(member.you.name, 'Ada');
   assert.equal(member.home, 'chat');
   assert.equal(member.canManage, false);
+  assert.equal(member.canSwitchConversation, false);
   assert.deepEqual(member.invites, []);
   assert.deepEqual(member.alumni, []);
 
@@ -505,6 +506,18 @@ test('a name stays taken after its holder leaves, and the owner adds them back',
   assert.equal(back.home, 'list');
   assert.equal(back.conversations.length, 2);
   assert.equal(back.conversations.some((item) => item.active), true);
+
+  const active = await call(app.baseUrl, '/api/session?open=active', { token: back.token });
+  assert.equal(active.status, 200);
+  const activeBody = await active.json();
+  assert.equal(activeBody.home, 'chat');
+  assert.equal(activeBody.canSwitchConversation, true);
+
+  const listAgain = await call(app.baseUrl, '/api/session?open=list', { token: back.token });
+  assert.equal(listAgain.status, 200);
+  const listBody = await listAgain.json();
+  assert.equal(listBody.home, 'list');
+  assert.equal(listBody.conversations.length, 2);
 });
 
 test('someone already in the conversation cannot join again through a link', async (t) => {
