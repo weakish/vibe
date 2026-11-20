@@ -1262,4 +1262,17 @@ test('resets shopping and overview on new chat while keeping closed conversation
 
   const unauth = await api(app.baseUrl, `/api/conversations/${keptId}`, { credentials: null });
   assert.equal(unauth.status, 401);
+
+  for (const [query, ext] of [
+    ['', 'json'],
+    ['?format=markdown', 'md'],
+    ['?format=print', 'html'],
+    ['?format=epub', 'epub'],
+  ]) {
+    const res = await api(app.baseUrl, `/api/logs/${keptId}${query}`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('cache-control') || '', /immutable/);
+    const cacheFile = path.join(path.dirname(app.conversation.stateFile), 'exports', `${keptId}.${ext}`);
+    assert.equal(fs.existsSync(cacheFile), true);
+  }
 });

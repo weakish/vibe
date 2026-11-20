@@ -1,13 +1,16 @@
 import http from 'node:http';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
   buildConversationEpub,
+  buildPrintHtmlDocument,
   conversationEpubFilename,
   conversationLogFilename,
   conversationMarkdownFilename,
+  conversationPrintFilename,
   formatConversationLog,
   formatConversationLogMarkdown,
 } from '../shared/export.js';
@@ -1207,50 +1210,137 @@ function sendKeptConversation(res, context, person, recordId) {
   });
 }
 
-function sendKeptLog(res, context, person, recordId, format) {
-  if (person.owner) {
-    return sendJson(res, 404, { error: 'Not found.' });
+const KEPT_CACHE_CONTROL = 'private, max-age=31536000, immutable';
+
+function keptExportCachePath(stateFile, recordId, ext) {
+  return path.join(path.dirname(stateFile), 'exports', `${recordId}.${ext}`);
+}
+
+function readOrWriteKeptExport(file, buildBuffer) {
+  try {
+    return fsSync.readFileSync(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
   }
-  const record = context.conversation.logFor(person.personId, recordId);
+  const bytes = Buffer.from(buildBuffer());
+  try {
+    fsSync.mkdirSync(path.dirname(file), { recursive: true });
+    const temp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+    fsSync.writeFileSync(temp, bytes, { mode: 0o600, flag: 'wx' });
+    fsSync.renameSync(temp, file);
+  } catch {
+    // Serving the generated export still succeeds if the cache directory is read-only.
+  }
+  return bytes;
+}
+
+function buildServerImageHrefs(conversation, items) {
+  const map = new Map();
+  const seen = new Set();
+  for (const item of items ?? []) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    for (const list of [item.attachments, item.images]) {
+      if (!Array.isArray(list)) {
+        continue;
+      }
+      for (const file of list) {
+        if (!file?.id || !file?.name) {
+          continue;
+        }
+        const key = `${file.id}:${file.name}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        const media = conversation.readMedia(file.id);
+        if (!media || !media.mime.startsWith('image/')) {
+          continue;
+        }
+        map.set(key, `data:${media.mime};base64,${media.bytes.toString('base64')}`);
+      }
+    }
+  }
+  return map;
+}
+
+function sendCachedJson(res, payload) {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': body.length,
+    'Cache-Control': KEPT_CACHE_CONTROL,
+  });
+  res.end(body);
+}
+
+function sendKeptLog(res, context, person, recordId, format) {
+  const record = context.conversation.keptFor(person.personId, recordId, person.owner);
   if (!record) {
     return sendJson(res, 404, { error: 'Not found.' });
   }
+  const { conversation } = context;
   const exportedAt = record.at;
   const meta = { agent: record.agent, model: record.model, exportedAt };
   const when = new Date(record.at);
 
   if (format === 'source') {
-    return sendJson(res, 200, { ...meta, items: record.items });
+    return sendCachedJson(res, { ...meta, items: record.items });
   }
 
   if (format === 'markdown' || format === 'md') {
-    const text = formatConversationLogMarkdown(record.items, meta);
-    return sendJson(res, 200, { filename: conversationMarkdownFilename(when), text });
+    const file = keptExportCachePath(conversation.stateFile, recordId, 'md');
+    const bytes = readOrWriteKeptExport(file, () =>
+      Buffer.from(formatConversationLogMarkdown(record.items, meta), 'utf8'),
+    );
+    return sendCachedJson(res, { filename: conversationMarkdownFilename(when), text: bytes.toString('utf8') });
+  }
+
+  if (format === 'print') {
+    const file = keptExportCachePath(conversation.stateFile, recordId, 'html');
+    const bytes = readOrWriteKeptExport(file, () =>
+      Buffer.from(
+        buildPrintHtmlDocument(record.items, meta, {
+          renderMarkdown,
+          imageHrefs: buildServerImageHrefs(conversation, record.items),
+        }),
+        'utf8',
+      ),
+    );
+    return sendCachedJson(res, { filename: conversationPrintFilename(when), text: bytes.toString('utf8') });
   }
 
   if (format === 'epub') {
-    const { conversation } = context;
-    const bytes = buildConversationEpub(
-      record.items,
-      meta,
-      (id) => {
-        const file = conversation.readMedia(id);
-        return file ? { bytes: file.bytes, mime: file.mime, name: file.name } : null;
-      },
-      { renderMarkdown },
+    const file = keptExportCachePath(conversation.stateFile, recordId, 'epub');
+    const bytes = readOrWriteKeptExport(file, () =>
+      buildConversationEpub(
+        record.items,
+        meta,
+        (id) => {
+          const media = conversation.readMedia(id);
+          return media ? { bytes: media.bytes, mime: media.mime, name: media.name } : null;
+        },
+        { renderMarkdown },
+      ),
     );
     res.writeHead(200, {
       'Content-Type': 'application/epub+zip',
       'Content-Length': bytes.length,
-      'Cache-Control': 'private, no-store',
+      'Cache-Control': KEPT_CACHE_CONTROL,
       'Content-Disposition': contentDisposition(conversationEpubFilename(when), false),
     });
-    res.end(Buffer.from(bytes));
+    res.end(bytes);
     return;
   }
 
-  const text = formatConversationLog(record.items, meta);
-  return sendJson(res, 200, { filename: conversationLogFilename(when), text });
+  const file = keptExportCachePath(conversation.stateFile, recordId, 'json');
+  const bytes = readOrWriteKeptExport(file, () =>
+    Buffer.from(formatConversationLog(record.items, meta), 'utf8'),
+  );
+  return sendCachedJson(res, { filename: conversationLogFilename(when), text: bytes.toString('utf8') });
 }
 
 function sessionPayload(context, person, listed, token) {

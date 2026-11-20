@@ -2811,26 +2811,39 @@ async function exportKeptConversation(logId, format, printWindow) {
       await shareOrDownloadText(body.filename, body.text, 'application/json;charset=utf-8');
       return;
     }
-    const response = await api(`/api/logs/${logId}?format=source`);
-    if (!response.ok) {
-      throw new RequestError(await readServerError(response), response.status);
-    }
-    const body = await response.json();
-    const labels = exportLabels();
-    const meta = exportMeta({ agent: body.agent, model: body.model, exportedAt: body.exportedAt });
-    if (format === 'print') {
-      await exportPrintView(body.items, meta, labels, printWindow);
-      return;
-    }
-    const when = body.exportedAt ? new Date(body.exportedAt) : new Date();
     if (format === 'markdown') {
-      const text = formatConversationLogMarkdown(body.items, meta, labels);
-      await shareOrDownloadText(conversationMarkdownFilename(when), text, 'text/markdown;charset=utf-8');
+      const response = await api(`/api/logs/${logId}?format=markdown`);
+      if (!response.ok) {
+        throw new RequestError(await readServerError(response), response.status);
+      }
+      const body = await response.json();
+      await shareOrDownloadText(body.filename, body.text, 'text/markdown;charset=utf-8');
       return;
     }
     if (format === 'epub') {
-      const bytes = await buildConversationEpubAsync(body.items, meta, labels);
-      await shareOrDownloadBytes(conversationEpubFilename(when), bytes, 'application/epub+zip');
+      setStatus(() => `${msg('exportLog')}…`);
+      const response = await api(`/api/logs/${logId}?format=epub`);
+      if (!response.ok) {
+        throw new RequestError(await readServerError(response), response.status);
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const name =
+        response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] ||
+        conversationEpubFilename(new Date());
+      await shareOrDownloadBytes(name, bytes, 'application/epub+zip');
+      setStatus(() => '');
+      return;
+    }
+    if (format === 'print') {
+      setStatus(() => `${msg('exportLog')}…`);
+      const response = await api(`/api/logs/${logId}?format=print`);
+      if (!response.ok) {
+        throw new RequestError(await readServerError(response), response.status);
+      }
+      const body = await response.json();
+      await presentPrintHtml(body.html ?? body.text, body.filename, printWindow);
+      setStatus(() => '');
+      return;
     }
   } catch (error) {
     closePrintWindow(printWindow);
@@ -2846,6 +2859,7 @@ async function exportKeptConversation(logId, format, printWindow) {
 async function runExport(format, items, { agent, model, exportedAt }, printWindow) {
   state.exporting = true;
   setExportButtonsDisabled(true);
+  let keepStatus = false;
   try {
     const when = exportedAt ? new Date(exportedAt) : new Date();
     const meta = exportMeta({ agent, model, exportedAt: when });
@@ -2861,21 +2875,30 @@ async function runExport(format, items, { agent, model, exportedAt }, printWindo
       return;
     }
     if (format === 'epub') {
-      const bytes = await buildConversationEpubAsync(items, meta, labels);
+      setStatus(() => `${msg('exportLog')}…`);
+      const bytes = await buildConversationEpubAsync(items, meta, labels, (done, total) => {
+        setStatus(() => `${msg('exportLog')} (${done}/${total})…`);
+      });
       await shareOrDownloadBytes(conversationEpubFilename(when), bytes, 'application/epub+zip');
       return;
     }
     if (format === 'print') {
-      await exportPrintView(items, meta, labels, printWindow);
+      setStatus(() => `${msg('exportLog')}…`);
+      const blocked = await exportPrintView(items, meta, labels, printWindow);
+      keepStatus = Boolean(blocked);
       return;
     }
   } catch (error) {
     closePrintWindow(printWindow);
+    keepStatus = true;
     if (error?.name !== 'AbortError') {
       setStatus(() => error.message || msg('exportFailed'));
     }
   } finally {
     state.exporting = false;
+    if (!keepStatus) {
+      setStatus(() => '');
+    }
     setExportButtonsDisabled(state.items.length === 0);
   }
 }
@@ -2884,27 +2907,48 @@ async function exportConversationLog(items, { agent, model }) {
   await runExport('json', items, { agent, model });
 }
 
-async function buildConversationEpubAsync(items, meta, labels) {
+async function mapWithConcurrency(list, limit, worker) {
+  const results = new Array(list.length);
+  let cursor = 0;
+  const count = Math.min(limit, list.length);
+  await Promise.all(
+    Array.from({ length: count }, async () => {
+      while (cursor < list.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await worker(list[index], index);
+      }
+    }),
+  );
+  return results;
+}
+
+async function buildConversationEpubAsync(items, meta, labels, onProgress) {
+  const ids = mediaIdsInItems(items);
   const cache = new Map();
-  for (const id of mediaIdsInItems(items)) {
+  let done = 0;
+  await mapWithConcurrency(ids, 6, async (id) => {
     const response = await api(`/api/media/${id}`);
+    done += 1;
+    onProgress?.(done, ids.length);
     if (!response.ok) {
-      continue;
+      return;
     }
     const blob = await response.blob();
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const name = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'image';
     cache.set(id, { bytes, mime: blob.type, name });
-  }
+  });
   return buildConversationEpub(items, meta, (mediaId) => cache.get(mediaId) ?? null, {
     renderMarkdown,
     labels,
   });
 }
 
-async function buildImageHrefs(items) {
+async function buildImageHrefs(items, onProgress) {
   const map = new Map();
   const seen = new Set();
+  const jobs = [];
   for (const item of items) {
     if (!item || typeof item !== 'object') {
       continue;
@@ -2922,24 +2966,31 @@ async function buildImageHrefs(items) {
           continue;
         }
         seen.add(key);
-        try {
-          const response = await api(`/api/media/${file.id}`);
-          if (!response.ok) {
-            continue;
-          }
-          const blob = await response.blob();
-          if (!blob.type.startsWith('image/')) {
-            continue;
-          }
-          map.set(key, await blobToDataUrl(blob));
-        } catch (error) {
-          if (error instanceof SessionEndedError || error instanceof AuthError) {
-            throw error;
-          }
-        }
+        jobs.push({ id: file.id, key });
       }
     }
   }
+  let done = 0;
+  await mapWithConcurrency(jobs, 6, async ({ id, key }) => {
+    try {
+      const response = await api(`/api/media/${id}`);
+      if (!response.ok) {
+        return;
+      }
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) {
+        return;
+      }
+      map.set(key, await blobToDataUrl(blob));
+    } catch (error) {
+      if (error instanceof SessionEndedError || error instanceof AuthError) {
+        throw error;
+      }
+    } finally {
+      done += 1;
+      onProgress?.(done, jobs.length);
+    }
+  });
   return map;
 }
 
@@ -2962,7 +3013,40 @@ function openPrintWindow() {
   } catch {
     // The blank document is same-origin. Ignore a browser that refuses.
   }
+  try {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    const bg = dark ? '#121316' : '#f7f7f8';
+    const fg = dark ? '#eef0f3' : '#1b1d22';
+    const muted = dark ? '#9aa1ad' : '#5e6573';
+    const label = `${msg('exportLog')}…`;
+    view.document.open();
+    view.document.write(
+      `<!doctype html><html><head><meta charset="utf-8"><title>${label}</title>` +
+        `<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:${bg};color:${fg}}` +
+        `.box{display:flex;flex-direction:column;align-items:center;gap:12px;color:${muted}}` +
+        `.spin{width:28px;height:28px;border:3px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .8s linear infinite}` +
+        `@keyframes s{to{transform:rotate(360deg)}}</style></head>` +
+        `<body><div class="box"><div class="spin"></div><p id="print-progress">${label}</p></div></body></html>`,
+    );
+    view.document.close();
+  } catch {
+    // Ignore if the browser blocks writing to the newly opened tab.
+  }
   return view;
+}
+
+function updatePrintProgress(view, text) {
+  if (!view || view.closed) {
+    return;
+  }
+  try {
+    const node = view.document.getElementById('print-progress');
+    if (node) {
+      node.textContent = text;
+    }
+  } catch {
+    // Ignore cross-origin or closed tab errors.
+  }
 }
 
 function closePrintWindow(view) {
@@ -2971,19 +3055,11 @@ function closePrintWindow(view) {
   }
 }
 
-async function exportPrintView(items, meta, labels, printWindow) {
-  const imageHrefs = await buildImageHrefs(items);
-  const html = buildPrintHtmlDocument(items, meta, {
-    renderMarkdown,
-    imageHrefs,
-    labels,
-    printHint: msg('exportPrintHint'),
-  });
-  const when = meta.exportedAt ? new Date(meta.exportedAt) : new Date();
+async function presentPrintHtml(html, filename, printWindow) {
   if (!printWindow || printWindow.closed) {
-    await shareOrDownloadText(conversationPrintFilename(when), html, 'text/html;charset=utf-8');
+    await shareOrDownloadText(filename, html, 'text/html;charset=utf-8');
     setStatus(() => msg('exportPrintBlocked'), { alert: true });
-    return;
+    return true;
   }
   printWindow.document.open();
   printWindow.document.write(html);
@@ -3006,6 +3082,23 @@ async function exportPrintView(items, meta, labels, printWindow) {
   if (printWindow.document.readyState === 'complete') {
     trigger();
   }
+  return false;
+}
+
+async function exportPrintView(items, meta, labels, printWindow) {
+  const imageHrefs = await buildImageHrefs(items, (done, total) => {
+    const progress = `${msg('exportLog')} (${done}/${total})…`;
+    setStatus(() => progress);
+    updatePrintProgress(printWindow, progress);
+  });
+  const html = buildPrintHtmlDocument(items, meta, {
+    renderMarkdown,
+    imageHrefs,
+    labels,
+    printHint: msg('exportPrintHint'),
+  });
+  const when = meta.exportedAt ? new Date(meta.exportedAt) : new Date();
+  return presentPrintHtml(html, conversationPrintFilename(when), printWindow);
 }
 
 async function shareOrDownloadText(filename, text, mime) {
