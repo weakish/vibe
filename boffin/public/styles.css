@@ -773,6 +773,23 @@ a.menu-action {
   width: 100%;
 }
 
+.conversation-entry-row {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+  align-items: stretch;
+  margin-bottom: calc(8px * var(--ui-scale));
+}
+
+.conversation-entry-row .menu-action {
+  margin: 0;
+}
+
+.conversation-entry-row .conversation-export-button {
+  width: auto;
+  flex: none;
+  white-space: nowrap;
+}
+
 .people-list {
   list-style: none;
   margin: 0 0 calc(12px * var(--ui-scale));

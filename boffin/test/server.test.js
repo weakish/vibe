@@ -1254,3 +1254,43 @@ test('summarizes the conversation content over GET /api/overview', async (t) => 
   const unauthenticated = await api(app.baseUrl, '/api/overview', { credentials: null });
   assert.equal(unauthenticated.status, 401);
 });
+
+test('resets shopping and overview on new chat while keeping closed conversation views readable', async (t) => {
+  const app = await startServer();
+  t.after(() => app.close());
+
+  await sendMessage(app.baseUrl, 'planning a camping trip', [
+    { name: 'shot.png', data: PNG.toString('base64') },
+  ]);
+  await api(app.baseUrl, '/api/shopping', {
+    method: 'PUT',
+    body: { items: [{ name: 'Tent', wantedBy: 'tester', bought: false, boughtBy: '', note: '' }] },
+  });
+  fs.writeFileSync(
+    path.join(path.dirname(app.conversation.stateFile), 'overview.md'),
+    'Everyone planned a weekend camping trip and noted they still needed a tent.\n',
+  );
+
+  const reset = await api(app.baseUrl, '/api/new', { method: 'POST', body: {} });
+  assert.equal(reset.status, 200);
+
+  const freshShop = await (await api(app.baseUrl, '/api/shopping')).json();
+  assert.deepEqual(freshShop.items, []);
+  const freshOverview = await (await api(app.baseUrl, '/api/overview')).json();
+  assert.equal(freshOverview.empty, true);
+
+  const keptId = app.conversation.kept[0].id;
+  const closed = await api(app.baseUrl, `/api/conversations/${keptId}`);
+  assert.equal(closed.status, 200);
+  const body = await closed.json();
+  assert.equal(body.id, keptId);
+  assert.ok(body.items.length >= 1);
+  assert.equal(body.shopping.items.length, 1);
+  assert.equal(body.shopping.items[0].name, 'Tent');
+  assert.ok(body.files.some((file) => file.name === 'shot.png'));
+  assert.equal(body.overview.empty, false);
+  assert.match(body.overview.story, /weekend camping trip/);
+
+  const unauth = await api(app.baseUrl, `/api/conversations/${keptId}`, { credentials: null });
+  assert.equal(unauth.status, 401);
+});

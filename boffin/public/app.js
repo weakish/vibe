@@ -2241,6 +2241,7 @@ function showChat(session) {
 
 function showConversationList(conversations) {
   state.listing = true;
+  state.closed = null;
   state.items = [];
   state.busy = false;
   hideViews();
@@ -2258,25 +2259,50 @@ function showConversationList(conversations) {
   el.conversationListTitle.textContent = msg('conversationList');
   el.conversationEntries.replaceChildren();
   for (const conversation of conversations) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'menu-action';
-    button.textContent = conversation.active ? msg('currentConversation') : msg('endedConversation', { time: conversation.at });
-    button.addEventListener('click', () => openConversation(conversation).catch(handleFailure));
-    el.conversationEntries.append(button);
+    if (conversation.active) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'menu-action';
+      button.textContent = msg('currentConversation');
+      button.addEventListener('click', () => openConversation(conversation).catch(handleFailure));
+      el.conversationEntries.append(button);
+      continue;
+    }
+    const row = document.createElement('div');
+    row.className = 'conversation-entry-row';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'menu-action';
+    open.textContent = msg('endedConversation', { time: conversation.at });
+    open.addEventListener('click', () => openConversation(conversation).catch(handleFailure));
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'menu-action conversation-export-button';
+    exportBtn.textContent = msg('exportLog');
+    exportBtn.addEventListener('click', () => {
+      pendingKeptLogId = conversation.id;
+      if (el.exportDialogTitle) {
+        el.exportDialogTitle.textContent = msg('exportEndedTitle');
+      }
+      el.exportDialog?.showModal();
+    });
+    row.append(open, exportBtn);
+    el.conversationEntries.append(row);
   }
   updateComposer();
 }
 
 async function openConversation(conversation) {
   if (!conversation.active) {
-    pendingKeptLogId = conversation.id;
-    if (el.exportDialogTitle) {
-      el.exportDialogTitle.textContent = msg('exportEndedTitle');
+    const response = await api(`/api/conversations/${encodeURIComponent(conversation.id)}`);
+    if (!response.ok) {
+      throw new RequestError(await readServerError(response), response.status);
     }
-    el.exportDialog?.showModal();
+    const closed = await response.json();
+    showClosedConversation(closed);
     return;
   }
+  state.closed = null;
   const response = await api('/api/session?open=active');
   if (!response.ok) {
     throw new RequestError(await readServerError(response), response.status);
@@ -2285,6 +2311,25 @@ async function openConversation(conversation) {
   showChat(session);
   hideLogin();
   followIfBusy(session);
+}
+
+function showClosedConversation(closed) {
+  state.listing = false;
+  state.closed = closed;
+  state.items = Array.isArray(closed.items) ? closed.items : [];
+  state.busy = false;
+  state.nodes.clear();
+  el.transcript.replaceChildren();
+  el.conversationList.hidden = true;
+  el.newChat.hidden = true;
+  el.people.hidden = true;
+  el.peopleLine.hidden = true;
+  if (el.viewMenuHost) {
+    el.viewMenuHost.hidden = false;
+  }
+  setActiveView('chat');
+  scheduleRender();
+  updateComposer();
 }
 
 async function followUntilIdle() {
@@ -4605,7 +4650,7 @@ function setActiveView(view) {
   }
   const composer = el.input?.closest('.composer');
   if (composer) {
-    composer.hidden = view !== 'chat';
+    composer.hidden = view !== 'chat' || Boolean(state.closed);
   }
   if (el.shopping) {
     el.shopping.hidden = view !== 'shopping';
@@ -4631,6 +4676,11 @@ async function openShopping() {
   }
   setShoppingStatus('');
   paintShoppingChrome();
+  if (state.closed) {
+    shoppingItems = Array.isArray(state.closed.shopping?.items) ? state.closed.shopping.items : [];
+    renderShoppingItems();
+    return;
+  }
   await loadShoppingList();
   stopShoppingPoll();
   shoppingPoll = setInterval(() => {
@@ -4689,24 +4739,28 @@ function fillShoppingList(node, items) {
 function shoppingRow(item) {
   const row = document.createElement('li');
   row.className = item.bought ? 'shopping-row is-bought' : 'shopping-row';
+  const readOnly = Boolean(state.closed);
   const check = document.createElement('input');
   check.type = 'checkbox';
   check.className = 'shopping-check';
   check.checked = Boolean(item.bought);
+  check.disabled = readOnly;
   check.setAttribute('aria-label', item.name);
-  check.addEventListener('change', () => {
-    void saveShoppingItems(
-      shoppingItems.map((entry) =>
-        entry.id === item.id
-          ? {
-              ...entry,
-              bought: check.checked,
-              boughtBy: check.checked ? state.you?.name || entry.boughtBy || '' : '',
-            }
-          : entry,
-      ),
-    );
-  });
+  if (!readOnly) {
+    check.addEventListener('change', () => {
+      void saveShoppingItems(
+        shoppingItems.map((entry) =>
+          entry.id === item.id
+            ? {
+                ...entry,
+                bought: check.checked,
+                boughtBy: check.checked ? state.you?.name || entry.boughtBy || '' : '',
+              }
+            : entry,
+        ),
+      );
+    });
+  }
   const meta = document.createElement('div');
   meta.className = 'shopping-meta';
   const name = document.createElement('span');
@@ -4719,6 +4773,10 @@ function shoppingRow(item) {
     line.className = 'shopping-who';
     line.textContent = item.bought ? msg('shoppingBoughtBy', { name: who }) : msg('shoppingWantedBy', { name: who });
     meta.append(line);
+  }
+  if (readOnly) {
+    row.append(check, meta);
+    return row;
   }
   const remove = document.createElement('button');
   remove.type = 'button';
@@ -4759,6 +4817,11 @@ async function saveShoppingItems(items) {
 
 async function openFiles() {
   setFilesStatus('');
+  if (state.closed) {
+    renderFilesList(el.filesConversationList, el.filesConversationEmpty, state.closed.files ?? []);
+    el.filesWorkdirSection.hidden = true;
+    return;
+  }
   try {
     const response = await api('/api/files');
     if (!response.ok) {
@@ -4814,6 +4877,12 @@ function renderOverviewStory(story) {
 
 async function openOverview() {
   setOverviewStatus('');
+  if (state.closed) {
+    const body = state.closed.overview ?? { empty: true, story: '' };
+    el.overviewEmpty.hidden = !body.empty;
+    renderOverviewStory(body.empty ? '' : body.story);
+    return;
+  }
   try {
     const response = await api('/api/overview');
     if (!response.ok) {

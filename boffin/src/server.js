@@ -381,6 +381,10 @@ async function handleApi(req, res, url, context) {
   if (req.method === 'GET' && logId) {
     return sendKeptLog(res, context, person, logId[1], url.searchParams.get('format'));
   }
+  const keptId = /^\/api\/conversations\/([0-9a-f-]{36})$/.exec(url.pathname);
+  if (req.method === 'GET' && keptId) {
+    return sendKeptConversation(res, context, person, keptId[1]);
+  }
   const mediaId = /^\/api\/media\/([0-9a-f-]{36})$/.exec(url.pathname);
   if (req.method === 'GET' && mediaId) {
     if (!conversation.canReadMedia(person.personId, mediaId[1], person.owner)) {
@@ -1184,6 +1188,23 @@ function sendSession(res, context, person, openActive) {
   }
   const list = person.owner || openActive || context.conversation.homeFor(person.personId) === 'chat';
   return sendJson(res, 200, sessionPayload(context, person, !list, null));
+}
+
+function sendKeptConversation(res, context, person, recordId) {
+  const record = context.conversation.keptFor(person.personId, recordId, person.owner);
+  if (!record) {
+    return sendJson(res, 404, { error: 'Not found.' });
+  }
+  return sendJson(res, 200, {
+    id: record.id,
+    at: record.at,
+    agent: record.agent,
+    model: record.model,
+    items: record.items,
+    shopping: { version: 1, items: record.shopping },
+    files: listConversationFiles(context.conversation, record.items),
+    overview: buildConversationOverview({ items: record.items, story: record.overview }),
+  });
 }
 
 function sendKeptLog(res, context, person, recordId, format) {

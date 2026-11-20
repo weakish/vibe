@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -99,6 +100,21 @@ export async function readShoppingList(file) {
     }
     throw error;
   }
+}
+
+export function readShoppingListSync(file) {
+  try {
+    return loadShoppingList(fsSync.readFileSync(file, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return emptyShoppingList();
+    }
+    throw error;
+  }
+}
+
+export function clearShoppingList(file) {
+  fsSync.rmSync(file, { force: true });
 }
 
 export async function writeShoppingList(file, list) {

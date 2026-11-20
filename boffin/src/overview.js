@@ -40,6 +40,17 @@ export async function readOverviewStory(file) {
   }
 }
 
+export function readOverviewStorySync(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').trim();
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return '';
+    }
+    throw error;
+  }
+}
+
 export function clearOverviewStory(file) {
   fs.rmSync(file, { force: true });
 }

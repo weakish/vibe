@@ -136,8 +136,7 @@ export function findStashUpload(workdir, displayName) {
   return best;
 }
 
-export function listConversationFiles(conversation) {
-  const items = conversation.items;
+export function listConversationFiles(conversation, items = conversation.items) {
   const files = [];
 
   for (const id of mediaIdsFromItems(items)) {

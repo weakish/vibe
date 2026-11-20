@@ -27,8 +27,20 @@ import {
   safeFileName,
   sniffImage,
 } from './media.js';
-import { clearOverviewStory, overviewPathForState, overviewPrompt, overviewRelativePath } from './overview.js';
-import { shoppingListPathForState, shoppingListPrompt, shoppingListRelativePath } from './shopping-list.js';
+import {
+  clearOverviewStory,
+  overviewPathForState,
+  overviewPrompt,
+  overviewRelativePath,
+  readOverviewStorySync,
+} from './overview.js';
+import {
+  clearShoppingList,
+  readShoppingListSync,
+  shoppingListPathForState,
+  shoppingListPrompt,
+  shoppingListRelativePath,
+} from './shopping-list.js';
 
 const STATE_VERSION = 1;
 // A file written as a run starts can get an mtime a few milliseconds before Date.now().
@@ -302,6 +314,24 @@ export class Conversation {
     };
   }
 
+  keptFor(personId, recordId, isOwner = false) {
+    const record = this.kept.find(
+      (entry) => entry.id === recordId && (isOwner || entry.personIds.includes(personId)),
+    );
+    if (!record) {
+      return null;
+    }
+    return {
+      id: record.id,
+      at: record.at,
+      items: record.items,
+      agent: typeof record.agent === 'string' && record.agent ? record.agent : CURSOR,
+      model: typeof record.model === 'string' && record.model ? record.model : DEFAULT_CURSOR_MODEL,
+      shopping: Array.isArray(record.shopping) ? record.shopping : [],
+      overview: typeof record.overview === 'string' ? record.overview : '',
+    };
+  }
+
   activeInvites(now = Date.now()) {
     return this.invites.filter((invite) => isInviteActive(invite, now));
   }
@@ -517,16 +547,31 @@ export class Conversation {
     this.invites = [];
     this.activeId = randomUUID();
     this.startedAt = at;
+    clearShoppingList(shoppingListPathForState(this.stateFile));
     clearOverviewStory(overviewPathForState(this.stateFile));
   }
 
   #remember(at, personIds, agent = this.agent, model = this.model) {
+    let shopping = [];
+    try {
+      shopping = readShoppingListSync(shoppingListPathForState(this.stateFile)).items;
+    } catch {
+      shopping = [];
+    }
+    let overview = '';
+    try {
+      overview = readOverviewStorySync(overviewPathForState(this.stateFile));
+    } catch {
+      overview = '';
+    }
     this.kept.push({
       id: randomUUID(),
       at,
       agent,
       model,
       items: structuredClone(this.items),
+      shopping: structuredClone(shopping),
+      overview,
       personIds,
     });
   }
