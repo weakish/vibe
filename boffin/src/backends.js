@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 export const CURSOR = 'cursor';
 export const GROK = 'grok';
 export const PI = 'pi';
@@ -45,6 +49,97 @@ export function normalizePiThinking(value) {
     return null;
   }
   return PI_THINKING_LEVELS.includes(normalized) ? normalized : undefined;
+}
+
+// Missing and invalid JSON match Pi, which skips that file. Other read errors
+// propagate so a placeholder cannot hide an unreadable settings path.
+function readPiSettingsFile(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+  if (text.charCodeAt(0) === 0xfeff) {
+    text = text.slice(1);
+  }
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function takePiSettingsString(parsed, key) {
+  if (!Object.hasOwn(parsed, key)) {
+    return undefined;
+  }
+  const value = parsed[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+// Pi deep-merges this object. A non-object replaces it, so later lookups miss.
+// An invalid level drops that key and the placeholder falls back to the default level.
+function applyPiModelThinkingLevels(target, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    for (const key of Object.keys(target)) {
+      delete target[key];
+    }
+    return;
+  }
+  for (const [key, level] of Object.entries(value)) {
+    const normalized = normalizePiThinking(level);
+    if (normalized) {
+      target[key] = normalized;
+    } else {
+      delete target[key];
+    }
+  }
+}
+
+export function readPiDefaults(workdir, env = process.env) {
+  const agentDir = env.PI_CODING_AGENT_DIR?.trim() || path.join(os.homedir(), '.pi', 'agent');
+  const files = [path.join(agentDir, 'settings.json')];
+  if (workdir) {
+    files.push(path.join(workdir, '.pi', 'settings.json'));
+  }
+  let provider = '';
+  let model = '';
+  let thinking = '';
+  const modelThinkingLevels = {};
+  for (const file of files) {
+    const parsed = readPiSettingsFile(file);
+    if (!parsed) {
+      continue;
+    }
+    const nextProvider = takePiSettingsString(parsed, 'defaultProvider');
+    if (nextProvider !== undefined) {
+      provider = nextProvider;
+    }
+    const nextModel = takePiSettingsString(parsed, 'defaultModel');
+    if (nextModel !== undefined) {
+      model = nextModel;
+    }
+    if (Object.hasOwn(parsed, 'defaultThinkingLevel')) {
+      thinking = normalizePiThinking(parsed.defaultThinkingLevel) || '';
+    }
+    if (Object.hasOwn(parsed, 'modelThinkingLevels')) {
+      applyPiModelThinkingLevels(modelThinkingLevels, parsed.modelThinkingLevels);
+    }
+  }
+  const fullModel = model ? (provider ? `${provider}/${model}` : model) : '';
+  const modelLevel = fullModel ? modelThinkingLevels[fullModel] : '';
+  return { model: fullModel, thinking: modelLevel || thinking };
 }
 
 export function parseAgents(value) {

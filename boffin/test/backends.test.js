@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   DEFAULT_CURSOR_MODEL,
   DEFAULT_GROK_MODEL,
@@ -11,6 +14,7 @@ import {
   findModel,
   normalizePiThinking,
   parseAgents,
+  readPiDefaults,
   resolveBackends,
   spawnPlan,
 } from '../src/backends.js';
@@ -203,4 +207,94 @@ test('normalizes Pi thinking effort and passes --thinking when set', () => {
     '--',
     'hi',
   ]);
+});
+
+test('reads Pi default model and thinking effort from global and project settings', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-pi-defaults-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const agentDir = path.join(root, 'agent');
+  const workdir = path.join(root, 'repo');
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(path.join(workdir, '.pi'), { recursive: true });
+
+  assert.deepEqual(readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }), { model: '', thinking: '' });
+
+  fs.writeFileSync(
+    path.join(agentDir, 'settings.json'),
+    JSON.stringify({
+      defaultProvider: 'opencode-go',
+      defaultModel: 'iceman-contributor-free',
+      defaultThinkingLevel: 'high',
+    }),
+  );
+  assert.deepEqual(readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }), {
+    model: 'opencode-go/iceman-contributor-free',
+    thinking: 'high',
+  });
+
+  fs.writeFileSync(
+    path.join(workdir, '.pi', 'settings.json'),
+    JSON.stringify({ defaultModel: 'beam-free', defaultThinkingLevel: 'medium' }),
+  );
+  assert.deepEqual(readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }), {
+    model: 'opencode-go/beam-free',
+    thinking: 'medium',
+  });
+});
+
+test('joins a slashed Pi model id and prefers that model\'s thinking level', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'boffin-pi-defaults-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const agentDir = path.join(root, 'agent');
+  const workdir = path.join(root, 'repo');
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.mkdirSync(path.join(workdir, '.pi'), { recursive: true });
+  const modelId = '@cf/meta/llama-3.1-8b-instruct';
+  const fullModel = `cloudflare-workers-ai/${modelId}`;
+
+  fs.writeFileSync(
+    path.join(agentDir, 'settings.json'),
+    `\ufeff${JSON.stringify({
+      defaultProvider: 'cloudflare-workers-ai',
+      defaultModel: modelId,
+      defaultThinkingLevel: 'high',
+      modelThinkingLevels: {
+        [fullModel]: 'low',
+        'opencode-go/beam-free': 'xhigh',
+      },
+    })}`,
+  );
+  assert.deepEqual(readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }), {
+    model: fullModel,
+    thinking: 'low',
+  });
+
+  fs.writeFileSync(
+    path.join(workdir, '.pi', 'settings.json'),
+    JSON.stringify({
+      defaultProvider: '',
+      modelThinkingLevels: { 'opencode-go/beam-free': 'extreme' },
+    }),
+  );
+  assert.deepEqual(readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }), {
+    model: modelId,
+    thinking: 'high',
+  });
+
+  fs.writeFileSync(path.join(agentDir, 'settings.json'), '{');
+  fs.writeFileSync(
+    path.join(workdir, '.pi', 'settings.json'),
+    JSON.stringify({ defaultProvider: 'opencode-go', defaultModel: 'beam-free', defaultThinkingLevel: 'medium' }),
+  );
+  assert.deepEqual(readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }), {
+    model: 'opencode-go/beam-free',
+    thinking: 'medium',
+  });
+
+  fs.rmSync(path.join(agentDir, 'settings.json'));
+  fs.mkdirSync(path.join(agentDir, 'settings.json'));
+  assert.throws(
+    () => readPiDefaults(workdir, { PI_CODING_AGENT_DIR: agentDir }),
+    (error) => error.code === 'EISDIR',
+  );
 });

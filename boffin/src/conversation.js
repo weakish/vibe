@@ -13,6 +13,7 @@ import {
   defaultModelId,
   findModel,
   normalizePiThinking,
+  readPiDefaults,
   resolveBackends,
   spawnPlan,
 } from './backends.js';
@@ -173,6 +174,7 @@ export class Conversation {
       agent: this.agent,
       model: this.model,
       thinking: this.thinking,
+      piDefaults: this.backends.ids.includes(PI) ? readPiDefaults(this.workdir) : null,
       agents: catalogFor(this.backends),
       project: path.basename(this.workdir),
       busy: this.busy,

@@ -2424,6 +2424,7 @@ function showChat(session) {
   state.agent = session.agent ?? 'cursor';
   state.model = session.model ?? '';
   state.thinking = session.thinking ?? '';
+  state.piDefaults = session.piDefaults && typeof session.piDefaults === 'object' ? session.piDefaults : { model: '', thinking: '' };
   state.agents = Array.isArray(session.agents) ? session.agents : [];
   state.busy = Boolean(session.busy);
   state.items = session.items ?? [];
@@ -2914,6 +2915,8 @@ function fillModelPicker() {
   el.newChatModelInput.hidden = !isPi;
   el.newChatThinkingField.hidden = !isPi;
   if (isPi) {
+    el.newChatModelInput.placeholder = state.piDefaults?.model || '';
+    el.newChatThinkingInput.placeholder = state.piDefaults?.thinking || '';
     el.newChatModelInput.value = state.draftModel && state.draftModel !== 'default' ? state.draftModel : '';
     el.newChatThinkingInput.value = state.draftThinking || '';
     return;

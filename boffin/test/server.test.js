@@ -336,6 +336,8 @@ test('offers Pi and accepts its model when starting a new chat', async (t) => {
   const updatedSession = await (await api(app.baseUrl, '/api/session')).json();
   assert.equal(updatedSession.model, 'opencode-go/beam-free');
   assert.equal(updatedSession.thinking, 'high');
+  assert.equal(typeof updatedSession.piDefaults?.model, 'string');
+  assert.equal(typeof updatedSession.piDefaults?.thinking, 'string');
 
   const emptyDefaults = await api(app.baseUrl, '/api/new', {
     method: 'POST',
