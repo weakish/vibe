@@ -74,8 +74,8 @@ flowchart LR
 ## Quick start (local)
 
 ```bash
-git clone <this-repository-url> boffin
-cd boffin
+git clone <this-repository-url> vibe
+cd vibe/boffin
 cp config.example.json config.json
 # Edit config.json: set at least username and password.
 node src/index.js "$PWD"
