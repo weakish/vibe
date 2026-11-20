@@ -7,10 +7,7 @@ import {
   DEFAULT_CURSOR_MODEL,
   DEFAULT_GROK_BIN,
   DEFAULT_GROK_MODEL,
-  DEFAULT_OPENCODE_BIN,
-  DEFAULT_OPENCODE_MODEL,
   GROK,
-  OPENCODE,
   findModel,
   parseAgents,
 } from './backends.js';
@@ -20,11 +17,9 @@ const KNOWN_KEYS = new Set([
   'port',
   'model',
   'grok_model',
-  'opencode_model',
   'agents',
   'agent_bin',
   'grok_bin',
-  'opencode_bin',
   'force',
   'username',
   'password',
@@ -129,15 +124,11 @@ function materialize(raw, workdir, env) {
 
   const model = requiredString(raw, 'model');
   const grokModel = optionalString(raw, 'grok_model', DEFAULT_GROK_MODEL);
-  const opencodeModel = optionalString(raw, 'opencode_model', DEFAULT_OPENCODE_MODEL);
   if (!findModel(CURSOR, model)) {
     throw new ConfigError(`"${model}" is not a first-party Cursor model.`);
   }
   if (!findModel(GROK, grokModel)) {
     throw new ConfigError(`"${grokModel}" is not a first-party Grok model.`);
-  }
-  if (!findModel(OPENCODE, opencodeModel)) {
-    throw new ConfigError(`"${opencodeModel}" is not a valid OpenCode model id.`);
   }
 
   return {
@@ -146,11 +137,9 @@ function materialize(raw, workdir, env) {
     workdir,
     model,
     grokModel,
-    opencodeModel,
     agents: readAgents(raw),
     agentBin: optionalString(raw, 'agent_bin', 'agent'),
     grokBin: optionalString(raw, 'grok_bin', DEFAULT_GROK_BIN),
-    opencodeBin: optionalString(raw, 'opencode_bin', DEFAULT_OPENCODE_BIN),
     bunBin: optionalString(raw, 'bun_bin', DEFAULT_BUN_BIN),
     force: optionalBoolean(raw, 'force', true),
     username,
@@ -224,7 +213,7 @@ function readAgents(raw) {
   }
   const ids = parseAgents(raw.agents);
   if (!ids) {
-    throw new ConfigError('"agents" must be a non-empty array of "cursor", "grok", and/or "opencode".');
+    throw new ConfigError('"agents" must be a non-empty array of "cursor" and/or "grok".');
   }
   return ids;
 }

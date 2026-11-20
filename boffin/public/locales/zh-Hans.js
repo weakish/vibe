@@ -13,7 +13,6 @@ export default {
     agentLabel: '助手',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
-    agentOpenCode: 'OpenCode',
     modelLabel: '模型',
     unknownAgent: '该助手不可用。',
     unknownModel: '该模型不可用。',

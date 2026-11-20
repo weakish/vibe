@@ -1,11 +1,8 @@
 export const CURSOR = 'cursor';
 export const GROK = 'grok';
-export const OPENCODE = 'opencode';
 export const DEFAULT_CURSOR_MODEL = 'composer-2.5';
 export const DEFAULT_GROK_MODEL = 'grok-4.7/high';
-export const DEFAULT_OPENCODE_MODEL = 'opencode/big-pickle';
 export const DEFAULT_GROK_BIN = 'grok';
-export const DEFAULT_OPENCODE_BIN = 'opencode';
 
 const CURSOR_MODELS = [{ id: DEFAULT_CURSOR_MODEL, label: 'Composer 2.5', cli: DEFAULT_CURSOR_MODEL }];
 
@@ -18,21 +15,10 @@ const GROK_MODELS = [
   { id: 'grok-4.5', label: 'Grok 4.5', cli: 'grok-4.5' },
 ];
 
-const OPENCODE_MODELS = [
-  { id: 'opencode/big-pickle', label: 'Big Pickle', cli: 'opencode/big-pickle' },
-];
-
 const CATALOG = {
   [CURSOR]: { id: CURSOR, models: CURSOR_MODELS, defaultModel: DEFAULT_CURSOR_MODEL },
   [GROK]: { id: GROK, models: GROK_MODELS, defaultModel: DEFAULT_GROK_MODEL },
-  [OPENCODE]: { id: OPENCODE, models: OPENCODE_MODELS, defaultModel: DEFAULT_OPENCODE_MODEL },
 };
-
-// Model ids can contain slashes themselves, as in OpenRouter's
-// openrouter/anthropic/claude-sonnet-5.5 refs, and punctuation such as the
-// colon in Amazon Bedrock's amazon.nova-lite-v1:0 or the @ in Cloudflare's
-// @cf/... ids.
-const OPENCODE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[^\s]+$/;
 
 export function parseAgents(value) {
   if (value === undefined) {
@@ -43,7 +29,7 @@ export function parseAgents(value) {
   }
   const ids = [];
   for (const entry of value) {
-    if (entry !== CURSOR && entry !== GROK && entry !== OPENCODE) {
+    if (entry !== CURSOR && entry !== GROK) {
       return null;
     }
     if (!ids.includes(entry)) {
@@ -57,17 +43,14 @@ export function resolveBackends({
   agents,
   model = DEFAULT_CURSOR_MODEL,
   grokModel = DEFAULT_GROK_MODEL,
-  opencodeModel = DEFAULT_OPENCODE_MODEL,
   agentBin = 'agent',
   grokBin = DEFAULT_GROK_BIN,
-  opencodeBin = DEFAULT_OPENCODE_BIN,
   force = true,
 } = {}) {
   const ids = parseAgents(agents) ?? [CURSOR];
   const defaults = {
     [CURSOR]: model,
     [GROK]: grokModel,
-    [OPENCODE]: opencodeModel,
   };
   for (const id of ids) {
     if (!findModel(id, defaults[id])) {
@@ -77,17 +60,13 @@ export function resolveBackends({
   return {
     ids,
     force,
-    bins: { [CURSOR]: agentBin, [GROK]: grokBin, [OPENCODE]: opencodeBin },
+    bins: { [CURSOR]: agentBin, [GROK]: grokBin },
     defaults,
   };
 }
 
 export function findModel(agent, modelId) {
-  const found = CATALOG[agent]?.models.find((entry) => entry.id === modelId) ?? null;
-  if (found || agent !== OPENCODE || typeof modelId !== 'string' || !OPENCODE_MODEL_ID.test(modelId)) {
-    return found;
-  }
-  return { id: modelId, label: modelId, cli: modelId };
+  return CATALOG[agent]?.models.find((entry) => entry.id === modelId) ?? null;
 }
 
 export function defaultModelId(agent, backends) {
@@ -98,9 +77,6 @@ export function catalogFor(backends) {
   return backends.ids.map((id) => {
     const models = CATALOG[id].models.map((entry) => ({ id: entry.id, label: entry.label }));
     const defaultModel = backends.defaults[id];
-    if (defaultModel && !models.some((entry) => entry.id === defaultModel)) {
-      models.push({ id: defaultModel, label: defaultModel });
-    }
     return { id, defaultModel, models };
   });
 }
@@ -112,9 +88,6 @@ export function spawnPlan({ agent, model, force, resumeId, prompt, imagePaths = 
   }
   if (agent === GROK) {
     return { binKey: GROK, args: buildGrokArgs({ spec, force, resumeId, prompt, cwd }) };
-  }
-  if (agent === OPENCODE) {
-    return { binKey: OPENCODE, args: buildOpenCodeArgs({ spec, force, resumeId, prompt, imagePaths }) };
   }
   return { binKey: CURSOR, args: buildCursorArgs({ spec, force, resumeId, prompt, imagePaths }) };
 }
@@ -162,23 +135,5 @@ export function buildGrokArgs({ spec, force, resumeId, prompt, cwd }) {
   }
   // `--single=<prompt>` keeps a message that starts with a dash from being parsed as a flag.
   args.push(`--single=${prompt}`);
-  return args;
-}
-
-export function buildOpenCodeArgs({ spec, force, resumeId, prompt, imagePaths = [] }) {
-  const args = ['run', '--format', 'json', '--model', spec.cli];
-  if (force) {
-    args.push('--auto');
-  }
-  if (resumeId) {
-    args.push('--session', resumeId);
-  }
-  for (const imagePath of imagePaths) {
-    args.push('--file', imagePath);
-  }
-  // `--` keeps a leading dash from being parsed as a flag. OpenCode then joins
-  // those argv words with spaces, and wraps any one word that already contains a
-  // space in quotes, so pass the message as separate words.
-  args.push('--', ...String(prompt).split(' '));
   return args;
 }

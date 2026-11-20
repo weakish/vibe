@@ -23,7 +23,6 @@ export function createRunState() {
   return {
     chatId: null,
     segmentId: null,
-    opencodeTextId: null,
     tools: new Map(),
     sawText: false,
     sawResult: false,
@@ -31,10 +30,6 @@ export function createRunState() {
 }
 
 export function eventToOps(event, state) {
-  // Every OpenCode event names the session. Capture it before the per-type handling.
-  if (typeof event?.sessionID === 'string' && event.sessionID) {
-    state.chatId = event.sessionID;
-  }
   switch (event?.type) {
     case 'system':
       return onSystem(event, state);
@@ -44,17 +39,10 @@ export function eventToOps(event, state) {
       return event.subtype ? onToolCall(event, state) : onGrokTool(event, state);
     case 'tool_call_update':
       return onGrokTool(event, state);
-    case 'tool_use':
-      return onOpenCodeTool(event, state);
-    case 'step_start':
-      state.opencodeTextId = null;
-      return [];
-    case 'step_finish':
-      return onOpenCodeStepFinish(event, state);
     case 'result':
       return onResult(event, state);
     case 'text':
-      return event.part && typeof event.part === 'object' ? onOpenCodeText(event, state) : onGrokText(event, state);
+      return onGrokText(event, state);
     case 'end':
       return onGrokEnd(event, state);
     case 'error':
@@ -298,54 +286,6 @@ function onGrokTool(event, state) {
   });
 }
 
-// OpenCode JSON mode emits a text part only when it has ended, with the whole
-// `part.text`. A later event for the same id is that same string (or a longer
-// replacement), not a suffix, so keep the bubble and set its text.
-function onOpenCodeText(event, state) {
-  const part = event.part ?? {};
-  const text = firstString(part.text);
-  if (!text) {
-    return [];
-  }
-  const partId = firstString(part.id);
-  if (partId && state.opencodeTextId === partId && state.segmentId) {
-    state.sawText = true;
-    return [{ op: 'set', id: state.segmentId, patch: { text } }];
-  }
-  state.opencodeTextId = partId || null;
-  state.segmentId = randomUUID();
-  state.sawText = true;
-  return [{ op: 'add', item: { id: state.segmentId, role: 'assistant', text } }];
-}
-
-// OpenCode sends one `tool_use` per finished call, with the tool id in `part.tool`
-// and the arguments in `part.state.input`.
-function onOpenCodeTool(event, state) {
-  const part = event.part ?? {};
-  const info = part.state ?? {};
-  const name = firstString(part.tool, info.title);
-  state.opencodeTextId = null;
-  return upsertTool(state, {
-    callId: firstString(part.id) || null,
-    name: name ? labelFor(name) : '',
-    summary: summarize(info.input ?? info.rawInput),
-    status: openCodeToolStatus(info),
-    images: imageParts(info.metadata?.content),
-  });
-}
-
-// `status: completed` means the tool returned, not that the command succeeded.
-// A shell call keeps a non-zero code and still says completed: v1 puts it at
-// `metadata.exit`, and v2 nests the tool's own metadata one level deeper.
-function openCodeToolStatus(info) {
-  const status = toolCallStatus(info.status);
-  const exitCode = info.metadata?.exit ?? info.metadata?.metadata?.exit;
-  if (status === 'done' && typeof exitCode === 'number' && exitCode !== 0) {
-    return 'error';
-  }
-  return status;
-}
-
 // One bubble per call: the first event adds it, later events patch it. A call that
 // is no longer running leaves the map, so a reused id would start a new bubble.
 function upsertTool(state, { callId, name, summary, status, images }) {
@@ -377,18 +317,6 @@ function upsertTool(state, { callId, name, summary, status, images }) {
     state.tools.delete(callId);
   }
   return [{ op: 'set', id: existingId, patch }];
-}
-
-// `tool-calls` and `unknown` mean another step follows. A Grok `end` with those
-// reasons is the end of the run, so it goes through finishStep.
-function onOpenCodeStepFinish(event, state) {
-  state.opencodeTextId = null;
-  const reason = normalizeReason(event.part?.reason);
-  if (reason === 'tool_calls' || reason === 'unknown') {
-    state.segmentId = null;
-    return [];
-  }
-  return finishStep(state, reason);
 }
 
 function toolCallStatus(status) {

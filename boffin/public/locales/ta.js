@@ -13,7 +13,6 @@ export default {
     agentLabel: 'முகவர்',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
-    agentOpenCode: 'OpenCode',
     modelLabel: 'மாதிரி',
     unknownAgent: 'அந்த முகவர் கிடைக்கவில்லை.',
     unknownModel: 'அந்த மாதிரி கிடைக்கவில்லை.',

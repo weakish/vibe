@@ -13,7 +13,6 @@ export default {
     agentLabel: 'Ejen',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
-    agentOpenCode: 'OpenCode',
     modelLabel: 'Model',
     unknownAgent: 'Ejen itu tidak tersedia.',
     unknownModel: 'Model itu tidak tersedia.',

@@ -40,10 +40,8 @@ test('applies defaults and resolves paths relative to the workdir', () => {
   assert.equal(config.stateFile, path.join(workdir, 'state/chat.json'));
   assert.equal(config.model, 'composer-2.5');
   assert.equal(config.grokModel, 'grok-4.7/high');
-  assert.equal(config.opencodeModel, 'opencode/big-pickle');
   assert.equal(config.agentBin, 'agent');
   assert.equal(config.grokBin, 'grok');
-  assert.equal(config.opencodeBin, 'opencode');
   assert.equal(config.bunBin, 'bun');
   assert.equal(config.force, true);
   assert.equal(config.host, '0.0.0.0');
@@ -135,34 +133,21 @@ test('requires a model', () => {
   assert.throws(() => loadConfig(workdir, {}), /"model" must be a non-empty string/);
 });
 
-test('defaults agents to cursor and accepts cursor, grok, opencode, or a combination', () => {
+test('defaults agents to cursor and accepts cursor, grok, or both', () => {
   const workdir = writeConfig();
   assert.deepEqual(loadConfig(workdir, {}).agents, ['cursor']);
   assert.equal(loadConfig(workdir, {}).grokModel, 'grok-4.7/high');
   assert.equal(loadConfig(workdir, {}).grokBin, 'grok');
-  assert.equal(loadConfig(workdir, {}).opencodeModel, 'opencode/big-pickle');
-  assert.equal(loadConfig(workdir, {}).opencodeBin, 'opencode');
 
-  const all = writeConfig({ agents: ['cursor', 'grok', 'opencode'] });
-  assert.deepEqual(loadConfig(all, {}).agents, ['cursor', 'grok', 'opencode']);
-});
-
-test('accepts a configured OpenCode model and binary', () => {
-  const workdir = writeConfig({
-    agents: ['opencode'],
-    opencode_model: 'openrouter/anthropic/claude-sonnet-5.5',
-    opencode_bin: '/home/boffin/.opencode/bin/opencode',
-  });
-  const config = loadConfig(workdir, {});
-  assert.equal(config.opencodeModel, 'openrouter/anthropic/claude-sonnet-5.5');
-  assert.equal(config.opencodeBin, '/home/boffin/.opencode/bin/opencode');
+  const all = writeConfig({ agents: ['cursor', 'grok'] });
+  assert.deepEqual(loadConfig(all, {}).agents, ['cursor', 'grok']);
 });
 
 test('rejects unknown agents and third-party models', () => {
   assert.throws(() => loadConfig(writeConfig({ agents: ['both'] }), {}), /"agents" must be/);
+  assert.throws(() => loadConfig(writeConfig({ agents: ['opencode'] }), {}), /"agents" must be/);
   assert.throws(() => loadConfig(writeConfig({ model: 'gpt-5' }), {}), /first-party Cursor model/);
   assert.throws(() => loadConfig(writeConfig({ grok_model: 'mystery' }), {}), /first-party Grok model/);
-  assert.throws(() => loadConfig(writeConfig({ opencode_model: 'mystery' }), {}), /valid OpenCode model id/);
 });
 
 test('rejects usernames that contain a colon', () => {

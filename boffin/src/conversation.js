@@ -105,11 +105,9 @@ export class Conversation {
   constructor({
     model,
     grokModel,
-    opencodeModel,
     workdir,
     agentBin,
     grokBin,
-    opencodeBin,
     force,
     agents,
     stateFile,
@@ -120,10 +118,8 @@ export class Conversation {
       agents,
       model,
       grokModel,
-      opencodeModel,
       agentBin,
       grokBin,
-      opencodeBin,
       force,
     });
     if (!this.backends) {

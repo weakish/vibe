@@ -13,7 +13,6 @@ export default {
     agentLabel: 'Agent',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
-    agentOpenCode: 'OpenCode',
     modelLabel: 'Model',
     unknownAgent: 'That agent is not available.',
     unknownModel: 'That model is not available.',

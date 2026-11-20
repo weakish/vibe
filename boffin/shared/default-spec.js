@@ -1,7 +1,7 @@
 // Shown until the owner saves their own copy.
 export const DEFAULT_SPEC = `# What Boffin is
 
-Boffin is a mobile-friendly chat page for the Cursor CLI, the Grok CLI, and the OpenCode CLI. One server keeps one active conversation, and a log of each conversation that has ended. The active conversation is tied to one working directory, one agent, and one model. The working directory is the first argument to the server, or the current directory. Which CLIs are enabled is set in the server config. The owner chooses the agent (when more than one is enabled) and a model when starting a new chat. More than one person can take part in it.
+Boffin is a mobile-friendly chat page for the Cursor CLI and the Grok CLI. One server keeps one active conversation, and a log of each conversation that has ended. The active conversation is tied to one working directory, one agent, and one model. The working directory is the first argument to the server, or the current directory. Which CLIs are enabled is set in the server config. The owner chooses the agent (when more than one is enabled) and a model when starting a new chat. More than one person can take part in it.
 
 # Sign-in
 
@@ -39,7 +39,7 @@ The page lists the people in the active conversation. A user message shows the n
 
 The first message starts a CLI chat. Later messages resume that same chat. The chat id is saved with the transcript.
 
-Only the owner can start a new chat. New chat ends the active conversation and keeps its log, then starts a fresh transcript and forgets the chat id, so the next message starts a fresh CLI chat. The owner picks the agent when more than one CLI is enabled, and picks a model for that agent. People who had joined are not in the new conversation, and every invitation is cancelled. The kept log remains for them to export later, whether or not anyone downloads it during new chat. If a run is still going, new chat is refused. Anyone in the active conversation can export the log as JSON, Markdown, EPUB (with embedded images when available), or a print view for Save as PDF. The owner can export JSON when starting a new chat. After that, the owner has no list of ended logs and cannot download them in the app. Invitees with a kept log can export the same formats from the conversation list. JSON and Markdown list attachment and image names but do not include file bytes. EPUB embeds images that are still stored on the server. Non-image attachments are named only. The files record the agent and the model, not the working directory. The agent is \`cursor\`, \`grok\`, or \`opencode\`. The base file name looks like \`boffin-chat-2026-10-17T031900Z\` with extension \`.json\`, \`.md\`, \`.epub\`, or \`.html\` (print). For example \`boffin-chat-2026-10-17T031900Z.json\`. A kept log uses the time that conversation ended. A log cut off by removal uses the time of the removal.
+Only the owner can start a new chat. New chat ends the active conversation and keeps its log, then starts a fresh transcript and forgets the chat id, so the next message starts a fresh CLI chat. The owner picks the agent when more than one CLI is enabled, and picks a model for that agent. People who had joined are not in the new conversation, and every invitation is cancelled. The kept log remains for them to export later, whether or not anyone downloads it during new chat. If a run is still going, new chat is refused. Anyone in the active conversation can export the log as JSON, Markdown, EPUB (with embedded images when available), or a print view for Save as PDF. The owner can export JSON when starting a new chat. After that, the owner has no list of ended logs and cannot download them in the app. Invitees with a kept log can export the same formats from the conversation list. JSON and Markdown list attachment and image names but do not include file bytes. EPUB embeds images that are still stored on the server. Non-image attachments are named only. The files record the agent and the model, not the working directory. The agent is \`cursor\` or \`grok\`. The base file name looks like \`boffin-chat-2026-10-17T031900Z\` with extension \`.json\`, \`.md\`, \`.epub\`, or \`.html\` (print). For example \`boffin-chat-2026-10-17T031900Z.json\`. A kept log uses the time that conversation ended. A log cut off by removal uses the time of the removal.
 
 Only one agent run happens at a time. Sending again while a run is active is refused. Anyone in the conversation can stop the run.
 
@@ -53,7 +53,7 @@ The active transcript and every kept log are written to the state file (\`state_
 
 All agents are CLIs. The server spawns the chosen one in the working directory, with no shell, reads its JSON stream, and maps events into the transcript. Flags and event shapes differ; the process boundary does not.
 
-The Cursor Agent SDK is not used. It covers only Cursor, needs a Node package and a different login, and the CLI already runs the agent loop in this working directory. MCP is not used as a backend. It offers tools to an agent. It does not start a chat, resume one, pick a model, or auto-approve. Grok Build is the \`grok\` CLI, not a second runtime. OpenCode is the \`opencode\` CLI, not a second runtime. Cursor as the only agent, with Grok as an MCP tool, is a different product.
+The Cursor Agent SDK is not used. It covers only Cursor, needs a Node package and a different login, and the CLI already runs the agent loop in this working directory. MCP is not used as a backend. It offers tools to an agent. It does not start a chat, resume one, pick a model, or auto-approve. Grok Build is the \`grok\` CLI, not a second runtime. Cursor as the only agent, with Grok as an MCP tool, is a different product.
 
 For Cursor it runs \`agent\` (or \`agent_bin\` from the config). The arguments are:
 
@@ -77,17 +77,7 @@ For Grok it runs \`grok\` (or \`grok_bin\` from the config). The arguments are:
 - \`--resume\` and the chat id on follow-up turns
 - \`--single=\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag. After the message, the prompt includes a shopping list instruction with the path of the JSON file.
 
-For OpenCode it runs \`opencode\` (or \`opencode_bin\` from the config). The arguments are:
-
-- \`run\`
-- \`--format json\`
-- \`--model\` and the OpenCode model id, such as \`opencode/big-pickle\`
-- \`--auto\` when \`force\` is true (the default)
-- \`--session\` and the session id on follow-up turns
-- \`--file\` and a file path for each attached image
-- \`--\` and then the sender's name, a colon, a space, and the message, so a message that starts with a dash is not treated as a flag. The message is passed as separate words, because OpenCode wraps any one word that already contains a space in quotes. After the message, the prompt includes a shopping list instruction with the path of the JSON file.
-
-An agent's chat id or session id is passed back only to that agent, never to a different one. The default Cursor model is Composer 2.5. The default Grok model is Grok 4.7 High. The default OpenCode model is Big Pickle. Cursor and Grok offer first-party models. OpenCode also accepts any \`provider/model\` its CLI can run as \`opencode_model\` in the config; that id is the default and is listed with Big Pickle when starting a new chat.
+An agent's chat id or session id is passed back only to that agent, never to a different one. The default Cursor model is Composer 2.5. The default Grok model is Grok 4.7 High. Cursor and Grok offer first-party models.
 
 When Grok is enabled, anyone in the conversation can see that Grok account's quota as a thin bar in the header. The percentage text appears only while the pointer is over the bar. Settings lists Refresh and does not show the figure. Current Cursor plans share that pool with Grok, so the same bar stays up when both CLIs are enabled even if the active chat is Cursor. Cursor legacy plans do not share it; their usage is a separate Cursor quota and is not shown. The figure is still the latest weekly (or monthly) limit Grok Build wrote to its local log (\`logs/unified.jsonl\` under the Grok home, \`~/.grok\` by default), not a Cursor snapshot. Grok Build writes that snapshot when it fetches billing for \`/usage\` or when Refresh asks Grok Build over ACP (\`_x.ai/billing\` on \`grok agent stdio\`). That method is the official CLI's billing fetch, not a documented public API; xAI's terms do not name it, so they could change or restrict it, and the Grok account's terms still apply. Refresh does not automate the TUI to type \`/usage\`: there is no terminal under systemd, and the TUI would only trigger the same fetch. A Cursor-only deployment has no usage bar: Cursor does not write an equivalent local snapshot. If no snapshot is there yet, the bar is empty, and hovering it says Grok usage is not available. Anyone in the conversation can use Refresh in Settings to run that billing fetch and reread the log; the server allows one refresh per minute.
 
@@ -113,7 +103,7 @@ A message may be up to 32768 characters.
 
 Up to 8 files can be attached, and each file may be up to 4 MB.
 
-Image files are sent to Cursor with \`--image\` and to OpenCode with \`--file\`. Grok has no image flag; image paths are included in the prompt only. Every file, images included, is saved in \`.boffin/uploads\` under the workdir, and its path is included in the prompt.
+Image files are sent to Cursor with \`--image\`. Grok has no image flag; image paths are included in the prompt only. Every file, images included, is saved in \`.boffin/uploads\` under the workdir, and its path is included in the prompt.
 
 On a touch device, such as a phone or tablet, Enter inserts a newline and the send button sends. On other devices, Enter sends and Shift+Enter inserts a newline. While a run is active, Enter inserts a newline and the button becomes Stop.
 
@@ -154,13 +144,13 @@ This page is the spec. The landing sample shows a short stand-in, not this text.
 
 # Config
 
-The config file is \`config.json\` in the workdir. The workdir is the first argument, or the current directory when that argument is omitted. A missing workdir is created. A missing config file is written at startup with host \`0.0.0.0\`, port \`8080\`, model \`composer-2.5\`, \`agent_bin\` \`agent\`, \`bun_bin\` \`bun\`, \`force\` true, username \`boffin\`, a random password, and \`state_file\` \`data/state.json\`. \`state_file\` is resolved relative to the workdir. \`model\` is required and must be a first-party Cursor model. \`grok_model\` is optional and defaults to \`grok-4.7/high\`. \`opencode_model\` is optional and defaults to \`opencode/big-pickle\`; it may be any \`provider/model\` id. \`agents\` is an optional array of \`cursor\`, \`grok\`, and/or \`opencode\` and defaults to \`["cursor"]\`. \`grok_bin\` is optional and defaults to \`grok\`. \`opencode_bin\` is optional and defaults to \`opencode\`. \`username\` is required unless \`BOFFIN_USERNAME\` is set, and \`password\` is required unless \`BOFFIN_PASSWORD\` is set or the state file already holds an owner passkey. A \`workdir\` key and any unknown key are refused.
+The config file is \`config.json\` in the workdir. The workdir is the first argument, or the current directory when that argument is omitted. A missing workdir is created. A missing config file is written at startup with host \`0.0.0.0\`, port \`8080\`, model \`composer-2.5\`, \`agent_bin\` \`agent\`, \`bun_bin\` \`bun\`, \`force\` true, username \`boffin\`, a random password, and \`state_file\` \`data/state.json\`. \`state_file\` is resolved relative to the workdir. \`model\` is required and must be a first-party Cursor model. \`grok_model\` is optional and defaults to \`grok-4.7/high\`. \`agents\` is an optional array of \`cursor\` and/or \`grok\` and defaults to \`["cursor"]\`. \`grok_bin\` is optional and defaults to \`grok\`. \`username\` is required unless \`BOFFIN_USERNAME\` is set, and \`password\` is required unless \`BOFFIN_PASSWORD\` is set or the state file already holds an owner passkey. A \`workdir\` key and any unknown key are refused.
 
 # BUGS
 
 Known issues, with their status.
 
-**Members can bypass access rules through the agent.** Status: by design. The agent runs in the workdir with auto-approve on by default (\`--force\` for Cursor, \`--always-approve\` for Grok, \`--auto\` for OpenCode), so it can read and write the files there: the config file, which holds the owner's password until it is removed; the state file, which holds every kept log, the passkey records, and the sign-in placeholder key; and the saved spec file. A member can ask the agent to read logs they were never part of, read the owner's password, or edit this spec. The assistant is free to shoot itself in the foot.
+**Members can bypass access rules through the agent.** Status: by design. The agent runs in the workdir with auto-approve on by default (\`--force\` for Cursor, \`--always-approve\` for Grok), so it can read and write the files there: the config file, which holds the owner's password until it is removed; the state file, which holds every kept log, the passkey records, and the sign-in placeholder key; and the saved spec file. A member can ask the agent to read logs they were never part of, read the owner's password, or edit this spec. The assistant is free to shoot itself in the foot.
 
 **The owner's password is sent over plain HTTP.** Status: wontfix. Boffin serves plain HTTP and does not handle TLS itself. The default \`host\` is \`0.0.0.0\`, which listens on every interface. The server checks the password before it checks for HTTPS, so the password crosses the network in clear text even when the passkey step then fails. If the network is not trusted, the owner should set \`host\` in \`config.json\` to an address they control, such as \`127.0.0.1\`, and serve Boffin over HTTPS through a proxy.
 

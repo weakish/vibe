@@ -144,9 +144,8 @@ function createLineSplitter(onLine) {
 // secrets stay in the server process.
 function agentEnvironment(env, cwd) {
   const copy = { ...env };
-  // OpenCode picks its project root from PWD, not from spawn's cwd, so without
-  // this it would use the directory the server was started from. Set it for every
-  // agent so the child's own idea of its working directory matches spawn's cwd.
+  // Set PWD to match spawn's cwd so the child's own idea of its working directory
+  // does not inherit the directory the server was started from.
   if (typeof cwd === 'string' && cwd) {
     copy.PWD = path.resolve(cwd);
   }

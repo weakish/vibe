@@ -13,7 +13,6 @@ export default {
     agentLabel: 'Tāi-lí',
     agentCursor: 'Cursor',
     agentGrok: 'Grok',
-    agentOpenCode: 'OpenCode',
     modelLabel: 'Bô͘-hêng',
     unknownAgent: 'Hit ê tāi-lí bô thang iōng.',
     unknownModel: 'Hit ê bô͘-hêng bô thang iōng.',
