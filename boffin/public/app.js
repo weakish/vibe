@@ -4188,8 +4188,16 @@ async function onLogin(event) {
     await onJoin();
     return;
   }
+  if (loginInFlight) {
+    return;
+  }
   if (lastLoginMode === 'register') {
-    await onRegisterPasskey();
+    setLoginBusy(true);
+    try {
+      await onRegisterPasskey();
+    } finally {
+      setLoginBusy(false);
+    }
     return;
   }
   if (lastLoginMode === 'username') {
@@ -4210,6 +4218,8 @@ async function onLogin(event) {
     setLoginError(() => msg('needPassword'));
     return;
   }
+  let registered = false;
+  setLoginBusy(true);
   try {
     const response = await api('/api/auth/password', { method: 'POST', body: { username, password }, auth: false });
     if (!response.ok) {
@@ -4220,9 +4230,14 @@ async function onLogin(event) {
     setLoginError('');
     lastLoginMode = 'register';
     applyLoginMode();
-    el.loginSubmit.focus();
+    registered = true;
   } catch (error) {
     showLoginFailure(error, () => msg('badCredentials'));
+  } finally {
+    setLoginBusy(false);
+  }
+  if (registered) {
+    el.loginSubmit.focus();
   }
 }
 
@@ -4247,34 +4262,51 @@ async function onRegisterPasskey() {
 }
 
 async function onUsernameLogin() {
+  if (loginInFlight) {
+    return;
+  }
   const username = el.loginUsername.value.trim();
   if (!username) {
     setLoginError(() => msg('needUsername'));
     return;
   }
-  await runPasskeyStep(async () => {
-    const response = await api('/api/auth/options', { method: 'POST', body: { username }, auth: false });
-    if (!response.ok) {
-      throw new RequestError(await readServerError(response), response.status);
-    }
-    const body = await response.json();
-    const credential = await getPasskey(body.options);
-    const signedIn = await api('/api/auth/login', {
-      method: 'POST',
-      body: { challengeId: body.challengeId, credential },
-      auth: false,
+  setLoginBusy(true);
+  try {
+    await runPasskeyStep(async () => {
+      const response = await api('/api/auth/options', { method: 'POST', body: { username }, auth: false });
+      if (!response.ok) {
+        throw new RequestError(await readServerError(response), response.status);
+      }
+      const body = await response.json();
+      if (!el.login.open) {
+        return null;
+      }
+      const credential = await getPasskey(body.options);
+      const signedIn = await api('/api/auth/login', {
+        method: 'POST',
+        body: { challengeId: body.challengeId, credential },
+        auth: false,
+      });
+      if (!signedIn.ok) {
+        throw new RequestError(await readServerError(signedIn), signedIn.status);
+      }
+      return signedIn.json();
     });
-    if (!signedIn.ok) {
-      throw new RequestError(await readServerError(signedIn), signedIn.status);
-    }
-    return signedIn.json();
-  });
+  } finally {
+    setLoginBusy(false);
+  }
 }
 
 let settleSameDeviceJoin = null;
-// One join at a time. Without this, a second submit overwrites the first warning's settle
-// callback, and the first attempt waits forever.
-let joinInFlight = false;
+// One login/join at a time. Without this, slow networks let repeated clicks or Enter presses
+// stack multiple passkey prompts or overwrite the same-device warning's settle callback.
+let loginInFlight = false;
+
+function setLoginBusy(busy) {
+  loginInFlight = busy;
+  el.loginSubmit.disabled = busy;
+  el.loginJoin.disabled = busy;
+}
 
 let settlePasskeyWarning = null;
 
@@ -4309,7 +4341,7 @@ function confirmSameDeviceJoin() {
 }
 
 async function onJoin() {
-  if (joinInFlight) {
+  if (loginInFlight) {
     return;
   }
   const name = el.loginUsername.value.trim();
@@ -4317,7 +4349,7 @@ async function onJoin() {
     setLoginError(() => msg('needUsername'));
     return;
   }
-  joinInFlight = true;
+  setLoginBusy(true);
   try {
     await runPasskeyStep(async () => {
       const response = await api('/api/join', {
@@ -4330,6 +4362,9 @@ async function onJoin() {
         throw new RequestError(await readServerError(response), response.status);
       }
       const body = await response.json();
+      if (!el.login.open) {
+        return null;
+      }
       const credential = await createJoinPasskey(body.options, { confirmSameDevice: confirmSameDeviceJoin });
       const joined = await api('/api/join/finish', {
         method: 'POST',
@@ -4342,7 +4377,7 @@ async function onJoin() {
       return joined.json();
     });
   } finally {
-    joinInFlight = false;
+    setLoginBusy(false);
   }
 }
 
@@ -4353,6 +4388,9 @@ async function runPasskeyStep(action) {
   }
   try {
     const session = await action();
+    if (!session) {
+      return;
+    }
     if (session?.token) {
       storeSession(session.token);
     }
