@@ -57,10 +57,6 @@
                 <span id="size-label">Size</span>
                 <div class="theme-picker" id="size" role="radiogroup" aria-labelledby="size-label"></div>
               </div>
-              <div class="menu-field" id="usage-field" hidden>
-                <p class="status" id="usage-refresh-status" role="status" hidden></p>
-                <button type="button" class="menu-action" id="usage-refresh" hidden>Refresh</button>
-              </div>
               <div class="menu-field" id="static-assets-field" hidden>
                 <span id="static-assets-label">Static assets</span>
                 <div class="theme-picker" id="static-assets" role="radiogroup" aria-labelledby="static-assets-label"></div>
@@ -122,18 +118,33 @@
           </button>
         </div>
         <div class="usage" id="usage-line" hidden>
-          <div
-            class="usage-bar"
-            id="usage-bar"
-            role="meter"
-            tabindex="0"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-label="Usage"
-          >
-            <span class="usage-bar-fill" id="usage-bar-fill"></span>
+          <div class="usage-row">
+            <div
+              class="usage-bar"
+              id="usage-bar"
+              role="meter"
+              tabindex="0"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-label="Usage"
+            >
+              <span class="usage-bar-fill" id="usage-bar-fill"></span>
+            </div>
+            <button type="button" class="usage-refresh" id="usage-refresh" hidden aria-label="Refresh">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M20 12a8 8 0 1 1-2.34-5.66L20 8.5M20 4v4.5h-4.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
           </div>
           <p class="usage-tip" id="usage-tip" aria-hidden="true"></p>
+          <p class="usage-status" id="usage-refresh-status" role="status" hidden></p>
         </div>
       </header>
 

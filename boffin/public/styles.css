@@ -209,7 +209,14 @@ dialog:focus-visible {
   padding-block: calc(5px * var(--ui-scale));
 }
 
+.usage-row {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
 .usage-bar {
+  flex: 1 1 auto;
   height: calc(3px * var(--ui-scale));
   border-radius: calc(999px * var(--ui-scale));
   background: color-mix(in srgb, var(--fg) 18%, transparent);
@@ -257,8 +264,49 @@ dialog:focus-visible {
   opacity: 1;
 }
 
-#usage-refresh {
-  align-self: stretch;
+.usage-refresh {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(22px * var(--ui-scale));
+  height: calc(22px * var(--ui-scale));
+  padding: 0;
+  border: 0;
+  border-radius: calc(6px * var(--ui-scale));
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.usage-refresh:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.usage-refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.usage-refresh svg {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
+.usage-refresh.is-busy svg {
+  animation: usage-spin 0.9s linear infinite;
+}
+
+@keyframes usage-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.usage-status {
+  margin: calc(2px * var(--ui-scale)) 0 0;
+  font-size: calc(11.5px * var(--ui-scale));
+  color: var(--muted);
 }
 
 .topbar-actions {

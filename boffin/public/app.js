@@ -143,7 +143,6 @@ const el = {
   usageBar: document.getElementById('usage-bar'),
   usageFill: document.getElementById('usage-bar-fill'),
   usageTip: document.getElementById('usage-tip'),
-  usageField: document.getElementById('usage-field'),
   usageRefreshStatus: document.getElementById('usage-refresh-status'),
   usageRefresh: document.getElementById('usage-refresh'),
   peopleDialog: document.getElementById('people-dialog'),
@@ -428,7 +427,8 @@ function applyChrome() {
     el.usageBar.setAttribute('aria-label', msg('usage'));
   }
   if (el.usageRefresh) {
-    el.usageRefresh.textContent = msg('grokUsageRefresh');
+    el.usageRefresh.setAttribute('aria-label', msg('grokUsageRefresh'));
+    el.usageRefresh.title = msg('grokUsageRefresh');
   }
   paintUsage();
   el.staticAssetsLabel.textContent = msg('staticAssets');
@@ -934,15 +934,15 @@ function setUsageRefreshStatus(text) {
 }
 
 function paintUsage() {
-  if (!el.usageField || !el.usageLine || !el.usageBar || !el.usageFill || !el.usageTip) {
+  if (!el.usageLine || !el.usageBar || !el.usageFill || !el.usageTip) {
     return;
   }
   const show = grokUsageLoaded && grokUsage !== null;
-  el.usageField.hidden = !show;
   el.usageLine.hidden = !show;
   if (el.usageRefresh) {
     el.usageRefresh.hidden = !show;
     el.usageRefresh.disabled = grokUsageFetchInFlight;
+    el.usageRefresh.classList.toggle('is-busy', grokUsageFetchInFlight);
   }
   if (!show) {
     el.usageTip.textContent = '';
@@ -1728,7 +1728,6 @@ function captureAppElements() {
   el.usageBar = document.getElementById('usage-bar');
   el.usageFill = document.getElementById('usage-bar-fill');
   el.usageTip = document.getElementById('usage-tip');
-  el.usageField = document.getElementById('usage-field');
   el.usageRefreshStatus = document.getElementById('usage-refresh-status');
   el.usageRefresh = document.getElementById('usage-refresh');
   el.conversationList = document.getElementById('conversation-list');
